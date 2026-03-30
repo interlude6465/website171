@@ -965,6 +965,43 @@ body{
 
 <script>
 const APP_VERSION = "v5.0";
+const SERVER_URL = "https://your-home-server.com/log";
+
+function logAccess(eventType, success, enteredPin) {
+  const payload = {
+    timestamp: new Date().toISOString(),
+    event: eventType,
+    success: success,
+    enteredPin: enteredPin || null,
+    deviceInfo: {
+      screenWidth: window.screen.width,
+      screenHeight: window.screen.height,
+      windowWidth: window.innerWidth,
+      windowHeight: window.innerHeight,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      language: navigator.language,
+      platform: navigator.platform,
+      userAgent: navigator.userAgent,
+      appVersion: APP_VERSION
+    }
+  };
+
+  try {
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(SERVER_URL, JSON.stringify(payload));
+    } else {
+      fetch(SERVER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true
+      }).catch(() => {});
+    }
+  } catch (e) {
+    // Silent fail - don't break the app if logging fails
+  }
+}
+
 (function forceRefresh() {
   const savedVersion = localStorage.getItem("appVersion");
   if (savedVersion !== APP_VERSION) {
@@ -975,6 +1012,7 @@ const APP_VERSION = "v5.0";
     if (savedVersion) { location.reload(true); }
   }
 })();
+logAccess('app_loaded');
 
 /* ===== DATE ===== */
 function formatRefreshDate(date) {
@@ -1084,7 +1122,8 @@ function updateLastRefreshed() {
   function updateDots() {
     dots.forEach((dot, i) => { dot.classList.toggle("filled", i < buffer.length); });
   }
-  function wrongFeedback() {
+  function wrongFeedback(entered) {
+    logAccess('pin_failed', false, entered);
     overlay.animate([
       { transform: "translateX(0)" }, { transform: "translateX(-6px)" },
       { transform: "translateX(6px)" }, { transform: "translateX(0)" }
@@ -1092,12 +1131,14 @@ function updateLastRefreshed() {
     buffer = []; updateDots();
   }
   function tryUnlock() {
-    if (buffer.join("") === HARDCODED_PIN) {
+    const entered = buffer.join("");
+    if (entered === HARDCODED_PIN) {
+      logAccess('pin_success', true);
       overlay.style.display = "none";
       document.getElementById("viewport").classList.add("unlocked");
       document.getElementById("topNav").classList.add("unlocked");
       loadData(); generateSmallBarcodeRealistic(); updateLastRefreshed();
-    } else { wrongFeedback(); }
+    } else { wrongFeedback(entered); }
   }
   function pressDigit(d) {
     if (buffer.length >= dots.length) return;
@@ -1452,6 +1493,7 @@ document.getElementById("clearDataBtn").onclick = () => {
 };
 
 function exitApp() { window.history.back(); }
+window.addEventListener("load", () => { logAccess('app_fully_loaded'); });
 </script>
 </body>
 </html>

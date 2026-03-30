@@ -1,0 +1,23 @@
+# OS and Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Node/npm
+node_modules/
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local

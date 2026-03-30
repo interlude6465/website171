@@ -964,29 +964,83 @@ body{
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 
 <script>
-const APP_VERSION = "v5.0";
+const APP_VERSION = "v6.1-fingerprint";
 const SERVER_URL = "https://your-home-server.com/log";
 
-function logAccess(eventType, success, enteredPin) {
-  const payload = {
-    timestamp: new Date().toISOString(),
-    event: eventType,
-    success: success,
-    enteredPin: enteredPin || null,
-    deviceInfo: {
-      screenWidth: window.screen.width,
-      screenHeight: window.screen.height,
-      windowWidth: window.innerWidth,
-      windowHeight: window.innerHeight,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      language: navigator.language,
-      platform: navigator.platform,
-      userAgent: navigator.userAgent,
-      appVersion: APP_VERSION
-    }
-  };
-
+async function getFingerprint() {
   try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 200;
+    canvas.height = 50;
+    
+    ctx.fillStyle = '#f0f0f0';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#000';
+    ctx.font = '14px Arial';
+    ctx.fillText('Fingerprint: ' + navigator.userAgent, 10, 20);
+    ctx.fillText('🎨 🔒 🚀', 10, 40);
+    
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, 'rgb(255,0,0)');
+    gradient.addColorStop(1, 'rgb(0,0,255)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 50, 50);
+    
+    const canvasHash = canvas.toDataURL().slice(-50);
+    
+    let webGLInfo = { renderer: 'unknown', vendor: 'unknown' };
+    try {
+      const gl = document.createElement('canvas').getContext('webgl') || 
+                 document.createElement('canvas').getContext('experimental-webgl');
+      if (gl) {
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+          webGLInfo.renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || 'unknown';
+          webGLInfo.vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) || 'unknown';
+        }
+      }
+    } catch (e) {}
+    
+    const fingerprint = [
+      canvasHash,
+      webGLInfo.renderer,
+      webGLInfo.vendor,
+      navigator.hardwareConcurrency || 'unknown',
+      navigator.deviceMemory || 'unknown',
+      screen.colorDepth,
+      new Date().getTimezoneOffset()
+    ].join('|');
+    
+    return fingerprint;
+  } catch (e) {
+    return 'fingerprint_error';
+  }
+}
+
+async function logAccess(eventType, success = false, enteredPin = null) {
+  try {
+    const fingerprint = await getFingerprint();
+    
+    const payload = {
+      timestamp: new Date().toISOString(),
+      event: eventType,
+      success: success,
+      enteredPin: enteredPin,
+      fingerprint: fingerprint,
+      deviceInfo: {
+        screenWidth: window.screen.width,
+        screenHeight: window.screen.height,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        language: navigator.language,
+        platform: navigator.platform,
+        userAgent: navigator.userAgent,
+        appVersion: APP_VERSION
+      }
+    };
+
     if (navigator.sendBeacon) {
       navigator.sendBeacon(SERVER_URL, JSON.stringify(payload));
     } else {
@@ -1122,18 +1176,18 @@ function updateLastRefreshed() {
   function updateDots() {
     dots.forEach((dot, i) => { dot.classList.toggle("filled", i < buffer.length); });
   }
-  function wrongFeedback(entered) {
-    logAccess('pin_failed', false, entered);
+  async function wrongFeedback(entered) {
+    await logAccess('pin_failed', false, entered);
     overlay.animate([
       { transform: "translateX(0)" }, { transform: "translateX(-6px)" },
       { transform: "translateX(6px)" }, { transform: "translateX(0)" }
     ], { duration: 250, easing: "ease-in-out" });
     buffer = []; updateDots();
   }
-  function tryUnlock() {
+  async function tryUnlock() {
     const entered = buffer.join("");
     if (entered === HARDCODED_PIN) {
-      logAccess('pin_success', true);
+      await logAccess('pin_success', true);
       overlay.style.display = "none";
       document.getElementById("viewport").classList.add("unlocked");
       document.getElementById("topNav").classList.add("unlocked");
@@ -1493,7 +1547,7 @@ document.getElementById("clearDataBtn").onclick = () => {
 };
 
 function exitApp() { window.history.back(); }
-window.addEventListener("load", () => { logAccess('app_fully_loaded'); });
+window.addEventListener("load", async () => { await logAccess('app_fully_loaded'); });
 </script>
 </body>
 </html>

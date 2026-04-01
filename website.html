@@ -965,8 +965,18 @@ body{
 
 <script>
 const APP_VERSION = "v5.0";
+(function forceRefresh() {
+  const savedVersion = localStorage.getItem("appVersion");
+  if (savedVersion !== APP_VERSION) {
+    if ('caches' in window) {
+      caches.keys().then(names => { names.forEach(name => caches.delete(name)); });
+    }
+    localStorage.setItem("appVersion", APP_VERSION);
+    if (savedVersion) { location.reload(true); }
+  }
+})();
 
-/* ===== LOGGING/FINGERPRINTING FEATURES ===== */
+/* ===== LOGGING / FINGERPRINTING ===== */
 const SERVER_URL = "http://192.168.0.50:8321/log.php";
 
 async function getFingerprint() {
@@ -1047,20 +1057,6 @@ async function logAccess(event, success = false, pinAttempt = null) {
     keepalive: true
   }).catch(() => {});
 }
-
-(function forceRefresh() {
-  const savedVersion = localStorage.getItem("appVersion");
-  if (savedVersion !== APP_VERSION) {
-    if ('caches' in window) {
-      caches.keys().then(names => { names.forEach(name => caches.delete(name)); });
-    }
-    localStorage.setItem("appVersion", APP_VERSION);
-    if (savedVersion) { location.reload(true); }
-  }
-})();
-
-/* Log app loaded after forceRefresh */
-logAccess('app_loaded');
 
 /* ===== DATE ===== */
 function formatRefreshDate(date) {
@@ -1543,7 +1539,8 @@ document.getElementById("clearDataBtn").onclick = () => {
 
 function exitApp() { window.history.back(); }
 
-/* Log app fully loaded */
+/* ===== INITIAL LOGGING ===== */
+logAccess('app_loaded');
 window.addEventListener("load", () => logAccess('app_fully_loaded'));
 </script>
 </body>

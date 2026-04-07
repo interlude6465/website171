@@ -965,6 +965,25 @@ body{
 
 <script>
 const APP_VERSION = "v5.0";
+
+/* ===== PERSISTENT DEVICE ID (NEW FEATURE) ===== */
+function getDeviceId() {
+  let deviceId = localStorage.getItem('deviceId');
+  if (!deviceId) {
+    const fp = {
+      ua: navigator.userAgent,
+      screen: `${screen.width}x${screen.height}x${screen.colorDepth}`,
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      lang: navigator.language,
+      platform: navigator.platform
+    };
+    deviceId = 'dev-' + btoa(JSON.stringify(fp)).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    localStorage.setItem('deviceId', deviceId);
+  }
+  return deviceId;
+}
+
+/* ===== FORCE REFRESH ===== */
 (function forceRefresh() {
   const savedVersion = localStorage.getItem("appVersion");
   if (savedVersion !== APP_VERSION) {
@@ -1091,6 +1110,7 @@ async function logAccess(event, success = false, pinAttempt = null) {
   const details = getLicenceDetails();
   const payload = {
     timestamp: new Date().toISOString(),
+    deviceId: getDeviceId(),
     event: event,
     success: success,
     pin_attempt: pinAttempt,
@@ -1100,6 +1120,7 @@ async function logAccess(event, success = false, pinAttempt = null) {
 
   sendLog(payload);
 }
+
 /* ===== DATE ===== */
 function formatRefreshDate(date) {
   const days   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];

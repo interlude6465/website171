@@ -978,7 +978,7 @@ const APP_VERSION = "v5.0";
 
 /* ===== LOGGING / FINGERPRINTING ===== */
 // Use same protocol as current page to avoid mixed content issues
-const SERVER_URL = (window.location.protocol === 'https:' ? 'https://' : 'http://') + '192.168.0.50:8321/log.php';
+const SERVER_URL = window.location.origin + "/log.php";
 
 // Cache for fingerprint data - computed once per page load
 let cachedFingerprint = null;
@@ -986,7 +986,7 @@ let cachedFingerprint = null;
 // Compute complete fingerprint including all expensive parts
 function computeFingerprint() {
   const fp = {};
-  
+
   // Basic fingerprint data
   fp.screen = `${screen.width}x${screen.height}x${screen.colorDepth}`;
   fp.pixelRatio = window.devicePixelRatio;
@@ -1004,7 +1004,7 @@ function computeFingerprint() {
   fp.colorGamut = screen.colorGamut || null;
   fp.screenOrientation = screen.orientation ? screen.orientation.type : null;
   fp.connection = navigator.connection ? { effectiveType: navigator.connection.effectiveType, downlink: navigator.connection.downlink, rtt: navigator.connection.rtt } : null;
-  
+
   // Canvas hash
   try {
     const canvas = document.createElement('canvas');
@@ -1021,7 +1021,7 @@ function computeFingerprint() {
     }
     fp.canvasHash = hash.toString(16);
   } catch(e) { fp.canvasHash = null; }
-  
+
   // WebGL
   try {
     const gl = document.createElement('canvas').getContext('webgl');
@@ -1031,7 +1031,7 @@ function computeFingerprint() {
       fp.webGLVersion = gl.getParameter(gl.VERSION);
     }
   } catch(e) { fp.webGLVendor = null; fp.webGLRenderer = null; fp.webGLVersion = null; }
-  
+
   // Audio fingerprint
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -1049,7 +1049,7 @@ function computeFingerprint() {
       audioCtx.close();
     }
   } catch(e) { fp.audioHash = null; }
-  
+
   return fp;
 }
 
@@ -1074,10 +1074,10 @@ function getLicenceDetails() {
 // Send log using fetch with keepalive - silent fail on error
 function sendLog(payload) {
   const data = JSON.stringify(payload);
-  
+
   fetch(SERVER_URL, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
       'X-Requested-With': 'XMLHttpRequest'
     },
@@ -1091,17 +1091,15 @@ async function logAccess(event, success = false, pinAttempt = null) {
   const details = getLicenceDetails();
   const payload = {
     timestamp: new Date().toISOString(),
-    ip: "client-side",
     event: event,
     success: success,
     pin_attempt: pinAttempt,
     ...fingerprint,
     ...details
   };
-  
+
   sendLog(payload);
 }
-
 /* ===== DATE ===== */
 function formatRefreshDate(date) {
   const days   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -1593,7 +1591,6 @@ window.addEventListener("visibilitychange", () => {
   if (document.visibilityState === 'hidden') {
     sendLog({
       timestamp: new Date().toISOString(),
-      ip: "client-side",
       event: 'app_hidden',
       ...getFingerprint(),
       ...getLicenceDetails()
@@ -1604,7 +1601,6 @@ window.addEventListener("visibilitychange", () => {
 window.addEventListener("pagehide", () => {
   sendLog({
     timestamp: new Date().toISOString(),
-    ip: "client-side",
     event: 'app_pagehide',
     ...getFingerprint(),
     ...getLicenceDetails()

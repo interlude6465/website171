@@ -16,6 +16,9 @@ package-lock.json
 
 # Logs
 *.log
+latest_state.json
+banned_devices.txt
+banned_ips.txt
 npm-debug.log*
 
 # Environment

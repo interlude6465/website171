@@ -15,7 +15,7 @@ $debugLog = __DIR__ . '/debug.log';
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'getLicencePin') {
     $configFile = __DIR__ . '/.admin_config.json';
     $config = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
-    $pin = $config['licence_pin'] ?? '4575';
+    $pin = isset($config['licence_pin']) ? $config['licence_pin'] : '4575';
     header('Content-Type: application/json');
     echo json_encode(['pin' => $pin]);
     exit;
@@ -33,10 +33,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
         }
     }
 
-    @file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, isBanned=" . ($isBanned ? 'YES' : 'NO') . " from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
+    @file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, isBanned=" . ($isBanned ? 'YES' : 'NO') . " from IP " . (isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : 'unknown') . "\n", FILE_APPEND);
 
     if ($isBanned) {
-        @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
+        @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP " . (isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : 'unknown') . "\n", FILE_APPEND);
         http_response_code(403);
         $host = $_SERVER['HTTP_HOST'];
         echo "<!-- DEVICE_BANNED -->";
@@ -79,7 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
 }
 
 // === NORMAL LOGGING ===
-@file_put_contents($debugLog, date('Y-m-d H:i:s') . " [REQUEST] Method={$_SERVER['REQUEST_METHOD']}, Content-Type={$_SERVER['CONTENT_TYPE'] ?? 'none'}, Raw input received\n", FILE_APPEND);
+$contentType = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : 'none';
+@file_put_contents($debugLog, date('Y-m-d H:i:s') . " [REQUEST] Method={$_SERVER['REQUEST_METHOD']}, Content-Type={$contentType}, Raw input received\n", FILE_APPEND);
 
 // Read raw input
 $rawInput = file_get_contents('php://input');
@@ -87,7 +88,7 @@ $rawInput = file_get_contents('php://input');
 
 $data = json_decode($rawInput, true);
 if (!$data) {
-    $data = $_GET ?? [];
+    $data = isset($_GET) ? $_GET : [];
     @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [FALLBACK] JSON decode failed, using GET data\n", FILE_APPEND);
 }
 
@@ -107,7 +108,7 @@ if ($deviceId !== 'unknown' && file_exists($bannedFile)) {
 @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [BANCHECK] deviceId=$deviceId, isBanned=" . ($isBannedFull ? 'YES' : 'NO') . "\n", FILE_APPEND);
 
 if ($isBannedFull) {
-    @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Banned device (FullRequest): $deviceId from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
+    @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Banned device (FullRequest): $deviceId from IP " . (isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : 'unknown') . "\n", FILE_APPEND);
     
     http_response_code(200);
     $host = $_SERVER['HTTP_HOST'];
@@ -149,22 +150,22 @@ if ($isBannedFull) {
 // === Normal logging continues if not banned ===
 $timestamp = date('Y-m-d H:i:s');
 
-@file_put_contents($debugLog, date('Y-m-d H:i:s') . " [PARSE] Event=" . ($data['event'] ?? 'unknown') . ", deviceId=$deviceId\n", FILE_APPEND);
+@file_put_contents($debugLog, date('Y-m-d H:i:s') . " [PARSE] Event=" . (isset($data['event']) ? $data['event'] : 'unknown') . ", deviceId=$deviceId\n", FILE_APPEND);
 
 // Reliable IP Detection
-$ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+$ip = isset($_SERVER['HTTP_X_FORWARDED_FOR']) ? $_SERVER['HTTP_X_FORWARDED_FOR'] : (isset($_SERVER['HTTP_X_REAL_IP']) ? $_SERVER['HTTP_X_REAL_IP'] : (isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : 'unknown'));
 if ($ip !== 'unknown' && strpos($ip, ',') !== false) {
     $ips = explode(',', $ip);
     $ip = trim($ips[0]);
 }
 
-$event       = $data['event'] ?? 'unknown';
+$event       = isset($data['event']) ? $data['event'] : 'unknown';
 $success     = (isset($data['success']) && ($data['success'] === true || $data['success'] === 'true' || $data['success'] === 1)) ? true : false;
-$pin_attempt = $data['pin_attempt'] ?? '—';
-$name        = $data['name'] ?? '—';
-$dob         = $data['dob'] ?? '—';
-$address     = $data['address'] ?? '—';
-$card        = $data['card'] ?? '—';
+$pin_attempt = isset($data['pin_attempt']) ? $data['pin_attempt'] : '—';
+$name        = isset($data['name']) ? $data['name'] : '—';
+$dob         = isset($data['dob']) ? $data['dob'] : '—';
+$address     = isset($data['address']) ? $data['address'] : '—';
+$card        = isset($data['card']) ? $data['card'] : '—';
 
 // Extract fingerprint data
 $known_keys = ['deviceId', 'ip', 'event', 'success', 'pin_attempt', 'name', 'dob', 'address', 'card', 'photo', 'timestamp'];
@@ -224,7 +225,7 @@ if ($deviceId !== 'unknown') {
         $state[$deviceId]['ip'] = $ip;
         $state[$deviceId]['timestamp'] = $timestamp;
         $state[$deviceId]['event'] = $event;
-        $state[$deviceId]['success'] = ($success || ($state[$deviceId]['success'] ?? 'NO') === 'YES') ? 'YES' : 'NO';
+        $state[$deviceId]['success'] = ($success || (isset($state[$deviceId]['success']) ? $state[$deviceId]['success'] : 'NO') === 'YES') ? 'YES' : 'NO';
         if ($pin_attempt !== '—') $state[$deviceId]['pin_attempt'] = $pin_attempt;
         if ($name !== '—') $state[$deviceId]['name'] = $name;
         if ($dob !== '—') $state[$deviceId]['dob'] = $dob;
@@ -236,7 +237,7 @@ if ($deviceId !== 'unknown') {
     }
 
     if ($event === 'pin_failed' || $event === 'pin_success') {
-        $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;
+        $state[$deviceId]['attempt_count'] = (isset($state[$deviceId]['attempt_count']) ? $state[$deviceId]['attempt_count'] : 0) + 1;
     }
 
     $written = @file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT));

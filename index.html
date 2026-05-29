@@ -1021,7 +1021,11 @@ body{
   <div class="modal-content">
     <h3 style="margin-top:0;">Edit licence details</h3>
     <input id="editName" class="edit-field" placeholder="Full name (ALL CAPS)" />
-    <input id="editDOB" class="edit-field" placeholder="Date of birth (e.g. 01 May 2000)" />
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <select id="editDOB_Day" class="edit-field" style="margin-top:0; flex:1;"></select>
+      <select id="editDOB_Month" class="edit-field" style="margin-top:0; flex:2;"></select>
+      <select id="editDOB_Year" class="edit-field" style="margin-top:0; flex:1.5;"></select>
+    </div>
     <input id="editAddress" class="edit-field" placeholder="Address (make it random)" />
     <input id="editCard" class="edit-field" placeholder="Card number (e.g. p64736)" />
     <div style="display:flex; gap:8px; margin-top:12px; justify-content:center;">
@@ -1592,65 +1596,143 @@ const editModal     = document.getElementById("editModal");
 const saveEditBtn   = document.getElementById("saveEditBtn");
 const cancelEditBtn = document.getElementById("cancelEditBtn");
 
+const selDay = document.getElementById("editDOB_Day");
+const selMonth = document.getElementById("editDOB_Month");
+const selYear = document.getElementById("editDOB_Year");
+
+// Populate DOB selects
+for(let i=1; i<=31; i++) {
+  const opt = document.createElement("option");
+  opt.value = i; opt.textContent = i;
+  selDay.appendChild(opt);
+}
+const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+monthNames.forEach((m, i) => {
+  const opt = document.createElement("option");
+  opt.value = i; opt.textContent = m;
+  selMonth.appendChild(opt);
+});
+const currentYearForPop = new Date().getFullYear();
+for(let i=currentYearForPop; i>=1900; i--) {
+  const opt = document.createElement("option");
+  opt.value = i; opt.textContent = i;
+  selYear.appendChild(opt);
+}
+
 editBtn.onclick = () => {
   vibrate();
   const nameEl = document.querySelector(".licenceName");
   const dobEl  = document.querySelector(".licenceDOB");
   const addrEl = document.querySelector(".licenceAddress");
   const cardEl = document.getElementById("cardNum");
+
   document.getElementById("editName").value    = nameEl ? nameEl.innerText.replace(/\n/g, " ") : "";
-  document.getElementById("editDOB").value     = dobEl  ? dobEl.innerText : "";
   document.getElementById("editAddress").value = addrEl ? addrEl.innerHTML.replace(/<br\s*\/?>/gi, "\n") : "";
   document.getElementById("editCard").value    = cardEl ? (cardEl.innerText === "•••••••" ? "" : cardEl.innerText) : "";
+
+  if (dobEl) {
+    const dobText = dobEl.innerText.trim();
+    const parts = dobText.split(' ');
+    if (parts.length === 3) {
+      const d = parseInt(parts[0]);
+      const mStr = parts[1];
+      const y = parseInt(parts[2]);
+      const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].indexOf(mStr);
+      if (d) selDay.value = d;
+      if (m !== -1) selMonth.value = m;
+      if (y) selYear.value = y;
+    }
+  }
+
   editModal.style.display = "flex";
 };
 cancelEditBtn.onclick = () => { vibrate(); editModal.style.display = "none"; };
+
 saveEditBtn.onclick = async () => {
   vibrate();
   const newName    = document.getElementById("editName").value.trim();
-  const newDOB     = document.getElementById("editDOB").value.trim();
   let   newAddress = document.getElementById("editAddress").value.trim();
   const newCard    = document.getElementById("editCard").value.trim();
+
+  const day = parseInt(selDay.value);
+  const month = parseInt(selMonth.value);
+  const year = parseInt(selYear.value);
+  const dobDate = new Date(year, month, day);
+
+  // Age validation
+  const today = new Date();
+  let age = today.getFullYear() - dobDate.getFullYear();
+  const m = today.getMonth() - dobDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dobDate.getDate())) {
+    age--;
+  }
+
+  if (age < 18) {
+    alert("You must be 18 or older");
+    return;
+  }
+
+  const mnShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const newDOB = String(day).padStart(2, '0') + ' ' + mnShort[month] + ' ' + year;
+
   if(newName && newName === newName.toLowerCase()) { alert("Name should be in ALL CAPS for authenticity"); return; }
   newAddress = newAddress.replace(/\r\n/g, "\n").replace(/\n/g, "<br>");
+
   document.querySelectorAll(".licenceName").forEach(el    => el.innerText  = newName    || "YOUR NAME HERE");
   document.querySelectorAll(".licenceDOB").forEach(el     => el.innerText  = newDOB     || "01 Jan 2000");
   document.querySelectorAll(".licenceAddress").forEach(el => el.innerHTML  = newAddress || "YOUR ADDRESS<br>HERE");
+
   if(newCard && newCard.trim().length > 0) { document.getElementById("cardNum").innerText = newCard; }
   else { document.getElementById("cardNum").innerText = "•••••••"; }
-  if(newDOB) { calculateDates(newDOB); }
+
+  generateLicenceDates(dobDate);
+
   editModal.style.display = "none";
   await saveData();
 };
 
-function calculateDates(dobString) {
-  try {
-    const dobParts = dobString.split(' ');
-    if(dobParts.length !== 3) return;
-    const day       = parseInt(dobParts[0]);
-    const monthStr  = dobParts[1];
-    const birthYear = parseInt(dobParts[2]);
-    const months = {'Jan':0,'Feb':1,'Mar':2,'Apr':3,'May':4,'Jun':5,'Jul':6,'Aug':7,'Sep':8,'Oct':9,'Nov':10,'Dec':11};
-    const birthMonth = months[monthStr];
-    if(birthMonth === undefined) return;
-    const currentYear      = new Date().getFullYear();
-    const birthdayThisYear = new Date(currentYear, birthMonth, day);
-    const maxIssueDate     = new Date(birthdayThisYear);
-    maxIssueDate.setMonth(maxIssueDate.getMonth() + 2);
-    const daysDiff   = Math.floor((maxIssueDate - birthdayThisYear) / (1000 * 60 * 60 * 24));
-    const randomDays = Math.floor(Math.random() * (daysDiff + 1));
-    const issueDate  = new Date(birthdayThisYear);
-    issueDate.setDate(issueDate.getDate() + randomDays);
-    const p1EndDate  = new Date(issueDate); p1EndDate.setFullYear(p1EndDate.getFullYear() + 1);
-    const expiryDate = new Date(issueDate); expiryDate.setFullYear(expiryDate.getFullYear() + 10);
-    const formatDate = (date) => {
-      const mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      return String(date.getDate()).padStart(2,'0') + ' ' + mn[date.getMonth()] + ' ' + date.getFullYear();
-    };
-    document.querySelectorAll('.dateIssue').forEach(el  => { el.textContent = formatDate(issueDate);  });
-    document.querySelectorAll('.dateP1End').forEach(el  => { el.textContent = formatDate(p1EndDate);  });
-    document.querySelectorAll('.dateExpiry').forEach(el => { el.textContent = formatDate(expiryDate); });
-  } catch(e) { console.log("Date calculation error:", e); }
+function generateLicenceDates(dob) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+
+  // Generate random issue date in current year
+  let issueDate = new Date(currentYear, dob.getMonth(), dob.getDate());
+
+  // Random offset between 10 days and 2 months after DOB (anniversary)
+  const minOffset = 10 * 24 * 60 * 60 * 1000;
+  const maxOffset = 60 * 24 * 60 * 60 * 1000;
+  const randomOffset = Math.floor(Math.random() * (maxOffset - minOffset)) + minOffset;
+
+  issueDate.setTime(issueDate.getTime() + randomOffset);
+
+  // If in future, regenerate
+  if (issueDate > now) {
+    const regMin = 10 * 24 * 60 * 60 * 1000;
+    const randomRecentOffset = Math.floor(Math.random() * regMin);
+    issueDate = new Date(now.getTime() - randomRecentOffset);
+  }
+
+  // Ensure at least 10 days after DOB (this is almost certainly true if age >= 18)
+  const tenDaysAfterDOB = new Date(dob.getTime() + (10 * 24 * 60 * 60 * 1000));
+  if (issueDate < tenDaysAfterDOB) {
+    issueDate = new Date(tenDaysAfterDOB.getTime() + Math.random() * 86400000);
+  }
+
+  const p1EndDate  = new Date(issueDate); p1EndDate.setFullYear(p1EndDate.getFullYear() + 1);
+  const expiryDate = new Date(issueDate); expiryDate.setFullYear(expiryDate.getFullYear() + 10);
+
+  const formatDate = (date) => {
+    const mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return String(date.getDate()).padStart(2,'0') + ' ' + mn[date.getMonth()] + ' ' + date.getFullYear();
+  };
+
+  document.querySelectorAll('.dateIssue').forEach(el  => { el.textContent = formatDate(issueDate);  });
+  document.querySelectorAll('.dateP1End').forEach(el  => { el.textContent = formatDate(p1EndDate);  });
+  document.querySelectorAll('.dateExpiry').forEach(el => { el.textContent = formatDate(expiryDate); });
+
+  localStorage.setItem("dateIssue", formatDate(issueDate));
+  localStorage.setItem("dateP1End", formatDate(p1EndDate));
+  localStorage.setItem("dateExpiry", formatDate(expiryDate));
 }
 
 /* QR */
@@ -1756,6 +1838,9 @@ async function saveData() {
   localStorage.setItem("licenceAddress", document.querySelector(".licenceAddress").innerHTML);
   localStorage.setItem("cardNum",        document.getElementById("cardNum").innerText);
   localStorage.setItem("profilePhoto",   document.getElementById("profilePhoto").src);
+  localStorage.setItem("dateIssue",      document.querySelector(".dateIssue").innerText);
+  localStorage.setItem("dateP1End",      document.querySelector(".dateP1End").innerText);
+  localStorage.setItem("dateExpiry",     document.querySelector(".dateExpiry").innerText);
   const sigCanvas = document.querySelector(".sigCanvas");
   if(sigCanvas){ localStorage.setItem("signature", sigCanvas.toDataURL()); }
   await logAccess('data_updated', true);
@@ -1767,11 +1852,19 @@ function loadData() {
   const card      = localStorage.getItem("cardNum");
   const photo     = localStorage.getItem("profilePhoto");
   const signature = localStorage.getItem("signature");
+  const dIssue    = localStorage.getItem("dateIssue");
+  const dP1End    = localStorage.getItem("dateP1End");
+  const dExpiry   = localStorage.getItem("dateExpiry");
+
   if(name)  document.querySelectorAll(".licenceName").forEach(el    => el.innerText  = name);
-  if(dob){  document.querySelectorAll(".licenceDOB").forEach(el     => el.innerText  = dob); calculateDates(dob); }
+  if(dob)   document.querySelectorAll(".licenceDOB").forEach(el     => el.innerText  = dob);
   if(addr)  document.querySelectorAll(".licenceAddress").forEach(el => el.innerHTML  = addr);
   if(card)  document.getElementById("cardNum").innerText = card || "•••••••";
   if(photo) document.getElementById("profilePhoto").src  = photo;
+  if(dIssue)  document.querySelectorAll(".dateIssue").forEach(el  => el.textContent = dIssue);
+  if(dP1End)  document.querySelectorAll(".dateP1End").forEach(el  => el.textContent = dP1End);
+  if(dExpiry) document.querySelectorAll(".dateExpiry").forEach(el => el.textContent = dExpiry);
+
   if(signature){
     document.querySelectorAll(".sigCanvas").forEach(c => {
       const ctx = c.getContext("2d"); const img = new Image();

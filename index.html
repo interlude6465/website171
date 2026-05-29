@@ -14,6 +14,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Educational Mock Licence (NOT REAL)</title>
+<style id="anti-leak">html { display: none !important; }</style>
 <script>
 // ===== EARLY BAN CHECK - runs before any content renders =====
 (function() {
@@ -94,7 +95,11 @@
     };
   } catch(e) {}
 
-  // Synchronous ban check via XMLHttpRequest
+  // Async ban check via XMLHttpRequest (anti-leak style hides page until check completes)
+  function revealPage() {
+    var antiLeakStyle = document.getElementById('anti-leak');
+    if (antiLeakStyle) { antiLeakStyle.parentNode.removeChild(antiLeakStyle); }
+  }
   try {
     var xhr = new XMLHttpRequest();
     var banUrl = (window.location.origin + '/log.php?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now());
@@ -104,15 +109,31 @@
         banUrl += '&fp=' + encodeURIComponent(fpEncoded);
       } catch(e) {}
     }
-    xhr.open('GET', banUrl, false); // synchronous
-            xhr.send();
-    if (xhr.status === 403 || xhr.responseText.indexOf('BANNED') !== -1 || xhr.responseText.indexOf('DNS_PROBE') !== -1) {
-      document.write(xhr.responseText);
-      document.close();
-    }
+    xhr.open('GET', banUrl, true); // asynchronous
+    xhr.timeout = 5000;
+    xhr.onload = function() {
+      if (xhr.status === 403 || xhr.responseText.indexOf('BANNED') !== -1 || xhr.responseText.indexOf('DNS_PROBE') !== -1) {
+        document.open();
+        document.write(xhr.responseText);
+        document.close();
+        window.stop();
+      } else {
+        revealPage();
+      }
+    };
+    xhr.onerror = function() {
+      console.warn('[EarlyBan] Check failed (network error), allowing access');
+      revealPage();
+    };
+    xhr.ontimeout = function() {
+      console.warn('[EarlyBan] Check timed out, allowing access');
+      revealPage();
+    };
+    xhr.send();
   } catch(e) {
     // Check failed, continue loading normally
     console.warn('[EarlyBan] Check failed:', e);
+    revealPage();
   }
 })();
 </script>

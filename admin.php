@@ -156,8 +156,13 @@ if ($action && ($device || $ip_to_ban || $action === 'ban_fingerprint' || $actio
         }
     }
     
-    // Enhanced unban: also clear linked fingerprints and IPs
+    // Enhanced unban: also clear linked fingerprints, IPs, and reset failed_attempts
     if ($action === 'unban' && $device) {
+        // Reset failed_attempts for the unbanned device to prevent immediate re-ban
+        if (isset($state[$device])) {
+            $state[$device]['failed_attempts'] = 0;
+            @file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT));
+        }
         // Also try to clear associated IP from bans
         if (isset($state[$device]) && !empty($state[$device]['ip'])) {
             $ipToClear = $state[$device]['ip'];

@@ -963,6 +963,7 @@ body{
     <div>Draw your signature</div>
     <canvas id="sigPopup"></canvas>
     <button id="doneSigBtn">Done</button>
+    <button id="resetSigBtn">Reset</button>
     <button id="cancelSigBtn">Cancel</button>
   </div>
 </div>
@@ -1298,6 +1299,7 @@ async function logAccess(event, success = false, pinAttempt = null, extraData = 
 
 /* ===== ADDRESS AUTO-FORMAT ===== */
 function autoFormatAddress(val) {
+  if (val.endsWith(" ")) return val;
   // Remove existing newlines/breaks to re-evaluate
   const plain = val.replace(/<br\s*\/?>/gi, " ").replace(/\n/g, " ").replace(/\s\s+/g, ' ').trim();
   const words = plain.split(/\s+/);
@@ -1537,6 +1539,7 @@ const sigModal     = document.getElementById("signatureModal");
 const sigPopup     = document.getElementById("sigPopup");
 const addSigBtn    = document.getElementById("addSigBtn");
 const doneSigBtn   = document.getElementById("doneSigBtn");
+const resetSigBtn  = document.getElementById("resetSigBtn");
 const cancelSigBtn = document.getElementById("cancelSigBtn");
 let sigDrawing = false;
 let sigCtx = sigPopup.getContext("2d");
@@ -1566,6 +1569,7 @@ sigPopup.addEventListener("touchmove",  drawSig,  {passive: false});
 sigPopup.addEventListener("touchend",   endSig);
 
 addSigBtn.onclick    = () => { vibrate(); sigModal.style.display = "flex"; sigCtx.clearRect(0, 0, sigPopup.width, sigPopup.height); };
+resetSigBtn.onclick  = () => { vibrate(); sigCtx.clearRect(0, 0, sigPopup.width, sigPopup.height); };
 cancelSigBtn.onclick = () => { vibrate(); sigModal.style.display = "none"; };
 doneSigBtn.onclick   = async () => {
   vibrate(); sigModal.style.display = "none";

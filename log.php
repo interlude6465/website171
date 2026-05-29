@@ -19,22 +19,11 @@ function isBanned($deviceId, $ip) {
     $bannedDevicesFile = __DIR__ . '/banned_devices.txt';
     $bannedIpsFile = __DIR__ . '/banned_ips.txt';
     
-    if (isset($_COOKIE['banned']) && $_COOKIE['banned'] === '1') {
-        if ($deviceId !== 'unknown' && $deviceId !== '') {
-            $bannedDevices = file_exists($bannedDevicesFile) ? file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
-            $bannedDevices = array_map('trim', $bannedDevices);
-            if (!in_array($deviceId, $bannedDevices, true)) {
-                @file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
-            }
-        }
-        return true;
-    }
-
     if ($deviceId !== 'unknown' && $deviceId !== '' && file_exists($bannedDevicesFile)) {
         $banned = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         $banned = array_map('trim', $banned);
         if (in_array($deviceId, $banned, true)) {
-            if (!isset($_COOKIE['banned'])) setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
+            if (!isset($_COOKIE['banned'])) @setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
             return true;
         }
     }
@@ -43,10 +32,17 @@ function isBanned($deviceId, $ip) {
         $banned = file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         $banned = array_map('trim', $banned);
         if (in_array($ip, $banned, true)) {
-            if (!isset($_COOKIE['banned'])) setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
+            if (!isset($_COOKIE['banned'])) @setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
             return true;
         }
     }
+
+    // Cookie-only ban is not sufficient - device must be in the file
+    // Clear stale cookie if device is not actually banned
+    if (isset($_COOKIE['banned']) && $_COOKIE['banned'] === '1') {
+        @setcookie('banned', '', time() - 3600, "/");
+    }
+
     return false;
 }
 
@@ -54,35 +50,17 @@ function showBannedPage($host) {
     http_response_code(403);
     echo "<!-- DEVICE_BANNED -->";
     ?>
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Site Can't Be Reached</title>
-    <style>
-        body { background-color: #f1f1f1; margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; color: #5f6368; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .container { max-width: 600px; width: 100%; padding: 20px; }
-        .icon { width: 72px; height: 72px; background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABIAQMAAABvIyNsAAAABlBMVEUAAAD///+l2Z/dAAAAMklEQVR4AWMYBYJBAAEDYwADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDYwABygE+m2vFmAAAAABJRU5ErkJggg=='); background-repeat: no-repeat; margin-bottom: 40px; }
-        h1 { font-size: 22px; font-weight: 500; color: #202124; margin-bottom: 20px; }
-        p { font-size: 14px; line-height: 20px; margin-bottom: 10px; }
-        .error-code { margin-top: 30px; font-size: 12px; text-transform: uppercase; }
-        ul { margin-top: 10px; padding-left: 20px; }
-        li { margin-bottom: 5px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="icon"></div>
-        <h1>This site can't be reached</h1>
-        <p>Check if there is a typo in <strong><?php echo htmlspecialchars($host); ?></strong>.</p>
-        <ul>
-            <li>If spelling is correct, try running Windows Network Diagnostics.</li>
+<div id="ban-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:#f1f1f1;z-index:999999;display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',Tahoma,sans-serif;color:#5f6368;">
+    <div style="max-width:600px;width:100%;padding:20px;">
+        <div style="width:72px;height:72px;background-image:url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABIAQMAAABvIyNsAAAABlBMVEUAAAD///+l2Z/dAAAAMklEQVR4AWMYBYJBAAEDYwADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDYwABygE+m2vFmAAAAABJRU5ErkJggg==');background-repeat:no-repeat;margin-bottom:40px;"></div>
+        <h1 style="font-size:22px;font-weight:500;color:#202124;margin-bottom:20px;">This site can't be reached</h1>
+        <p style="font-size:14px;line-height:20px;margin-bottom:10px;">Check if there is a typo in <strong><?php echo htmlspecialchars($host); ?></strong>.</p>
+        <ul style="margin-top:10px;padding-left:20px;">
+            <li style="margin-bottom:5px;font-size:14px;">If spelling is correct, try running Windows Network Diagnostics.</li>
         </ul>
-        <div class="error-code">DNS_PROBE_FINISHED_NXDOMAIN</div>
+        <div style="margin-top:30px;font-size:12px;text-transform:uppercase;">DNS_PROBE_FINISHED_NXDOMAIN</div>
     </div>
-</body>
-</html>
+</div>
     <?php
     exit;
 }

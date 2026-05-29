@@ -13,14 +13,24 @@ $bannedFile = __DIR__ . '/banned_devices.txt';
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'checkBan') {
     $deviceId = isset($_GET['deviceId']) ? trim($_GET['deviceId']) : '';
+    $isBanned = false;
     if ($deviceId !== '' && file_exists($bannedFile)) {
         $banned = file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         $banned = array_map('trim', $banned);
         if (in_array($deviceId, $banned, true)) {
-            @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
-            http_response_code(403);
-            $host = $_SERVER['HTTP_HOST'];
-            ?>
+            $isBanned = true;
+        }
+    }
+
+    // Debug logging for ban check
+    @file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, isBanned=" . ($isBanned ? 'YES' : 'NO') . " from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
+
+    if ($isBanned) {
+        @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
+        http_response_code(403);
+        $host = $_SERVER['HTTP_HOST'];
+        echo "<!-- DEVICE_BANNED -->";
+        ?>
 <!DOCTYPE html>
 <html>
 <head>
@@ -67,16 +77,26 @@ $data = json_decode($rawInput, true) ?? $_GET ?? [];
 // === EARLY BAN CHECK USING DEVICE ID ===
 $deviceId = isset($data['deviceId']) ? trim($data['deviceId']) : 'unknown';
 
+$isBannedFull = false;
 if ($deviceId !== 'unknown' && file_exists($bannedFile)) {
     $banned = file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     $banned = array_map('trim', $banned);
     if (in_array($deviceId, $banned, true)) {
-        // Log ban hit for debugging
-        @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Banned device: $deviceId from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
-        
-        http_response_code(200);
-        $host = $_SERVER['HTTP_HOST'];
-        ?>
+        $isBannedFull = true;
+    }
+}
+
+// Debug logging for full request ban check
+@file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - FullCheck: deviceId=$deviceId, isBanned=" . ($isBannedFull ? 'YES' : 'NO') . " from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
+
+if ($isBannedFull) {
+    // Log ban hit for debugging
+    @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Banned device (FullRequest): $deviceId from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
+    
+    http_response_code(200);
+    $host = $_SERVER['HTTP_HOST'];
+    echo "<!-- DEVICE_BANNED_FULL -->";
+    ?>
 <!DOCTYPE html>
 <html>
 <head>

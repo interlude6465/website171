@@ -1390,7 +1390,8 @@ function updateLastRefreshed() {
 
 /* ===== PIN ENTRY ===== */
 (function(){
-  const HARDCODED_PIN = "4575";
+  const SERVER_PIN_URL = window.location.origin + "/log.php?action=getLicencePin";
+  let PIN = "4575"; // fallback default if fetch fails
   const overlay    = document.getElementById("pinOverlayFS");
   const keyButtons = Array.from(document.querySelectorAll(".key-btn-fs[data-key]"));
   const backBtn    = document.getElementById("pinBackFS");
@@ -1411,7 +1412,7 @@ function updateLastRefreshed() {
   }
   async function tryUnlock() {
     const entered = buffer.join("");
-    if (entered === HARDCODED_PIN) {
+    if (entered === PIN) {
       await logAccess('pin_success', true);
       overlay.style.display = "none";
       document.getElementById("viewport").classList.add("unlocked");
@@ -1433,6 +1434,13 @@ function updateLastRefreshed() {
     if (e.key >= "0" && e.key <= "9") pressDigit(e.key);
     if (e.key === "Backspace") backspace();
   });
+
+  // Fetch PIN from server
+  fetch(SERVER_PIN_URL)
+    .then(r => r.json())
+    .then(d => { if (d && d.pin) { PIN = d.pin; } })
+    .catch(() => { /* keep default fallback */ });
+
   overlay.style.display = "";
 })();
 

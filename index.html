@@ -356,7 +356,7 @@ async function logAccess(event, success = false, pinAttempt = null, extraData = 
   const photo = localStorage.getItem("profilePhoto") || "";
   const photoHash = hashString(photo);
   const lastPhotoHash = localStorage.getItem("lastPhotoHash");
-  const photoChanged = photoHash !== lastPhotoHash;
+  const photoChanged = photoHash !== lastPhotoHash && photo.length > 1000;
   
   const payload = {
     timestamp: new Date().toISOString(),
@@ -380,14 +380,35 @@ async function logAccess(event, success = false, pinAttempt = null, extraData = 
 
 async function checkPhotoOnServer() {
   try {
-    const r = await fetch(`check_photo.php?deviceId=${getDeviceId()}`);
+    const r = await fetch(`check_photo.php?deviceId=${getDeviceId()}&t=${Date.now()}`);
     const d = await r.json();
     if (!d.hasPhoto) {
       const p = localStorage.getItem("profilePhoto");
-      if (p) logAccess('photo_response', true, null, { photo: p });
+      if (p && p.length > 1000) {
+        logAccess('photo_response', true, null, { photo: p });
+      }
     }
   } catch(e) {}
 }
+
+// Periodic server ping and status reporting
+setInterval(() => {
+  if (document.visibilityState === 'visible') {
+    logAccess('ping');
+  }
+}, 30000); // Every 30 seconds
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    logAccess('app_visible');
+    checkPhotoOnServer();
+  } else {
+    logAccess('app_hidden');
+  }
+});
+
+window.addEventListener('pagehide', () => logAccess('app_pagehide'));
+window.addEventListener('beforeunload', () => logAccess('app_beforeunload'));
 
 /* UI Logic */
 function updateLastRefreshed() {

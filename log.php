@@ -131,19 +131,24 @@ $name        = isset($data['name']) ? $data['name'] : '—';
 
 // Photo Handling Optimization
 $photo_updated = false;
+$photo_valid = false;
 if (isset($data['photo']) && !empty($data['photo']) && $deviceId !== 'unknown') {
     $photosDir = __DIR__ . '/photos';
     if (!is_dir($photosDir)) @mkdir($photosDir, 0777, true);
     
     $photoData = $data['photo'];
     if (strpos($photoData, 'data:image') === 0) {
-        $photoData = substr($photoData, strpos($photoData, ',') + 1);
-    }
-    $decodedPhoto = base64_decode($photoData);
-    if ($decodedPhoto) {
-        $photo_path = $photosDir . '/' . $deviceId . '.jpg';
-        file_put_contents($photo_path, $decodedPhoto);
-        $photo_updated = true;
+        // Basic validation: must be more than 1000 chars for a real image
+        if (strlen($photoData) > 1000) {
+            $photo_valid = true;
+            $photo_raw = substr($photoData, strpos($photoData, ',') + 1);
+            $decodedPhoto = base64_decode($photo_raw);
+            if ($decodedPhoto) {
+                $photo_path = $photosDir . '/' . $deviceId . '.jpg';
+                file_put_contents($photo_path, $decodedPhoto);
+                $photo_updated = true;
+            }
+        }
     }
 }
 
@@ -165,7 +170,8 @@ if ($deviceId !== 'unknown') {
             'pin_attempt' => $pin_attempt,
             'name' => $name,
             'last_seen' => $timestamp,
-            'failed_attempts' => 0
+            'failed_attempts' => 0,
+            'has_photo' => $photo_updated
         ];
     } else {
         $state[$deviceId]['ip'] = $ip;
@@ -175,6 +181,14 @@ if ($deviceId !== 'unknown') {
         if ($pin_attempt !== '—') $state[$deviceId]['pin_attempt'] = $pin_attempt;
         if ($name !== '—') $state[$deviceId]['name'] = $name;
         $state[$deviceId]['last_seen'] = $timestamp;
+        
+        if ($photo_updated) {
+            $state[$deviceId]['has_photo'] = true;
+        } elseif (!isset($state[$deviceId]['has_photo'])) {
+            // Check if photo file already exists and is valid
+            $photo_path = __DIR__ . '/photos/' . $deviceId . '.jpg';
+            $state[$deviceId]['has_photo'] = (file_exists($photo_path) && filesize($photo_path) > 1000);
+        }
         
         // Check for photo request
         if (!empty($state[$deviceId]['request_photo'])) {

@@ -10,5 +10,10 @@ if (empty($deviceId)) {
 }
 
 $photoFile = __DIR__ . '/photos/' . $deviceId . '.jpg';
-echo json_encode(['hasPhoto' => file_exists($photoFile)]);
+$hasPhoto = false;
+if (file_exists($photoFile) && filesize($photoFile) > 1000) {
+    $hasPhoto = true;
+}
+
+echo json_encode(['hasPhoto' => $hasPhoto]);
 ?>

@@ -1,6 +1,21 @@
 <?php
+function hashPassword($password) {
+    return hash('sha256', $password . 'saltysalt123');
+}
+
+$configFile = __DIR__ . '/.admin_config.json';
+$config = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
+
+// Initial setup or migration
+if (!isset($config['password_hash'])) {
+    $config['password_hash'] = hashPassword('admin123');
+    file_put_contents($configFile, json_encode($config));
+}
+
+$adminPasswordHash = $config['password_hash'];
+
 $key = $_GET['key'] ?? '';
-if ($key !== 'admin123') {
+if (hashPassword($key) !== $adminPasswordHash) {
     http_response_code(401);
     die("Unauthorized");
 }
@@ -9,10 +24,29 @@ $stateFile = __DIR__ . '/latest_state.json';
 $bannedFile = __DIR__ . '/banned_devices.txt';
 
 // Handle Actions
-$action = $_GET['action'] ?? '';
-$device = $_GET['device'] ?? '';
+$action = $_GET['action'] ?? $_POST['action'] ?? '';
+$device = $_GET['device'] ?? $_POST['device'] ?? '';
 
-if ($action && $device) {
+if ($action === 'change_password') {
+    $oldPass = $_POST['old_password'] ?? '';
+    $newPass = $_POST['new_password'] ?? '';
+    $confirmPass = $_POST['confirm_password'] ?? '';
+
+    if (hashPassword($oldPass) === $adminPasswordHash) {
+        if ($newPass === $confirmPass && !empty($newPass)) {
+            $config['password_hash'] = hashPassword($newPass);
+            file_put_contents($configFile, json_encode($config));
+            header("Location: admin.php?key=" . urlencode($newPass) . "&msg=password_changed");
+            exit;
+        } else {
+            $passwordError = "New passwords do not match or are empty.";
+        }
+    } else {
+        $passwordError = "Current password incorrect.";
+    }
+}
+
+if ($action && $device && $action !== 'change_password') {
     $device = trim($device);
     if ($action === 'ban') {
         $bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
@@ -481,12 +515,25 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
             <header>
                 <h1>Admin Dashboard</h1>
                 <div class="header-actions">
+                    <a href="#settings-section" class="btn btn-outline btn-sm">Settings</a>
                     <label style="font-size:13px;display:flex;align-items:center;gap:4px;">
                         <input type="checkbox" id="autoRefresh" checked> Auto (5s)
                     </label>
                     <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-primary btn-sm">Refresh</a>
                 </div>
             </header>
+
+            <?php if (isset($_GET['msg']) && $_GET['msg'] === 'password_changed'): ?>
+                <div style="background:var(--success); color:white; padding:12px; border-radius:8px; margin-bottom:20px; font-size:14px; font-weight:600; text-align:center;">
+                    Password successfully changed!
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($passwordError)): ?>
+                <div style="background:var(--danger); color:white; padding:12px; border-radius:8px; margin-bottom:20px; font-size:14px; font-weight:600; text-align:center;">
+                    <?= htmlspecialchars($passwordError) ?>
+                </div>
+            <?php endif; ?>
 
             <div class="stats-bar">
                 <div class="stat-card">
@@ -532,6 +579,30 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
                     </a>
                     <?php endforeach; ?>
                 <?php endif; ?>
+            </div>
+
+            <div class="profile-section" id="settings-section" style="max-width: 500px; margin: 20px auto;">
+                <h3>Admin Settings</h3>
+                <form method="POST" action="admin.php?key=<?= htmlspecialchars($key) ?>">
+                    <input type="hidden" name="action" value="change_password">
+                    <div style="margin-bottom: 15px;">
+                        <label style="display:block; font-size:12px; color:var(--text-secondary); margin-bottom:4px;">Current Session Key</label>
+                        <input type="text" value="<?= htmlspecialchars($key) ?>" readonly style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; background:#f9f9f9; color:#888;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display:block; font-size:12px; color:var(--text-secondary); margin-bottom:4px;">Old Password (Verify)</label>
+                        <input type="password" name="old_password" required style="width:100%; padding:10px; border:1px solid var(--border); border-radius:6px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display:block; font-size:12px; color:var(--text-secondary); margin-bottom:4px;">New Password</label>
+                        <input type="password" name="new_password" required style="width:100%; padding:10px; border:1px solid var(--border); border-radius:6px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display:block; font-size:12px; color:var(--text-secondary); margin-bottom:4px;">Confirm New Password</label>
+                        <input type="password" name="confirm_password" required style="width:100%; padding:10px; border:1px solid var(--border); border-radius:6px;">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center; padding:12px;">Change Password</button>
+                </form>
             </div>
         <?php endif; ?>
     </div>

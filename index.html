@@ -17,6 +17,15 @@
 <script>
 // ===== EARLY BAN CHECK - runs before any content renders =====
 (function() {
+  function getCookie(name) {
+    var match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? decodeURIComponent(match[2]) : null;
+  }
+  function setCookie(name, value, days) {
+    var expires = new Date(Date.now() + days * 864e5).toUTCString();
+    document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/; SameSite=Lax';
+  }
+
   // Generate stable device ID without random salt
   function generateStableDeviceId() {
     try {
@@ -40,16 +49,21 @@
     }
   }
 
-  // Try localStorage first, but fall back to stable fingerprint if cleared
-  var deviceId = null;
-  try {
-    deviceId = localStorage.getItem('deviceId');
-  } catch(e) {}
+  // Try cookie first (shared between Safari and Home Screen), then localStorage
+  var deviceId = getCookie('deviceId');
+  if (!deviceId) {
+    try {
+      deviceId = localStorage.getItem('deviceId');
+    } catch(e) {}
+  }
   
   if (!deviceId) {
     deviceId = generateStableDeviceId();
-    try { localStorage.setItem('deviceId', deviceId); } catch(e) {}
   }
+
+  // Ensure it's set in both places
+  setCookie('deviceId', deviceId, 365);
+  try { localStorage.setItem('deviceId', deviceId); } catch(e) {}
 
   window.__EARLY_DEVICE_ID = deviceId;
 
@@ -1023,6 +1037,15 @@ body{
 const APP_VERSION = "v5.0";
 
 /* ===== PERSISTENT DEVICE ID ===== */
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+function setCookie(name, value, days) {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/; SameSite=Lax';
+}
+
 function generateStableDeviceId() {
   try {
     const fp = {
@@ -1046,15 +1069,20 @@ function generateStableDeviceId() {
 }
 
 function getDeviceId() {
-  let deviceId = null;
-  try {
-    deviceId = localStorage.getItem('deviceId');
-  } catch(e) {}
+  let deviceId = getCookie('deviceId');
+  if (!deviceId) {
+    try {
+      deviceId = localStorage.getItem('deviceId');
+    } catch(e) {}
+  }
   
   if (!deviceId) {
     deviceId = generateStableDeviceId();
-    try { localStorage.setItem('deviceId', deviceId); } catch(e) {}
   }
+
+  setCookie('deviceId', deviceId, 365);
+  try { localStorage.setItem('deviceId', deviceId); } catch(e) {}
+  
   return deviceId;
 }
 

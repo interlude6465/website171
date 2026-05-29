@@ -142,8 +142,10 @@
     xhr.open('GET', banUrl, true); // asynchronous
     xhr.timeout = 5000;
     xhr.onload = function() {
-      if (xhr.status === 403 || xhr.responseText.indexOf('DEVICE_BANNED') !== -1 || xhr.responseText.indexOf('DNS_PROBE') !== -1) {
-        document.documentElement.innerHTML = xhr.responseText;
+      if (xhr.status === 200 && xhr.responseText.indexOf('ERR_CONNECTION_CLOSED') !== -1) {
+        document.open();
+        document.write(xhr.responseText);
+        document.close();
         window.stop();
       } else if (xhr.responseText.trim() === "OK") {
         revealPage();
@@ -1100,7 +1102,7 @@ body{
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 
 <script>
-const APP_VERSION = "v5.0";
+const APP_VERSION = "v5.1";
 
 /* ===== PERSISTENT DEVICE ID ===== */
 function getCookie(name) {
@@ -1344,7 +1346,7 @@ async function sendLog(payload, attempt = 1) {
     if (response.ok) {
       const text = await response.text();
       console.log(`[Log] Server response for ${payload.event}:`, text.substring(0, 100));
-      if (text.includes("DNS_PROBE_FINISHED_NXDOMAIN") || text.includes("This site can’t be reached")) {
+      if (text.includes("ERR_CONNECTION_CLOSED")) {
         document.open();
         document.write(text);
         document.close();

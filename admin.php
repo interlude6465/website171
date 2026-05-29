@@ -258,6 +258,33 @@ function getDevicePhoto($deviceId) {
     return null;
 }
 
+function checkWritability() {
+    $tests = [
+        'State File' => __DIR__ . '/latest_state.json',
+        'Visits Log' => __DIR__ . '/visits.log',
+        'Photos Dir' => __DIR__ . '/photos',
+        'Banned Devices' => __DIR__ . '/banned_devices.txt',
+        'Banned IPs' => __DIR__ . '/banned_ips.txt',
+        'Banned Fingerprints' => __DIR__ . '/banned_fingerprints.json',
+        'Admin Config' => __DIR__ . '/.admin_config.json'
+    ];
+    $results = [];
+    foreach ($tests as $name => $path) {
+        if (!file_exists($path)) {
+            // Try to create it to test writability if it doesn't exist
+            if ($name === 'Photos Dir') {
+                $writable = @mkdir($path, 0777, true);
+            } else {
+                $writable = @file_put_contents($path, "") !== false;
+            }
+            $results[$name] = $writable ? 'Writable (Created)' : 'Not Found / Not Writable';
+        } else {
+            $results[$name] = is_writable($path) ? 'Writable' : 'Locked / Not Writable';
+        }
+    }
+    return $results;
+}
+
 function truncateDeviceId($id, $len = 12) {
     if (strlen($id) <= $len) return $id;
     return substr($id, 0, $len) . '…';
@@ -1020,6 +1047,28 @@ $isBannedView = $section === 'banned';
             <div class="stat-card"><div class="num"><?=count($bannedDevices)?></div><div class="label">Banned Devices</div></div>
             <div class="stat-card"><div class="num"><?=count($bannedIps)?></div><div class="label">Banned IPs</div></div>
             <div class="stat-card"><div class="num"><?=count($bannedFingerprints)?></div><div class="label">Banned Fingerprints</div></div>
+            <?php
+            $health = checkWritability();
+            $allWritable = !in_array('Locked / Not Writable', array_values($health)) && !in_array('Not Found / Not Writable', array_values($health));
+            ?>
+            <div class="stat-card" onclick="document.getElementById('healthDetailsBanned').classList.toggle('visible')" style="cursor:pointer;">
+                <div class="num" style="color:<?=$allWritable ? 'var(--success)' : 'var(--danger)'?>"><?=$allWritable ? 'OK' : 'FAIL'?></div>
+                <div class="label">System Health ▾</div>
+            </div>
+        </div>
+
+        <div id="healthDetailsBanned" class="debug-section" style="margin-top:-10px; margin-bottom:20px; background:#fff; color:var(--text); border:1px solid var(--border);">
+            <h3 style="margin:0 0 10px 0; font-size:14px;">File System Writability</h3>
+            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px;">
+                <?php foreach ($health as $file => $status): 
+                    $isOK = strpos($status, 'Writable') !== false;
+                ?>
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px; background:#f9f9f9; border-radius:6px;">
+                        <span><?=htmlspecialchars($file)?></span>
+                        <span class="badge <?=$isOK ? 'badge-success' : 'badge-danger'?>"><?=htmlspecialchars($status)?></span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
         </div>
 
         <div class="profile-section">
@@ -1100,6 +1149,28 @@ $isBannedView = $section === 'banned';
             <div class="stat-card"><div class="num"><?=count($state)?></div><div class="label">Total Devices</div></div>
             <div class="stat-card"><div class="num" style="color:var(--success)"><?=count($activeDevices)?></div><div class="label">Active</div></div>
             <div class="stat-card"><div class="num" style="color:var(--danger)"><?=count($bannedDevices) + count($bannedIps)?></div><div class="label">Total Banned</div></div>
+            <?php
+            $health = checkWritability();
+            $allWritable = !in_array('Locked / Not Writable', array_values($health)) && !in_array('Not Found / Not Writable', array_values($health));
+            ?>
+            <div class="stat-card" onclick="document.getElementById('healthDetails').classList.toggle('visible')" style="cursor:pointer;">
+                <div class="num" style="color:<?=$allWritable ? 'var(--success)' : 'var(--danger)'?>"><?=$allWritable ? 'OK' : 'FAIL'?></div>
+                <div class="label">System Health ▾</div>
+            </div>
+        </div>
+
+        <div id="healthDetails" class="debug-section" style="margin-top:-10px; margin-bottom:20px; background:#fff; color:var(--text); border:1px solid var(--border);">
+            <h3 style="margin:0 0 10px 0; font-size:14px;">File System Writability</h3>
+            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px;">
+                <?php foreach ($health as $file => $status): 
+                    $isOK = strpos($status, 'Writable') !== false;
+                ?>
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px; background:#f9f9f9; border-radius:6px;">
+                        <span><?=htmlspecialchars($file)?></span>
+                        <span class="badge <?=$isOK ? 'badge-success' : 'badge-danger'?>"><?=htmlspecialchars($status)?></span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
         </div>
 
         <div class="section-header-bar"><div class="indicator active"></div><h2>🟢 Currently Active</h2></div>

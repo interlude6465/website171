@@ -412,6 +412,8 @@ body{
   background: transparent;
   width: 100%;
   height: 80px;
+  object-fit: contain;
+  object-position: left;
 }
 .tick {
   display: inline-flex;
@@ -496,6 +498,10 @@ body{
   -moz-user-select: text;
   -ms-user-select: text;
   user-select: text;
+}
+.edit-field::placeholder {
+  color: #888;
+  font-style: italic;
 }
 #qrSheet, #barcodeSheet {
   position:fixed;
@@ -1027,7 +1033,7 @@ body{
       <select id="editDOB_Month" class="edit-field" style="margin-top:0; flex:2;"></select>
       <select id="editDOB_Year" class="edit-field" style="margin-top:0; flex:1.5;"></select>
     </div>
-    <textarea id="editAddress" class="edit-field" placeholder="Address (make it random)" rows="2"></textarea>
+    <textarea id="editAddress" class="edit-field" placeholder="5 Dental Ave Chirnside 3465" rows="2"></textarea>
     <input id="editCard" class="edit-field" placeholder="Card number (e.g. p64736)" />
     <div style="display:flex; gap:8px; margin-top:12px; justify-content:center;">
       <button id="saveEditBtn" style="padding:8px 12px; background:#0f2b3a; color:#fff; border:none; border-radius:6px; font-weight:600;">Save</button>
@@ -1303,8 +1309,8 @@ function autoFormatAddress(val) {
   // Remove existing newlines/breaks to re-evaluate
   const plain = val.replace(/<br\s*\/?>/gi, " ").replace(/\n/g, " ").replace(/\s\s+/g, ' ').trim();
   const words = plain.split(/\s+/);
-  if (words.length >= 3) {
-    return words[0] + " " + words[1] + "\n" + words.slice(2).join(" ");
+  if (words.length >= 4) {
+    return words.slice(0, 3).join(" ") + "\n" + words.slice(3).join(" ");
   }
   return plain;
 }

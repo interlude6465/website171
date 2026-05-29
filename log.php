@@ -139,19 +139,6 @@ function checkTripleLock($deviceId, $ip, $fingerprint) {
 function isBanned($deviceId, $ip, $fingerprint = null) {
     global $bannedDevicesFile, $bannedIpsFile;
 
-    // Check for banned cookie
-    if (isset($_COOKIE['banned']) && $_COOKIE['banned'] === '1') {
-        // Reinstate ban if device not in list
-        if ($deviceId !== 'unknown' && $deviceId !== '') {
-            $bannedDevices = file_exists($bannedDevicesFile) ? file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
-            $bannedDevices = array_map('trim', $bannedDevices);
-            if (!in_array($deviceId, $bannedDevices, true)) {
-                @file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
-            }
-        }
-        return true;
-    }
-
     // Run Triple-Lock check
     $locks = checkTripleLock($deviceId, $ip, $fingerprint);
     if (!empty($locks)) {
@@ -164,7 +151,7 @@ function isBanned($deviceId, $ip, $fingerprint = null) {
             }
         }
         // Set cookie
-        if (!isset($_COOKIE['banned'])) {
+        if (!isset($_COOKIE['banned']) || $_COOKIE['banned'] !== '1') {
             setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
         }
         return true;

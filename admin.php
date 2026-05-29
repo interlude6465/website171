@@ -9,10 +9,14 @@ $config = file_exists($configFile) ? json_decode(file_get_contents($configFile),
 // Initial setup or migration
 if (!isset($config['password_hash'])) {
     $config['password_hash'] = hashPassword('admin123');
-    file_put_contents($configFile, json_encode($config));
 }
+if (!isset($config['licence_pin'])) {
+    $config['licence_pin'] = '4575';
+}
+file_put_contents($configFile, json_encode($config));
 
 $adminPasswordHash = $config['password_hash'];
+$licencePin = $config['licence_pin'];
 
 $key = $_GET['key'] ?? '';
 if (hashPassword($key) !== $adminPasswordHash) {
@@ -26,7 +30,9 @@ $bannedFile = __DIR__ . '/banned_devices.txt';
 // Handle Actions
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 $device = $_GET['device'] ?? $_POST['device'] ?? '';
+$section = $_GET['section'] ?? '';
 
+// ---- Password change action ----
 if ($action === 'change_password') {
     $oldPass = $_POST['old_password'] ?? '';
     $newPass = $_POST['new_password'] ?? '';
@@ -36,7 +42,7 @@ if ($action === 'change_password') {
         if ($newPass === $confirmPass && !empty($newPass)) {
             $config['password_hash'] = hashPassword($newPass);
             file_put_contents($configFile, json_encode($config));
-            header("Location: admin.php?key=" . urlencode($newPass) . "&msg=password_changed");
+            header("Location: admin.php?key=" . urlencode($newPass) . "&section=passwords&msg=password_changed");
             exit;
         } else {
             $passwordError = "New passwords do not match or are empty.";
@@ -46,7 +52,28 @@ if ($action === 'change_password') {
     }
 }
 
-if ($action && $device && $action !== 'change_password') {
+// ---- Licence PIN change action ----
+if ($action === 'change_licence_pin') {
+    $oldPin = $_POST['old_pin'] ?? '';
+    $newPin = $_POST['new_pin'] ?? '';
+    $confirmPin = $_POST['confirm_pin'] ?? '';
+
+    if ($oldPin === $licencePin) {
+        if ($newPin === $confirmPin && !empty($newPin) && strlen($newPin) === 4 && ctype_digit($newPin)) {
+            $config['licence_pin'] = $newPin;
+            file_put_contents($configFile, json_encode($config));
+            header("Location: admin.php?key=" . urlencode($key) . "&section=passwords&msg=pin_changed");
+            exit;
+        } else {
+            $pinError = "New PIN must be 4 digits and match confirmation.";
+        }
+    } else {
+        $pinError = "Current PIN incorrect.";
+    }
+}
+
+// ---- Ban/Unban actions ----
+if ($action && $device && $action !== 'change_password' && $action !== 'change_licence_pin') {
     $device = trim($device);
     if ($action === 'ban') {
         $bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
@@ -63,7 +90,6 @@ if ($action && $device && $action !== 'change_password') {
             file_put_contents($bannedFile, implode("\n", $bannedDevices) . "\n");
         }
     }
-    // Redirect back to device profile if viewing one, else to list
     $redirectDevice = $_GET['device'] ?? '';
     if ($redirectDevice) {
         header("Location: admin.php?key=" . urlencode($key) . "&device=" . urlencode($redirectDevice));
@@ -94,7 +120,6 @@ function getDevicePhoto($deviceId) {
     if ($photo) {
         return $photo;
     }
-    // Check latest_state for inline photo
     global $state;
     if (isset($state[$deviceId]['photo_path']) && $state[$deviceId]['photo_path'] !== '—' && file_exists($state[$deviceId]['photo_path'])) {
         $data = file_get_contents($state[$deviceId]['photo_path']);
@@ -122,11 +147,74 @@ if (file_exists($visitsLog)) {
         if ($v) $visits[] = $v;
     }
 }
-$visits = array_reverse($visits); // Show latest first
+$visits = array_reverse($visits); // Latest first
+
+// Classify devices as active or offline
+function getDeviceStatus($deviceId, $state, $visits) {
+    global $bannedDevices;
+    
+    // Check if banned first
+    if (in_array(trim($deviceId), $bannedDevices, true)) {
+        return 'banned';
+    }
+    
+    $now = time();
+    $fiveMinutes = 5 * 60;
+    
+    // Get the most recent event for this device from visits log
+    $lastEvent = null;
+    $lastTimestamp = null;
+    
+    foreach ($visits as $v) {
+        if (($v['deviceId'] ?? '') === $deviceId) {
+            if ($lastTimestamp === null) {
+                $lastEvent = $v['event'] ?? '';
+                $lastTimestamp = $v['timestamp'] ?? '';
+            }
+            break;
+        }
+    }
+    
+    // Also check state last_seen
+    $lastSeen = $state[$deviceId]['last_seen'] ?? '';
+    
+    // Parse the most recent timestamp
+    $checkTimestamp = $lastTimestamp ?: $lastSeen;
+    if (!$checkTimestamp) return 'offline';
+    
+    $ts = strtotime($checkTimestamp);
+    if (!$ts) return 'offline';
+    
+    $diff = $now - $ts;
+    
+    // If last event was app_visible and within 5 minutes → Active
+    // If last event was app_hidden or older than 5 mins → Offline
+    if ($diff <= $fiveMinutes) {
+        // Recent activity - check what event
+        if ($lastEvent === 'app_hidden' || $lastEvent === 'app_pagehide' || $lastEvent === 'app_beforeunload') {
+            return 'offline';
+        }
+        return 'active';
+    }
+    
+    return 'offline';
+}
+
+function getDeviceLastActiveTime($deviceId, $state, $visits) {
+    foreach ($visits as $v) {
+        if (($v['deviceId'] ?? '') === $deviceId) {
+            return $v['timestamp'] ?? '';
+        }
+    }
+    return $state[$deviceId]['last_seen'] ?? '';
+}
 
 // Check if viewing a specific device profile
 $viewDevice = $_GET['device'] ?? '';
 $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
+
+// Check if viewing password management page
+$isPasswordView = $section === 'passwords';
 
 ?>
 <!DOCTYPE html>
@@ -134,16 +222,18 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= $isProfileView ? 'Device Profile' : 'Licence Admin Dashboard' ?></title>
+    <title><?= $isProfileView ? 'Device Profile' : ($isPasswordView ? 'Password Management' : 'Licence Admin Dashboard') ?></title>
     <style>
         :root {
             --primary: #007aff;
             --danger: #ff3b30;
             --success: #34c759;
+            --warning: #ff9500;
             --bg: #f2f2f7;
             --card-bg: #ffffff;
             --text: #1c1c1e;
             --text-secondary: #8e8e93;
+            --text-muted: #aeaeb2;
             --border: #e5e5ea;
             --shadow: 0 2px 8px rgba(0,0,0,0.06);
             --radius: 12px;
@@ -169,6 +259,7 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
             gap: 10px;
         }
         h1 { font-size: 22px; margin: 0; font-weight: 700; }
+        h2 { font-size: 16px; margin: 0 0 10px 0; font-weight: 600; }
         .header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .btn {
             padding: 8px 16px;
@@ -187,6 +278,7 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
         .btn-primary { background: var(--primary); color: white; }
         .btn-danger { background: var(--danger); color: white; }
         .btn-success { background: var(--success); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
         .btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--text); }
         .btn-sm { padding: 5px 12px; font-size: 12px; }
         .badge {
@@ -202,7 +294,9 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
         .badge-banned { background: #000; color: #fff; }
         .badge-success { background: var(--success); color: #fff; }
         .badge-danger { background: var(--danger); color: #fff; }
-        .badge-warning { background: #ff9500; color: #fff; }
+        .badge-warning { background: var(--warning); color: #fff; }
+        .badge-muted { background: var(--text-muted); color: #fff; }
+        .badge-info { background: #5ac8fa; color: #fff; }
 
         /* Stats bar */
         .stats-bar {
@@ -217,10 +311,33 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
             padding: 14px 18px;
             box-shadow: var(--shadow);
             flex: 1;
-            min-width: 120px;
+            min-width: 100px;
         }
         .stat-card .num { font-size: 28px; font-weight: 700; }
         .stat-card .label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+        /* Section header */
+        .section-header-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 24px 0 14px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--border);
+        }
+        .section-header-bar .indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .section-header-bar .indicator.active { background: var(--success); }
+        .section-header-bar .indicator.offline { background: var(--text-muted); }
+        .section-header-bar .count {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
 
         /* Device Grid */
         .device-grid {
@@ -248,6 +365,15 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
             box-shadow: 0 4px 16px rgba(0,0,0,0.1);
         }
         .device-card:active { transform: translateY(0); }
+        .device-card.offline {
+            opacity: 0.6;
+        }
+        .device-card.offline:hover {
+            opacity: 0.8;
+        }
+        .device-card.banned {
+            opacity: 0.5;
+        }
         .device-card .photo-thumb {
             width: 56px;
             height: 56px;
@@ -269,14 +395,27 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
             color: var(--text-secondary);
             margin-top: 2px;
         }
-        .device-card .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
+        .device-card .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 700;
             flex-shrink: 0;
         }
-        .status-dot.banned { background: var(--danger); }
-        .status-dot.active { background: var(--success); }
+        .device-card .status-badge.online {
+            background: #e8f8ee;
+            color: var(--success);
+        }
+        .device-card .status-badge.offline {
+            background: #f2f2f7;
+            color: var(--text-muted);
+        }
+        .device-card .status-badge.banned-sm {
+            background: #fde8e7;
+            color: var(--danger);
+        }
 
         /* Profile Page */
         .back-link {
@@ -390,10 +529,92 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
         .event-badge.app_loaded { background: #5ac8fa; }
         .event-badge.app_fully_loaded { background: #5ac8fa; }
         .event-badge.app_hidden { background: #8e8e93; }
-        .event-badge.app_visible { background: #8e8e93; }
+        .event-badge.app_visible { background: #5ac8fa; }
         .event-badge.app_pagehide { background: #8e8e93; }
         .event-badge.app_beforeunload { background: #8e8e93; }
         .event-badge.data_cleared { background: var(--danger); }
+
+        /* Password Page */
+        .password-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 10px;
+        }
+        @media (max-width: 700px) {
+            .password-grid { grid-template-columns: 1fr; }
+        }
+        .password-form {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 20px;
+        }
+        .password-form h3 {
+            margin: 0 0 16px 0;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .password-form .current-value {
+            background: #f9f9f9;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            font-family: monospace;
+        }
+        .form-group {
+            margin-bottom: 14px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus {
+            border-color: var(--primary);
+        }
+        .password-form .btn {
+            width: 100%;
+            justify-content: center;
+            padding: 10px;
+            margin-top: 4px;
+        }
+        .msg-box {
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .msg-box.success { background: var(--success); color: white; }
+        .msg-box.error { background: var(--danger); color: white; }
+
+        /* Empty state */
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+        .empty-state .icon { font-size: 32px; margin-bottom: 8px; }
 
         /* Mobile */
         @media (max-width: 600px) {
@@ -407,208 +628,304 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
 </head>
 <body>
     <div class="container">
-        <?php if ($isProfileView): 
-            $d = $state[$viewDevice];
-            $isBanned = in_array(trim($viewDevice), $bannedDevices, true);
-            $photo = getDevicePhoto($viewDevice);
-            
-            // Filter visits for this device
-            $deviceVisits = array_filter($visits, fn($v) => ($v['deviceId'] ?? '') === $viewDevice);
-        ?>
-            <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="back-link">← Back to all devices</a>
 
-            <div class="profile-header">
-                <?php if ($photo): ?>
-                    <img src="<?=$photo?>" class="large-photo" onclick="window.open(this.src)">
+    <?php if ($isProfileView): 
+        $d = $state[$viewDevice];
+        $isBanned = in_array(trim($viewDevice), $bannedDevices, true);
+        $photo = getDevicePhoto($viewDevice);
+        
+        // Filter visits for this device
+        $deviceVisits = array_filter($visits, fn($v) => ($v['deviceId'] ?? '') === $viewDevice);
+    ?>
+        <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="back-link">← Back to all devices</a>
+
+        <div class="profile-header">
+            <?php if ($photo): ?>
+                <img src="<?=$photo?>" class="large-photo" onclick="window.open(this.src)">
+            <?php else: ?>
+                <div class="large-photo" style="display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:12px;text-align:center;padding:10px;">No<br>Photo</div>
+            <?php endif; ?>
+            <div class="info">
+                <h2><?=htmlspecialchars($d['name'] ?? 'Unknown')?></h2>
+                <div class="meta">Device: <span style="font-family:monospace;font-size:12px;"><?=htmlspecialchars($viewDevice)?></span></div>
+                <div class="meta">IP: <?=htmlspecialchars($d['ip'] ?? '—')?></div>
+                <div class="field">
+                    <div class="lbl">Date of Birth</div>
+                    <div class="val"><?=htmlspecialchars($d['dob'] ?? '—')?></div>
+                </div>
+                <div class="field">
+                    <div class="lbl">Address</div>
+                    <div class="val"><?=htmlspecialchars($d['address'] ?? '—')?></div>
+                </div>
+                <div class="field">
+                    <div class="lbl">Card Number</div>
+                    <div class="val"><?=htmlspecialchars($d['card'] ?? '—')?></div>
+                </div>
+                <div class="field">
+                    <div class="lbl">Last Seen</div>
+                    <div class="val"><?=htmlspecialchars($d['last_seen'] ?? '—')?></div>
+                </div>
+            </div>
+            <div class="ban-area">
+                <?php if ($isBanned): ?>
+                    <span class="badge badge-banned">BANNED</span>
+                    <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=unban" class="btn btn-success">Unban Device</a>
                 <?php else: ?>
-                    <div class="large-photo" style="display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:12px;text-align:center;padding:10px;">No<br>Photo</div>
+                    <span class="badge badge-success">Active</span>
+                    <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=ban" class="btn btn-danger">Ban Device</a>
                 <?php endif; ?>
-                <div class="info">
-                    <h2><?=htmlspecialchars($d['name'] ?? 'Unknown')?></h2>
-                    <div class="meta">Device: <span style="font-family:monospace;font-size:12px;"><?=htmlspecialchars($viewDevice)?></span></div>
-                    <div class="meta">IP: <?=htmlspecialchars($d['ip'] ?? '—')?></div>
-                    <div class="field">
-                        <div class="lbl">Date of Birth</div>
-                        <div class="val"><?=htmlspecialchars($d['dob'] ?? '—')?></div>
-                    </div>
-                    <div class="field">
-                        <div class="lbl">Address</div>
-                        <div class="val"><?=htmlspecialchars($d['address'] ?? '—')?></div>
-                    </div>
-                    <div class="field">
-                        <div class="lbl">Card Number</div>
-                        <div class="val"><?=htmlspecialchars($d['card'] ?? '—')?></div>
-                    </div>
-                    <div class="field">
-                        <div class="lbl">Last Seen</div>
-                        <div class="val"><?=htmlspecialchars($d['last_seen'] ?? '—')?></div>
-                    </div>
-                </div>
-                <div class="ban-area">
-                    <?php if ($isBanned): ?>
-                        <span class="badge badge-banned">BANNED</span>
-                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=unban" class="btn btn-success">Unban Device</a>
-                    <?php else: ?>
-                        <span class="badge badge-success">Active</span>
-                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=ban" class="btn btn-danger">Ban Device</a>
-                    <?php endif; ?>
-                </div>
             </div>
+        </div>
 
-            <div class="profile-section">
-                <h3>Visit History <span class="badge"><?=count($deviceVisits)?> events</span></h3>
-                <div class="timeline">
-                    <?php if (empty($deviceVisits)): ?>
-                        <div style="text-align:center;padding:30px;color:var(--text-secondary);">No history for this device yet.</div>
-                    <?php else: ?>
-                        <?php foreach ($deviceVisits as $v): 
-                            $ev = $v['event'] ?? 'unknown';
-                            $dotClass = 'info';
-                            if ($ev === 'pin_success') $dotClass = 'success';
-                            elseif ($ev === 'pin_failed') $dotClass = 'failed';
-                            elseif ($ev === 'data_cleared') $dotClass = 'failed';
-                            elseif (strpos($ev, 'app_') === 0) $dotClass = 'info';
-                            elseif ($ev === 'photo_updated') $dotClass = 'warning';
-                        ?>
-                        <div class="event-item">
-                            <div class="event-dot <?=$dotClass?>"></div>
-                            <div class="event-time"><?=htmlspecialchars($v['timestamp'] ?? '—')?></div>
-                            <div class="event-type">
-                                <span class="event-badge <?=htmlspecialchars($ev)?>"><?=htmlspecialchars($ev)?></span>
-                                <?php if (($v['success'] ?? false) === true || $v['success'] === 'true' || $v['success'] === 1): ?>
-                                    <span style="color:var(--success);font-size:11px;">✓ success</span>
-                                <?php elseif ($ev === 'pin_failed'): ?>
-                                    <span style="color:var(--danger);font-size:11px;">✗ failed</span>
-                                <?php endif; ?>
-                            </div>
-                            <?php if ($v['pin_attempt'] ?? '—' !== '—'): ?>
-                                <div class="event-meta">PIN attempt: <?=htmlspecialchars($v['pin_attempt'])?></div>
-                            <?php endif; ?>
-                            <?php if ($v['has_photo'] ?? false): 
-                                $evPhoto = getDevicePhoto($viewDevice);
-                                if ($evPhoto): ?>
-                                <img src="<?=$evPhoto?>" class="event-photo" onclick="window.open(this.src)">
-                            <?php endif; endif; ?>
-                        </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-        <?php else: 
-            // === DEVICE LIST VIEW ===
-            // Prepare device list from state
-            $devices = [];
-            if (is_array($state)) {
-                foreach ($state as $id => $data) {
-                    $devices[$id] = $data;
-                }
-            }
-            // Sort by last seen (most recent first)
-            uasort($devices, fn($a, $b) => strcmp($b['last_seen'] ?? '', $a['last_seen'] ?? ''));
-
-            $totalDevices = count($devices);
-            $bannedCount = count(array_filter(array_keys($devices), fn($id) => in_array(trim($id), $bannedDevices, true)));
-            $successCount = count(array_filter($devices, fn($d) => ($d['success'] ?? '') === 'YES'));
-            $totalVisits = count($visits);
-        ?>
-            <header>
-                <h1>Admin Dashboard</h1>
-                <div class="header-actions">
-                    <a href="#settings-section" class="btn btn-outline btn-sm">Settings</a>
-                    <label style="font-size:13px;display:flex;align-items:center;gap:4px;">
-                        <input type="checkbox" id="autoRefresh" checked> Auto (5s)
-                    </label>
-                    <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-primary btn-sm">Refresh</a>
-                </div>
-            </header>
-
-            <?php if (isset($_GET['msg']) && $_GET['msg'] === 'password_changed'): ?>
-                <div style="background:var(--success); color:white; padding:12px; border-radius:8px; margin-bottom:20px; font-size:14px; font-weight:600; text-align:center;">
-                    Password successfully changed!
-                </div>
-            <?php endif; ?>
-
-            <?php if (isset($passwordError)): ?>
-                <div style="background:var(--danger); color:white; padding:12px; border-radius:8px; margin-bottom:20px; font-size:14px; font-weight:600; text-align:center;">
-                    <?= htmlspecialchars($passwordError) ?>
-                </div>
-            <?php endif; ?>
-
-            <div class="stats-bar">
-                <div class="stat-card">
-                    <div class="num"><?=$totalDevices?></div>
-                    <div class="label">Devices</div>
-                </div>
-                <div class="stat-card">
-                    <div class="num" style="color:var(--success)"><?=$successCount?></div>
-                    <div class="label">Successful</div>
-                </div>
-                <div class="stat-card">
-                    <div class="num" style="color:var(--danger)"><?=$bannedCount?></div>
-                    <div class="label">Banned</div>
-                </div>
-                <div class="stat-card">
-                    <div class="num"><?=$totalVisits?></div>
-                    <div class="label">Total Events</div>
-                </div>
-            </div>
-
-            <div class="device-grid">
-                <?php if (empty($devices)): ?>
-                    <div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-secondary);background:var(--card-bg);border-radius:var(--radius);box-shadow:var(--shadow);">
-                        No devices have connected yet.
-                    </div>
+        <div class="profile-section">
+            <h3>Visit History <span class="badge"><?=count($deviceVisits)?> events</span></h3>
+            <div class="timeline">
+                <?php if (empty($deviceVisits)): ?>
+                    <div style="text-align:center;padding:30px;color:var(--text-secondary);">No history for this device yet.</div>
                 <?php else: ?>
-                    <?php foreach ($devices as $id => $d): 
-                        $isBanned = in_array(trim($id), $bannedDevices, true);
-                        $photo = getDevicePhoto($id);
+                    <?php foreach ($deviceVisits as $v): 
+                        $ev = $v['event'] ?? 'unknown';
+                        $dotClass = 'info';
+                        if ($ev === 'pin_success') $dotClass = 'success';
+                        elseif ($ev === 'pin_failed') $dotClass = 'failed';
+                        elseif ($ev === 'data_cleared') $dotClass = 'failed';
+                        elseif (strpos($ev, 'app_') === 0) $dotClass = 'info';
+                        elseif ($ev === 'photo_updated') $dotClass = 'warning';
                     ?>
-                    <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($id)?>" class="device-card">
-                        <?php if ($photo): ?>
-                            <img src="<?=$photo?>" class="photo-thumb">
-                        <?php else: ?>
-                            <div class="photo-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:10px;text-align:center;">No<br>Photo</div>
-                        <?php endif; ?>
-                        <div class="info">
-                            <div class="name"><?=htmlspecialchars($d['name'] ?? 'Unknown')?></div>
-                            <div class="sub"><?=truncateDeviceId($id)?></div>
-                            <div class="sub"><?=htmlspecialchars($d['last_seen'] ?? '')?></div>
+                    <div class="event-item">
+                        <div class="event-dot <?=$dotClass?>"></div>
+                        <div class="event-time"><?=htmlspecialchars($v['timestamp'] ?? '—')?></div>
+                        <div class="event-type">
+                            <span class="event-badge <?=htmlspecialchars($ev)?>"><?=htmlspecialchars($ev)?></span>
+                            <?php if (($v['success'] ?? false) === true || $v['success'] === 'true' || $v['success'] === 1): ?>
+                                <span style="color:var(--success);font-size:11px;">✓ success</span>
+                            <?php elseif ($ev === 'pin_failed'): ?>
+                                <span style="color:var(--danger);font-size:11px;">✗ failed</span>
+                            <?php endif; ?>
                         </div>
-                        <div class="status-dot <?=$isBanned?'banned':'active'?>"></div>
-                    </a>
+                        <?php if ($v['pin_attempt'] ?? '—' !== '—'): ?>
+                            <div class="event-meta">PIN attempt: <?=htmlspecialchars($v['pin_attempt'])?></div>
+                        <?php endif; ?>
+                        <?php if ($v['has_photo'] ?? false): 
+                            $evPhoto = getDevicePhoto($viewDevice);
+                            if ($evPhoto): ?>
+                            <img src="<?=$evPhoto?>" class="event-photo" onclick="window.open(this.src)">
+                        <?php endif; endif; ?>
+                    </div>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
+        </div>
 
-            <div class="profile-section" id="settings-section" style="max-width: 500px; margin: 20px auto;">
-                <h3>Admin Settings</h3>
-                <form method="POST" action="admin.php?key=<?= htmlspecialchars($key) ?>">
+    <?php elseif ($isPasswordView): 
+        // === PASSWORD MANAGEMENT VIEW ===
+    ?>
+        <header>
+            <h1>Password Management</h1>
+            <div class="header-actions">
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-outline">← Back to Dashboard</a>
+            </div>
+        </header>
+
+        <?php if (isset($_GET['msg']) && $_GET['msg'] === 'password_changed'): ?>
+            <div class="msg-box success">Admin password successfully changed!</div>
+        <?php elseif (isset($_GET['msg']) && $_GET['msg'] === 'pin_changed'): ?>
+            <div class="msg-box success">Licence PIN successfully changed!</div>
+        <?php endif; ?>
+
+        <?php if (isset($passwordError)): ?>
+            <div class="msg-box error"><?= htmlspecialchars($passwordError) ?></div>
+        <?php endif; ?>
+        <?php if (isset($pinError)): ?>
+            <div class="msg-box error"><?= htmlspecialchars($pinError) ?></div>
+        <?php endif; ?>
+
+        <div class="password-grid">
+            <!-- Admin Password Form -->
+            <div class="password-form">
+                <h3>🔑 Change Admin Password</h3>
+                <div class="current-value">Current Admin Password: ****</div>
+                <form method="POST" action="admin.php?key=<?= htmlspecialchars($key) ?>&section=passwords">
                     <input type="hidden" name="action" value="change_password">
-                    <div style="margin-bottom: 15px;">
-                        <label style="display:block; font-size:12px; color:var(--text-secondary); margin-bottom:4px;">Current Session Key</label>
-                        <input type="text" value="<?= htmlspecialchars($key) ?>" readonly style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; background:#f9f9f9; color:#888;">
+                    <div class="form-group">
+                        <label>Current Password</label>
+                        <input type="password" name="old_password" required placeholder="Enter current password">
                     </div>
-                    <div style="margin-bottom: 15px;">
-                        <label style="display:block; font-size:12px; color:var(--text-secondary); margin-bottom:4px;">Old Password (Verify)</label>
-                        <input type="password" name="old_password" required style="width:100%; padding:10px; border:1px solid var(--border); border-radius:6px;">
+                    <div class="form-group">
+                        <label>New Password</label>
+                        <input type="password" name="new_password" required placeholder="Enter new password">
                     </div>
-                    <div style="margin-bottom: 15px;">
-                        <label style="display:block; font-size:12px; color:var(--text-secondary); margin-bottom:4px;">New Password</label>
-                        <input type="password" name="new_password" required style="width:100%; padding:10px; border:1px solid var(--border); border-radius:6px;">
+                    <div class="form-group">
+                        <label>Confirm New Password</label>
+                        <input type="password" name="confirm_password" required placeholder="Confirm new password">
                     </div>
-                    <div style="margin-bottom: 15px;">
-                        <label style="display:block; font-size:12px; color:var(--text-secondary); margin-bottom:4px;">Confirm New Password</label>
-                        <input type="password" name="confirm_password" required style="width:100%; padding:10px; border:1px solid var(--border); border-radius:6px;">
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center; padding:12px;">Change Password</button>
+                    <button type="submit" class="btn btn-primary">Change Admin Password</button>
                 </form>
             </div>
-        <?php endif; ?>
+
+            <!-- Licence PIN Form -->
+            <div class="password-form">
+                <h3>🔢 Change Licence PIN</h3>
+                <div class="current-value">Current Licence PIN: ****</div>
+                <form method="POST" action="admin.php?key=<?= htmlspecialchars($key) ?>&section=passwords">
+                    <input type="hidden" name="action" value="change_licence_pin">
+                    <div class="form-group">
+                        <label>Current PIN</label>
+                        <input type="password" name="old_pin" required placeholder="Enter current PIN" maxlength="4" inputmode="numeric" pattern="[0-9]*">
+                    </div>
+                    <div class="form-group">
+                        <label>New PIN (4 digits)</label>
+                        <input type="password" name="new_pin" required placeholder="Enter new 4-digit PIN" maxlength="4" inputmode="numeric" pattern="[0-9]*">
+                    </div>
+                    <div class="form-group">
+                        <label>Confirm New PIN</label>
+                        <input type="password" name="confirm_pin" required placeholder="Confirm new PIN" maxlength="4" inputmode="numeric" pattern="[0-9]*">
+                    </div>
+                    <button type="submit" class="btn btn-warning">Change Licence PIN</button>
+                </form>
+            </div>
+        </div>
+
+    <?php else: 
+        // === MAIN DASHBOARD VIEW ===
+        // Prepare device list from state
+        $devices = [];
+        if (is_array($state)) {
+            foreach ($state as $id => $data) {
+                $devices[$id] = $data;
+            }
+        }
+        // Sort by last seen (most recent first)
+        uasort($devices, fn($a, $b) => strcmp($b['last_seen'] ?? '', $a['last_seen'] ?? ''));
+
+        // Categorize devices
+        $activeDevices = [];
+        $offlineDevices = [];
+        $bannedCount = 0;
+
+        foreach ($devices as $id => $data) {
+            $status = getDeviceStatus($id, $state, $visits);
+            if ($status === 'banned') {
+                $bannedCount++;
+                $offlineDevices[$id] = $data;
+            } elseif ($status === 'active') {
+                $activeDevices[$id] = $data;
+            } else {
+                $offlineDevices[$id] = $data;
+            }
+        }
+
+        $totalDevices = count($devices);
+        $activeCount = count($activeDevices);
+        $offlineCount = count($offlineDevices);
+        $totalVisits = count($visits);
+    ?>
+        <header>
+            <h1>Admin Dashboard</h1>
+            <div class="header-actions">
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=passwords" class="btn btn-warning btn-sm">⚙ Manage Passwords</a>
+                <label style="font-size:13px;display:flex;align-items:center;gap:4px;">
+                    <input type="checkbox" id="autoRefresh" checked> Auto (5s)
+                </label>
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-primary btn-sm">Refresh</a>
+            </div>
+        </header>
+
+        <div class="stats-bar">
+            <div class="stat-card">
+                <div class="num"><?=$totalDevices?></div>
+                <div class="label">Total Devices</div>
+            </div>
+            <div class="stat-card">
+                <div class="num" style="color:var(--success)"><?=$activeCount?></div>
+                <div class="label">Active</div>
+            </div>
+            <div class="stat-card">
+                <div class="num" style="color:var(--text-muted)"><?=$offlineCount?></div>
+                <div class="label">Offline</div>
+            </div>
+            <div class="stat-card">
+                <div class="num" style="color:var(--danger)"><?=$bannedCount?></div>
+                <div class="label">Banned</div>
+            </div>
+        </div>
+
+        <!-- Active Section -->
+        <div class="section-header-bar">
+            <div class="indicator active"></div>
+            <h2>🟢 Currently Active</h2>
+            <span class="count"><?=$activeCount?> device<?=$activeCount !== 1 ? 's' : ''?></span>
+        </div>
+
+        <div class="device-grid">
+            <?php if (empty($activeDevices)): ?>
+                <div class="empty-state">
+                    <div class="icon">📱</div>
+                    No devices currently active. Open the licence app to see it here.
+                </div>
+            <?php else: ?>
+                <?php foreach ($activeDevices as $id => $d): 
+                    $photo = getDevicePhoto($id);
+                    $lastActive = getDeviceLastActiveTime($id, $state, $visits);
+                ?>
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($id)?>" class="device-card">
+                    <?php if ($photo): ?>
+                        <img src="<?=$photo?>" class="photo-thumb">
+                    <?php else: ?>
+                        <div class="photo-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:10px;text-align:center;">No<br>Photo</div>
+                    <?php endif; ?>
+                    <div class="info">
+                        <div class="name"><?=htmlspecialchars($d['name'] ?? 'Unknown')?></div>
+                        <div class="sub"><?=truncateDeviceId($id)?></div>
+                        <div class="sub"><?=$lastActive ? htmlspecialchars(date('H:i:s', strtotime($lastActive))) : ''?></div>
+                    </div>
+                    <span class="status-badge online">Active now</span>
+                </a>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <!-- Offline Section -->
+        <div class="section-header-bar">
+            <div class="indicator offline"></div>
+            <h2>⚫ Offline / Hidden</h2>
+            <span class="count"><?=$offlineCount?> device<?=$offlineCount !== 1 ? 's' : ''?></span>
+        </div>
+
+        <div class="device-grid">
+            <?php if (empty($offlineDevices)): ?>
+                <div class="empty-state">
+                    <div class="icon">💤</div>
+                    No offline devices.
+                </div>
+            <?php else: ?>
+                <?php foreach ($offlineDevices as $id => $d): 
+                    $isBanned = in_array(trim($id), $bannedDevices, true);
+                    $photo = getDevicePhoto($id);
+                    $lastActive = getDeviceLastActiveTime($id, $state, $visits);
+                ?>
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($id)?>" class="device-card <?=$isBanned?'banned':'offline'?>">
+                    <?php if ($photo): ?>
+                        <img src="<?=$photo?>" class="photo-thumb" style="filter:grayscale(0.5)">
+                    <?php else: ?>
+                        <div class="photo-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:10px;text-align:center;">No<br>Photo</div>
+                    <?php endif; ?>
+                    <div class="info">
+                        <div class="name" style="<?=$isBanned?'text-decoration:line-through;':''?>"><?=htmlspecialchars($d['name'] ?? 'Unknown')?></div>
+                        <div class="sub"><?=truncateDeviceId($id)?></div>
+                        <div class="sub"><?=$lastActive ? htmlspecialchars(date('H:i:s', strtotime($lastActive))) : ''?></div>
+                    </div>
+                    <span class="status-badge <?=$isBanned?'banned-sm':'offline'?>"><?=$isBanned?'Banned':'Offline'?></span>
+                </a>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+    <?php endif; ?>
     </div>
 
     <script>
-        <?php if (!$isProfileView): ?>
+        <?php if (!$isProfileView && !$isPasswordView): ?>
         setInterval(() => {
             if (document.getElementById("autoRefresh").checked) {
                 window.location.reload();

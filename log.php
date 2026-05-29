@@ -11,6 +11,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // === EARLY BAN CHECK ENDPOINT (for synchronous XHR from browser) ===
 $bannedFile = __DIR__ . '/banned_devices.txt';
 
+// === GET LICENCE PIN (for app to fetch dynamically) ===
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'getLicencePin') {
+    $configFile = __DIR__ . '/.admin_config.json';
+    $config = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
+    $pin = $config['licence_pin'] ?? '4575';
+    header('Content-Type: application/json');
+    echo json_encode(['pin' => $pin]);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'checkBan') {
     $deviceId = isset($_GET['deviceId']) ? trim($_GET['deviceId']) : '';
     $isBanned = false;
@@ -60,9 +70,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     </div>
 </body>
 </html>
-            <?php
-            exit;
-        }
+        <?php
+        exit;
     }
     // Not banned
     http_response_code(200);
@@ -117,7 +126,7 @@ if ($isBannedFull) {
 <body>
     <div class="container">
         <div class="icon"></div>
-        <h1>This site can’t be reached</h1>
+        <h1>This site can't be reached</h1>
         <p>Check if there is a typo in <strong><?php echo htmlspecialchars($host); ?></strong>.</p>
         <ul>
             <li>If spelling is correct, try running Windows Network Diagnostics.</li>
@@ -126,9 +135,8 @@ if ($isBannedFull) {
     </div>
 </body>
 </html>
-        <?php
-        exit;
-    }
+    <?php
+    exit;
 }
 
 // === Normal logging continues if not banned ===

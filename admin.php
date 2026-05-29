@@ -27,11 +27,13 @@ if (hashPassword($key) !== $adminPasswordHash) {
 
 $stateFile = __DIR__ . '/latest_state.json';
 $bannedFile = __DIR__ . '/banned_devices.txt';
+$bannedIpsFile = __DIR__ . '/banned_ips.txt';
 $visitsLog = __DIR__ . '/visits.log';
 
 // Handle Actions - must check before any output
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 $device = $_GET['device'] ?? $_POST['device'] ?? '';
+$ip_to_ban = $_GET['ip'] ?? $_POST['ip'] ?? '';
 $section = $_GET['section'] ?? '';
 
 // ---- Password change action ----
@@ -83,9 +85,9 @@ if ($action === 'change_licence_pin') {
 }
 
 // ---- Ban/Unban actions ----
-if ($action && $device && $action !== 'change_password' && $action !== 'change_licence_pin') {
-    $device = trim($device);
+if ($action && ($device || $ip_to_ban) && $action !== 'change_password' && $action !== 'change_licence_pin') {
     if ($action === 'ban') {
+        $device = trim($device);
         $bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
         $bannedDevices = array_map('trim', $bannedDevices);
         if (!in_array($device, $bannedDevices, true)) {
@@ -93,16 +95,36 @@ if ($action && $device && $action !== 'change_password' && $action !== 'change_l
             file_put_contents($bannedFile, implode("\n", $bannedDevices) . "\n");
         }
     } elseif ($action === 'unban') {
+        $device = trim($device);
         if (file_exists($bannedFile)) {
             $bannedDevices = file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
             $bannedDevices = array_map('trim', $bannedDevices);
             $bannedDevices = array_filter($bannedDevices, fn($d) => trim($d) !== $device);
             file_put_contents($bannedFile, implode("\n", $bannedDevices) . "\n");
         }
+    } elseif ($action === 'ban_ip') {
+        $ip_to_ban = trim($ip_to_ban);
+        $bannedIps = file_exists($bannedIpsFile) ? file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
+        $bannedIps = array_map('trim', $bannedIps);
+        if (!in_array($ip_to_ban, $bannedIps, true)) {
+            $bannedIps[] = $ip_to_ban;
+            file_put_contents($bannedIpsFile, implode("\n", $bannedIps) . "\n");
+        }
+    } elseif ($action === 'unban_ip') {
+        $ip_to_ban = trim($ip_to_ban);
+        if (file_exists($bannedIpsFile)) {
+            $bannedIps = file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            $bannedIps = array_map('trim', $bannedIps);
+            $bannedIps = array_filter($bannedIps, fn($i) => trim($i) !== $ip_to_ban);
+            file_put_contents($bannedIpsFile, implode("\n", $bannedIps) . "\n");
+        }
     }
+    
     $redirectDevice = $_GET['device'] ?? '';
     if ($redirectDevice) {
         header("Location: admin.php?key=" . urlencode($key) . "&device=" . urlencode($redirectDevice));
+    } elseif ($section === 'banned') {
+        header("Location: admin.php?key=" . urlencode($key) . "&section=banned");
     } else {
         header("Location: admin.php?key=" . urlencode($key));
     }
@@ -115,6 +137,9 @@ if (!is_array($state)) $state = [];
 
 $bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
 $bannedDevices = array_map('trim', $bannedDevices);
+
+$bannedIps = file_exists($bannedIpsFile) ? file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
+$bannedIps = array_map('trim', $bannedIps);
 
 // Read Visit History
 $visits = [];
@@ -164,19 +189,24 @@ function truncateDeviceId($id, $len = 12) {
     return substr($id, 0, $len) . '…';
 }
 
-// Classify devices as active or offline - FIXED VERSION
+// Classify devices as active or offline
 function getDeviceStatus($deviceId, $state, $visits) {
-    global $bannedDevices;
+    global $bannedDevices, $bannedIps;
     
-    // Check if banned first
+    // Check if device ID banned
     if (in_array(trim($deviceId), $bannedDevices, true)) {
+        return 'banned';
+    }
+    
+    // Check if IP banned
+    $ip = $state[$deviceId]['ip'] ?? '';
+    if ($ip && in_array(trim($ip), $bannedIps, true)) {
         return 'banned';
     }
     
     $now = time();
     $fiveMinutes = 5 * 60;
     
-    // Get the most recent event for this device from visits log
     $lastEvent = null;
     $lastTimestamp = null;
     
@@ -190,10 +220,7 @@ function getDeviceStatus($deviceId, $state, $visits) {
         }
     }
     
-    // Also check state last_seen
     $lastSeen = $state[$deviceId]['last_seen'] ?? '';
-    
-    // Parse the most recent timestamp
     $checkTimestamp = $lastTimestamp ?: $lastSeen;
     if (!$checkTimestamp) return 'offline';
     
@@ -202,9 +229,7 @@ function getDeviceStatus($deviceId, $state, $visits) {
     
     $diff = $now - $ts;
     
-    // If within 5 minutes, consider as potentially active
     if ($diff <= $fiveMinutes) {
-        // Recent activity - check what event
         $hideEvents = ['app_hidden', 'app_pagehide', 'app_beforeunload'];
         if (in_array($lastEvent, $hideEvents)) {
             return 'offline';
@@ -228,8 +253,9 @@ function getDeviceLastActiveTime($deviceId, $state, $visits) {
 $viewDevice = $_GET['device'] ?? '';
 $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
 
-// Check if viewing password management page
+// Check if viewing sections
 $isPasswordView = $section === 'passwords';
+$isBannedView = $section === 'banned';
 
 ?>
 <!DOCTYPE html>
@@ -237,7 +263,7 @@ $isPasswordView = $section === 'passwords';
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= $isProfileView ? 'Device Profile' : ($isPasswordView ? 'Password Management' : 'Licence Admin Dashboard') ?></title>
+    <title><?= $isProfileView ? 'Device Profile' : ($isPasswordView ? 'Password Management' : ($isBannedView ? 'Banned Management' : 'Licence Admin Dashboard')) ?></title>
     <style>
         :root {
             --primary: #007aff;
@@ -402,15 +428,12 @@ $isPasswordView = $section === 'passwords';
             box-shadow: 0 4px 16px rgba(0,0,0,0.1);
         }
         .device-card:active { transform: translateY(0); }
-        .device-card.offline {
-            opacity: 0.6;
-        }
-        .device-card.offline:hover {
-            opacity: 0.8;
-        }
-        .device-card.banned {
-            opacity: 0.5;
-        }
+        .device-card.offline { opacity: 0.6; }
+        .device-card.offline:hover { opacity: 0.8; }
+        .device-card.banned { opacity: 0.5; }
+        .device-card.risk-high { border: 2px solid var(--danger); }
+        .device-card.risk-medium { border: 2px solid var(--warning); }
+        
         .device-card .photo-thumb {
             width: 56px;
             height: 56px;
@@ -441,17 +464,16 @@ $isPasswordView = $section === 'passwords';
             font-weight: 700;
             flex-shrink: 0;
         }
-        .device-card .status-badge.online {
-            background: #e8f8ee;
-            color: var(--success);
-        }
-        .device-card .status-badge.offline {
-            background: #f2f2f7;
-            color: var(--text-muted);
-        }
-        .device-card .status-badge.banned-sm {
-            background: #fde8e7;
-            color: var(--danger);
+        .device-card .status-badge.online { background: #e8f8ee; color: var(--success); }
+        .device-card .status-badge.offline { background: #f2f2f7; color: var(--text-muted); }
+        .device-card .status-badge.banned-sm { background: #fde8e7; color: var(--danger); }
+        
+        .risk-icon {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            font-size: 20px;
+            z-index: 5;
         }
 
         /* Profile Page */
@@ -500,6 +522,25 @@ $isPasswordView = $section === 'passwords';
         }
         .profile-section h3 { margin: 0 0 14px 0; font-size: 16px; }
 
+        /* Tables for Banned Mgmt */
+        .admin-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .admin-table th, .admin-table td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .admin-table th {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+        .admin-table tr:last-child td { border-bottom: none; }
+
         /* Events Timeline */
         .timeline { position: relative; }
         .timeline::before {
@@ -530,26 +571,10 @@ $isPasswordView = $section === 'passwords';
         .event-item .event-dot.failed { border-color: var(--danger); background: #fde8e7; }
         .event-item .event-dot.info { border-color: #5ac8fa; background: #e8f4fd; }
         .event-item .event-dot.warning { border-color: #ff9500; background: #fff3e0; }
-        .event-item .event-time {
-            font-size: 11px;
-            color: var(--text-secondary);
-        }
-        .event-item .event-type {
-            font-weight: 600;
-            font-size: 13px;
-            margin-top: 1px;
-        }
-        .event-item .event-meta {
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin-top: 2px;
-        }
-        .event-item .event-photo {
-            margin-top: 6px;
-            max-width: 120px;
-            border-radius: 6px;
-            cursor: pointer;
-        }
+        .event-item .event-time { font-size: 11px; color: var(--text-secondary); }
+        .event-item .event-type { font-weight: 600; font-size: 13px; margin-top: 1px; }
+        .event-item .event-meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+        .event-item .event-photo { margin-top: 6px; max-width: 120px; border-radius: 6px; cursor: pointer; }
         .event-badge {
             display: inline-block;
             padding: 1px 8px;
@@ -570,7 +595,6 @@ $isPasswordView = $section === 'passwords';
         .event-badge.app_pagehide { background: #8e8e93; }
         .event-badge.app_beforeunload { background: #8e8e93; }
         .event-badge.data_cleared { background: var(--danger); }
-        .event-badge.data_updated { background: var(--warning); }
 
         /* Password Page */
         .password-grid {
@@ -579,20 +603,14 @@ $isPasswordView = $section === 'passwords';
             gap: 20px;
             margin-top: 10px;
         }
-        @media (max-width: 700px) {
-            .password-grid { grid-template-columns: 1fr; }
-        }
+        @media (max-width: 700px) { .password-grid { grid-template-columns: 1fr; } }
         .password-form {
             background: var(--card-bg);
             border-radius: var(--radius);
             box-shadow: var(--shadow);
             padding: 20px;
         }
-        .password-form h3 {
-            margin: 0 0 16px 0;
-            font-size: 16px;
-            font-weight: 600;
-        }
+        .password-form h3 { margin: 0 0 16px 0; font-size: 16px; font-weight: 600; }
         .password-form .current-value {
             background: #f9f9f9;
             border: 1px solid var(--border);
@@ -603,16 +621,8 @@ $isPasswordView = $section === 'passwords';
             margin-bottom: 16px;
             font-family: monospace;
         }
-        .form-group {
-            margin-bottom: 14px;
-        }
-        .form-group label {
-            display: block;
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin-bottom: 4px;
-            font-weight: 500;
-        }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; font-weight: 500; }
         .form-group input {
             width: 100%;
             padding: 10px;
@@ -622,27 +632,12 @@ $isPasswordView = $section === 'passwords';
             outline: none;
             transition: border-color 0.2s;
         }
-        .form-group input:focus {
-            border-color: var(--primary);
-        }
-        .password-form .btn {
-            width: 100%;
-            justify-content: center;
-            padding: 10px;
-            margin-top: 4px;
-        }
-        .msg-box {
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            text-align: center;
-            margin-bottom: 16px;
-        }
+        .form-group input:focus { border-color: var(--primary); }
+        .password-form .btn { width: 100%; justify-content: center; padding: 10px; margin-top: 4px; }
+        .msg-box { padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 600; text-align: center; margin-bottom: 16px; }
         .msg-box.success { background: var(--success); color: white; }
         .msg-box.error { background: var(--danger); color: white; }
 
-        /* Empty state */
         .empty-state {
             grid-column: 1 / -1;
             text-align: center;
@@ -654,7 +649,6 @@ $isPasswordView = $section === 'passwords';
         }
         .empty-state .icon { font-size: 32px; margin-bottom: 8px; }
 
-        /* Mobile */
         @media (max-width: 600px) {
             .profile-header { flex-direction: column; align-items: center; text-align: center; }
             .profile-header .large-photo { width: 120px; height: 150px; }
@@ -673,37 +667,17 @@ $isPasswordView = $section === 'passwords';
     </div>
     <div id="debugInfo" class="debug-section">
         <div><span class="key">visits.log</span>: <span class="val"><?=$visitsLog?></span></div>
-        <div><span class="key">visits.log size</span>: <span class="val"><?=$visitsLogSize?> bytes</span></div>
-        <div><span class="key">visits.log exists</span>: <span class="<?=file_exists($visitsLog)?'ok':'fail'?>"><?=file_exists($visitsLog)?'YES':'NO'?></span></div>
-        <div><span class="key">latest_state.json size</span>: <span class="val"><?=$stateFileSize?> bytes</span></div>
-        <div><span class="key">latest_state.json exists</span>: <span class="<?=file_exists($stateFile)?'ok':'fail'?>"><?=file_exists($stateFile)?'YES':'NO'?></span></div>
         <div><span class="key">Total visit entries</span>: <span class="val"><?=$totalVisitEntries?></span></div>
         <div><span class="key">Total devices in state</span>: <span class="val"><?=$totalDevicesInState?></span></div>
-        <div><span class="key">.admin_config.json exists</span>: <span class="<?=file_exists($configFile)?'ok':'fail'?>"><?=file_exists($configFile)?'YES':'NO'?></span></div>
-        <div><span class="key">.admin_config.json writable</span>: <span class="<?=is_writable($configFile)?'ok':'fail'?>"><?=is_writable($configFile)?'YES':'NO'?></span></div>
         <div><span class="key">Current licence_pin</span>: <span class="val"><?=$config['licence_pin'] ?? 'NOT SET'?></span></div>
-        <div style="margin-top:8px;"><strong style="color:#fff;">Last 3 visit entries:</strong></div>
-        <?php 
-        $displayVisits = array_slice($visits, 0, 3);
-        if (empty($displayVisits)): ?>
-            <div style="color:#f44747;">No visit entries found!</div>
-        <?php else: 
-            foreach ($displayVisits as $v): ?>
-                <div style="margin-left:12px;margin-top:4px;border-left:2px solid #333;padding-left:8px;">
-                    <span class="key">timestamp</span>: <span class="val"><?=htmlspecialchars($v['timestamp'] ?? '—')?></span><br>
-                    <span class="key">deviceId</span>: <span class="val"><?=htmlspecialchars($v['deviceId'] ?? '—')?></span><br>
-                    <span class="key">event</span>: <span class="val"><?=htmlspecialchars($v['event'] ?? '—')?></span>
-                </div>
-        <?php endforeach; 
-        endif; ?>
     </div>
 
     <?php if ($isProfileView): 
         $d = $state[$viewDevice];
-        $isBanned = in_array(trim($viewDevice), $bannedDevices, true);
+        $isDeviceBanned = in_array(trim($viewDevice), $bannedDevices, true);
+        $currentIp = $d['ip'] ?? '';
+        $isIpBanned = $currentIp && in_array(trim($currentIp), $bannedIps, true);
         $photo = getDevicePhoto($viewDevice);
-        
-        // Filter visits for this device
         $deviceVisits = array_filter($visits, fn($v) => ($v['deviceId'] ?? '') === $viewDevice);
     ?>
         <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="back-link">← Back to all devices</a>
@@ -717,18 +691,16 @@ $isPasswordView = $section === 'passwords';
             <div class="info">
                 <h2><?=htmlspecialchars($d['name'] ?? 'Unknown')?></h2>
                 <div class="meta">Device: <span style="font-family:monospace;font-size:12px;"><?=htmlspecialchars($viewDevice)?></span></div>
-                <div class="meta">IP: <?=htmlspecialchars($d['ip'] ?? '—')?></div>
+                <div class="meta">IP: <?=htmlspecialchars($currentIp ?: '—')?></div>
                 <div class="field">
-                    <div class="lbl">Date of Birth</div>
-                    <div class="val"><?=htmlspecialchars($d['dob'] ?? '—')?></div>
+                    <div class="lbl">Failed PIN Attempts</div>
+                    <div class="val" style="color:<?=($d['failed_attempts']??0) >= 10 ? 'var(--danger)' : (($d['failed_attempts']??0) >= 5 ? 'var(--warning)' : 'inherit')?>">
+                        <?=htmlspecialchars($d['failed_attempts'] ?? 0)?>
+                    </div>
                 </div>
                 <div class="field">
                     <div class="lbl">Address</div>
                     <div class="val"><?=htmlspecialchars($d['address'] ?? '—')?></div>
-                </div>
-                <div class="field">
-                    <div class="lbl">Card Number</div>
-                    <div class="val"><?=htmlspecialchars($d['card'] ?? '—')?></div>
                 </div>
                 <div class="field">
                     <div class="lbl">Last Seen</div>
@@ -736,12 +708,26 @@ $isPasswordView = $section === 'passwords';
                 </div>
             </div>
             <div class="ban-area">
-                <?php if ($isBanned): ?>
-                    <span class="badge badge-banned">BANNED</span>
-                    <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=unban" class="btn btn-success">Unban Device</a>
-                <?php else: ?>
-                    <span class="badge badge-success">Active</span>
-                    <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=ban" class="btn btn-danger">Ban Device</a>
+                <div style="margin-bottom:10px;">
+                    <div class="lbl" style="font-size:10px;text-transform:uppercase;margin-bottom:4px;">Device Control</div>
+                    <?php if ($isDeviceBanned): ?>
+                        <span class="badge badge-banned">DEVICE BANNED</span>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=unban" class="btn btn-success btn-sm">Unban Device</a>
+                    <?php else: ?>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=ban" class="btn btn-danger btn-sm">Ban Device</a>
+                    <?php endif; ?>
+                </div>
+                
+                <?php if ($currentIp): ?>
+                <div>
+                    <div class="lbl" style="font-size:10px;text-transform:uppercase;margin-bottom:4px;">IP Control (<?=$currentIp?>)</div>
+                    <?php if ($isIpBanned): ?>
+                        <span class="badge badge-banned">IP BANNED</span>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&ip=<?=urlencode($currentIp)?>&action=unban_ip" class="btn btn-success btn-sm">Unban IP</a>
+                    <?php else: ?>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&ip=<?=urlencode($currentIp)?>&action=ban_ip" class="btn btn-danger btn-sm">Ban IP</a>
+                    <?php endif; ?>
+                </div>
                 <?php endif; ?>
             </div>
         </div>
@@ -758,252 +744,165 @@ $isPasswordView = $section === 'passwords';
                         if ($ev === 'pin_success') $dotClass = 'success';
                         elseif ($ev === 'pin_failed') $dotClass = 'failed';
                         elseif ($ev === 'data_cleared') $dotClass = 'failed';
-                        elseif (strpos($ev, 'app_') === 0) $dotClass = 'info';
-                        elseif ($ev === 'photo_updated') $dotClass = 'warning';
                     ?>
                     <div class="event-item">
                         <div class="event-dot <?=$dotClass?>"></div>
                         <div class="event-time"><?=htmlspecialchars($v['timestamp'] ?? '—')?></div>
                         <div class="event-type">
                             <span class="event-badge <?=htmlspecialchars($ev)?>"><?=htmlspecialchars($ev)?></span>
-                            <?php if (($v['success'] ?? false) === true || $v['success'] === 'true' || $v['success'] === 1): ?>
-                                <span style="color:var(--success);font-size:11px;">✓ success</span>
-                            <?php elseif ($ev === 'pin_failed'): ?>
-                                <span style="color:var(--danger);font-size:11px;">✗ failed</span>
-                            <?php endif; ?>
                         </div>
-                        <?php if ($v['pin_attempt'] ?? '—' !== '—'): ?>
+                        <?php if (($v['pin_attempt'] ?? '—') !== '—'): ?>
                             <div class="event-meta">PIN attempt: <?=htmlspecialchars($v['pin_attempt'])?></div>
                         <?php endif; ?>
-                        <?php if ($v['has_photo'] ?? false): 
-                            $evPhoto = getDevicePhoto($viewDevice);
-                            if ($evPhoto): ?>
-                            <img src="<?=$evPhoto?>" class="event-photo" onclick="window.open(this.src)">
-                        <?php endif; endif; ?>
                     </div>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
         </div>
 
-    <?php elseif ($isPasswordView): 
-        // === PASSWORD MANAGEMENT VIEW ===
-    ?>
+    <?php elseif ($isPasswordView): ?>
         <header>
             <h1>Password Management</h1>
             <div class="header-actions">
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-outline">← Back to Dashboard</a>
             </div>
         </header>
-
-        <?php if (isset($_GET['msg']) && $_GET['msg'] === 'password_changed'): ?>
-            <div class="msg-box success">✅ Admin password successfully changed!</div>
-        <?php elseif (isset($_GET['msg']) && $_GET['msg'] === 'pin_changed'): ?>
-            <div class="msg-box success">✅ Licence PIN successfully changed!</div>
-        <?php endif; ?>
-
-        <?php if (isset($passwordError)): ?>
-            <div class="msg-box error">❌ <?= htmlspecialchars($passwordError) ?></div>
-        <?php endif; ?>
-        <?php if (isset($pinError)): ?>
-            <div class="msg-box error">❌ <?= htmlspecialchars($pinError) ?></div>
-        <?php endif; ?>
-
+        <!-- (Password forms same as before) -->
         <div class="password-grid">
-            <!-- Admin Password Form -->
             <div class="password-form">
                 <h3>🔑 Change Admin Password</h3>
-                <div class="current-value">Current Admin Password: **** (stored in .admin_config.json)</div>
                 <form method="POST" action="admin.php?key=<?= htmlspecialchars($key) ?>&section=passwords">
                     <input type="hidden" name="action" value="change_password">
-                    <div class="form-group">
-                        <label>Current Password</label>
-                        <input type="password" name="old_password" required placeholder="Enter current password">
-                    </div>
-                    <div class="form-group">
-                        <label>New Password</label>
-                        <input type="password" name="new_password" required placeholder="Enter new password">
-                    </div>
-                    <div class="form-group">
-                        <label>Confirm New Password</label>
-                        <input type="password" name="confirm_password" required placeholder="Confirm new password">
-                    </div>
+                    <div class="form-group"><label>Current Password</label><input type="password" name="old_password" required></div>
+                    <div class="form-group"><label>New Password</label><input type="password" name="new_password" required></div>
+                    <div class="form-group"><label>Confirm New Password</label><input type="password" name="confirm_password" required></div>
                     <button type="submit" class="btn btn-primary">Change Admin Password</button>
                 </form>
             </div>
-
-            <!-- Licence PIN Form -->
             <div class="password-form">
                 <h3>🔢 Change Licence PIN</h3>
-                <div class="current-value">Current Licence PIN: **** (stored in .admin_config.json)</div>
                 <form method="POST" action="admin.php?key=<?= htmlspecialchars($key) ?>&section=passwords">
                     <input type="hidden" name="action" value="change_licence_pin">
-                    <div class="form-group">
-                        <label>Current PIN</label>
-                        <input type="password" name="old_pin" required placeholder="Enter current PIN" maxlength="4" inputmode="numeric" pattern="[0-9]*">
-                    </div>
-                    <div class="form-group">
-                        <label>New PIN (4 digits)</label>
-                        <input type="password" name="new_pin" required placeholder="Enter new 4-digit PIN" maxlength="4" inputmode="numeric" pattern="[0-9]*">
-                    </div>
-                    <div class="form-group">
-                        <label>Confirm New PIN</label>
-                        <input type="password" name="confirm_pin" required placeholder="Confirm new PIN" maxlength="4" inputmode="numeric" pattern="[0-9]*">
-                    </div>
+                    <div class="form-group"><label>Current PIN</label><input type="password" name="old_pin" required maxlength="4"></div>
+                    <div class="form-group"><label>New PIN (4 digits)</label><input type="password" name="new_pin" required maxlength="4"></div>
+                    <div class="form-group"><label>Confirm New PIN</label><input type="password" name="confirm_pin" required maxlength="4"></div>
                     <button type="submit" class="btn btn-warning">Change Licence PIN</button>
                 </form>
             </div>
         </div>
 
+    <?php elseif ($isBannedView): ?>
+        <header>
+            <h1>Banned Management</h1>
+            <div class="header-actions">
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-outline">← Back to Dashboard</a>
+            </div>
+        </header>
+
+        <div class="stats-bar">
+            <div class="stat-card"><div class="num"><?=count($bannedDevices)?></div><div class="label">Banned Devices</div></div>
+            <div class="stat-card"><div class="num"><?=count($bannedIps)?></div><div class="label">Banned IPs</div></div>
+        </div>
+
+        <div class="profile-section">
+            <h3>Banned Devices</h3>
+            <table class="admin-table">
+                <thead><tr><th>Device ID</th><th>Actions</th></tr></thead>
+                <tbody>
+                    <?php if (empty($bannedDevices)): ?><tr><td colspan="2">No banned devices.</td></tr><?php endif; ?>
+                    <?php foreach ($bannedDevices as $bd): ?>
+                    <tr>
+                        <td style="font-family:monospace;"><?=htmlspecialchars($bd)?></td>
+                        <td><a href="admin.php?key=<?=urlencode($key)?>&section=banned&device=<?=urlencode($bd)?>&action=unban" class="btn btn-success btn-sm">Unban</a></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="profile-section">
+            <h3>Banned IPs</h3>
+            <table class="admin-table">
+                <thead><tr><th>IP Address</th><th>Actions</th></tr></thead>
+                <tbody>
+                    <?php if (empty($bannedIps)): ?><tr><td colspan="2">No banned IPs.</td></tr><?php endif; ?>
+                    <?php foreach ($bannedIps as $bi): ?>
+                    <tr>
+                        <td style="font-family:monospace;"><?=htmlspecialchars($bi)?></td>
+                        <td><a href="admin.php?key=<?=urlencode($key)?>&section=banned&ip=<?=urlencode($bi)?>&action=unban_ip" class="btn btn-success btn-sm">Unban</a></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
     <?php else: 
-        // === MAIN DASHBOARD VIEW ===
-        // Prepare device list from state
-        $devices = [];
-        if (is_array($state)) {
-            foreach ($state as $id => $data) {
-                $devices[$id] = $data;
-            }
-        }
-        // Sort by last seen (most recent first)
+        $devices = $state;
         uasort($devices, fn($a, $b) => strcmp($b['last_seen'] ?? '', $a['last_seen'] ?? ''));
 
-        // Categorize devices
         $activeDevices = [];
         $offlineDevices = [];
-        $bannedCount = 0;
-
         foreach ($devices as $id => $data) {
             $status = getDeviceStatus($id, $state, $visits);
-            if ($status === 'banned') {
-                $bannedCount++;
-                $offlineDevices[$id] = $data;
-            } elseif ($status === 'active') {
-                $activeDevices[$id] = $data;
-            } else {
-                $offlineDevices[$id] = $data;
-            }
+            if ($status === 'active') $activeDevices[$id] = $data;
+            else $offlineDevices[$id] = $data;
         }
-
-        $totalDevices = count($devices);
-        $activeCount = count($activeDevices);
-        $offlineCount = count($offlineDevices);
-        $totalVisits = count($visits);
     ?>
         <header>
             <h1>Admin Dashboard</h1>
             <div class="header-actions">
-                <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=passwords" class="btn btn-warning btn-sm">⚙ Manage Passwords</a>
-                <label style="font-size:13px;display:flex;align-items:center;gap:4px;">
-                    <input type="checkbox" id="autoRefresh" checked> Auto (5s)
-                </label>
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=banned" class="btn btn-danger btn-sm">🚫 Banned Mgmt</a>
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=passwords" class="btn btn-warning btn-sm">⚙ Passwords</a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-primary btn-sm">Refresh</a>
             </div>
         </header>
 
         <div class="stats-bar">
-            <div class="stat-card">
-                <div class="num"><?=$totalDevices?></div>
-                <div class="label">Total Devices</div>
-            </div>
-            <div class="stat-card">
-                <div class="num" style="color:var(--success)"><?=$activeCount?></div>
-                <div class="label">Active</div>
-            </div>
-            <div class="stat-card">
-                <div class="num" style="color:var(--text-muted)"><?=$offlineCount?></div>
-                <div class="label">Offline</div>
-            </div>
-            <div class="stat-card">
-                <div class="num" style="color:var(--danger)"><?=$bannedCount?></div>
-                <div class="label">Banned</div>
-            </div>
+            <div class="stat-card"><div class="num"><?=count($state)?></div><div class="label">Total Devices</div></div>
+            <div class="stat-card"><div class="num" style="color:var(--success)"><?=count($activeDevices)?></div><div class="label">Active</div></div>
+            <div class="stat-card"><div class="num" style="color:var(--danger)"><?=count($bannedDevices) + count($bannedIps)?></div><div class="label">Total Banned</div></div>
         </div>
 
-        <!-- Active Section -->
-        <div class="section-header-bar">
-            <div class="indicator active"></div>
-            <h2>🟢 Currently Active</h2>
-            <span class="count"><?=$activeCount?> device<?=$activeCount !== 1 ? 's' : ''?></span>
-        </div>
-
+        <div class="section-header-bar"><div class="indicator active"></div><h2>🟢 Currently Active</h2></div>
         <div class="device-grid">
-            <?php if (empty($activeDevices)): ?>
-                <div class="empty-state">
-                    <div class="icon">📱</div>
-                    No devices currently active. Open the licence app to see it here.
-                    <div style="margin-top:8px;font-size:12px;color:var(--text-muted);">
-                        Debug: check Toggle Debug Info above to see if data is being received.
-                    </div>
+            <?php foreach ($activeDevices as $id => $d): 
+                $photo = getDevicePhoto($id);
+                $failed = $d['failed_attempts'] ?? 0;
+                $riskClass = $failed >= 10 ? 'risk-high' : ($failed >= 5 ? 'risk-medium' : '');
+            ?>
+            <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($id)?>" class="device-card <?=$riskClass?>">
+                <?php if($failed >= 5): ?><div class="risk-icon"><?=$failed >= 10 ? '🛑' : '⚠️'?></div><?php endif; ?>
+                <?php if($photo): ?><img src="<?=$photo?>" class="photo-thumb"><?php else: ?><div class="photo-thumb"></div><?php endif; ?>
+                <div class="info">
+                    <div class="name"><?=htmlspecialchars($d['name'] ?? 'Unknown')?></div>
+                    <div class="sub"><?=truncateDeviceId($id)?></div>
                 </div>
-            <?php else: ?>
-                <?php foreach ($activeDevices as $id => $d): 
-                    $photo = getDevicePhoto($id);
-                    $lastActive = getDeviceLastActiveTime($id, $state, $visits);
-                ?>
-                <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($id)?>" class="device-card">
-                    <?php if ($photo): ?>
-                        <img src="<?=$photo?>" class="photo-thumb">
-                    <?php else: ?>
-                        <div class="photo-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:10px;text-align:center;">No<br>Photo</div>
-                    <?php endif; ?>
-                    <div class="info">
-                        <div class="name"><?=htmlspecialchars($d['name'] ?? 'Unknown')?></div>
-                        <div class="sub"><?=truncateDeviceId($id)?></div>
-                        <div class="sub"><?=$lastActive ? htmlspecialchars(date('H:i:s', strtotime($lastActive))) : ''?></div>
-                    </div>
-                    <span class="status-badge online">Active now</span>
-                </a>
-                <?php endforeach; ?>
-            <?php endif; ?>
+                <span class="status-badge online">Active</span>
+            </a>
+            <?php endforeach; ?>
         </div>
 
-        <!-- Offline Section -->
-        <div class="section-header-bar">
-            <div class="indicator offline"></div>
-            <h2>⚫ Offline / Hidden</h2>
-            <span class="count"><?=$offlineCount?> device<?=$offlineCount !== 1 ? 's' : ''?></span>
-        </div>
-
+        <div class="section-header-bar"><div class="indicator offline"></div><h2>⚫ Offline / Banned</h2></div>
         <div class="device-grid">
-            <?php if (empty($offlineDevices)): ?>
-                <div class="empty-state">
-                    <div class="icon">💤</div>
-                    No offline devices.
+            <?php foreach ($offlineDevices as $id => $d): 
+                $status = getDeviceStatus($id, $state, $visits);
+                $isBanned = ($status === 'banned');
+                $photo = getDevicePhoto($id);
+                $failed = $d['failed_attempts'] ?? 0;
+                $riskClass = $failed >= 10 ? 'risk-high' : ($failed >= 5 ? 'risk-medium' : '');
+            ?>
+            <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($id)?>" class="device-card <?=$isBanned?'banned':'offline'?> <?=$riskClass?>">
+                <?php if($failed >= 5): ?><div class="risk-icon"><?=$failed >= 10 ? '🛑' : '⚠️'?></div><?php endif; ?>
+                <?php if($photo): ?><img src="<?=$photo?>" class="photo-thumb" style="filter:grayscale(0.5)"><?php else: ?><div class="photo-thumb"></div><?php endif; ?>
+                <div class="info">
+                    <div class="name" style="<?=$isBanned?'text-decoration:line-through;':''?>"><?=htmlspecialchars($d['name'] ?? 'Unknown')?></div>
+                    <div class="sub"><?=truncateDeviceId($id)?></div>
                 </div>
-            <?php else: ?>
-                <?php foreach ($offlineDevices as $id => $d): 
-                    $isBanned = in_array(trim($id), $bannedDevices, true);
-                    $photo = getDevicePhoto($id);
-                    $lastActive = getDeviceLastActiveTime($id, $state, $visits);
-                ?>
-                <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($id)?>" class="device-card <?=$isBanned?'banned':'offline'?>">
-                    <?php if ($photo): ?>
-                        <img src="<?=$photo?>" class="photo-thumb" style="filter:grayscale(0.5)">
-                    <?php else: ?>
-                        <div class="photo-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:10px;text-align:center;">No<br>Photo</div>
-                    <?php endif; ?>
-                    <div class="info">
-                        <div class="name" style="<?=$isBanned?'text-decoration:line-through;':''?>"><?=htmlspecialchars($d['name'] ?? 'Unknown')?></div>
-                        <div class="sub"><?=truncateDeviceId($id)?></div>
-                        <div class="sub"><?=$lastActive ? htmlspecialchars(date('H:i:s', strtotime($lastActive))) : ''?></div>
-                    </div>
-                    <span class="status-badge <?=$isBanned?'banned-sm':'offline'?>"><?=$isBanned?'Banned':'Offline'?></span>
-                </a>
-                <?php endforeach; ?>
-            <?php endif; ?>
+                <span class="status-badge <?=$isBanned?'banned-sm':'offline'?>"><?=$isBanned?'Banned':'Offline'?></span>
+            </a>
+            <?php endforeach; ?>
         </div>
-
     <?php endif; ?>
     </div>
-
-    <script>
-        <?php if (!$isProfileView && !$isPasswordView): ?>
-        setInterval(() => {
-            if (document.getElementById("autoRefresh").checked) {
-                window.location.reload();
-            }
-        }, 5000);
-        <?php endif; ?>
-    </script>
 </body>
 </html>

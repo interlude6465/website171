@@ -8,10 +8,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-$data = json_decode(file_get_contents('php://input'), true) ?? [];
+$data = json_decode(file_get_contents('php://input'), true) ?? $_GET ?? [];
 
 // === EARLY BAN CHECK USING DEVICE ID ===
-$bannedFile = '/var/www/licence/banned_devices.txt';
+$bannedFile = __DIR__ . '/banned_devices.txt';
 $deviceId = $data['deviceId'] ?? 'unknown';
 
 if ($deviceId !== 'unknown' && file_exists($bannedFile)) {
@@ -56,7 +56,13 @@ if ($deviceId !== 'unknown' && file_exists($bannedFile)) {
 
 // === Normal logging continues if not banned ===
 $timestamp = date('Y-m-d H:i:s');
-$ip = $data['ip'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+
+// Reliable IP Detection (Tailscale/Nginx)
+$ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+if ($ip !== 'unknown' && strpos($ip, ',') !== false) {
+    $ips = explode(',', $ip);
+    $ip = trim($ips[0]);
+}
 
 $event       = $data['event'] ?? 'unknown';
 $success     = $data['success'] ?? false;
@@ -79,7 +85,7 @@ $fingerprint = !empty($fingerprint_data) ? json_encode($fingerprint_data) : '—
 // Handle Photo
 $photo_path = '—';
 if (isset($data['photo']) && !empty($data['photo']) && $deviceId !== 'unknown') {
-    $photosDir = '/var/log/licence-app/photos';
+    $photosDir = __DIR__ . '/photos';
     if (!is_dir($photosDir)) {
         @mkdir($photosDir, 0777, true);
     }
@@ -90,11 +96,7 @@ if (isset($data['photo']) && !empty($data['photo']) && $deviceId !== 'unknown') 
 }
 
 // Update Access Log
-$logFile = '/var/log/licence-app/access.log';
-$logDir = dirname($logFile);
-if (!is_dir($logDir)) {
-    @mkdir($logDir, 0777, true);
-}
+$logFile = __DIR__ . '/access.log';
 $logEntry = [
     'timestamp' => $timestamp,
     'deviceId' => $deviceId,
@@ -111,7 +113,7 @@ $logEntry = [
 @file_put_contents($logFile, json_encode($logEntry) . "\n", FILE_APPEND);
 
 // Update Latest State
-$stateFile  = '/var/log/licence-app/latest_state.json';
+$stateFile  = __DIR__ . '/latest_state.json';
 $state = file_exists($stateFile) ? json_decode(file_get_contents($stateFile), true) : [];
 
 if ($deviceId !== 'unknown') {

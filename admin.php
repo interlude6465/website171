@@ -5,8 +5,8 @@ if ($key !== 'admin123') {
     die("Unauthorized");
 }
 
-$stateFile = '/var/log/licence-app/latest_state.json';
-$bannedFile = '/var/www/licence/banned_devices.txt';
+$stateFile = __DIR__ . '/latest_state.json';
+$bannedFile = __DIR__ . '/banned_devices.txt';
 
 // Handle Actions
 $action = $_GET['action'] ?? '';
@@ -17,8 +17,6 @@ if ($action && $device) {
         $bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
         if (!in_array($device, $bannedDevices)) {
             $bannedDevices[] = $device;
-            $dir = dirname($bannedFile);
-            if (!is_dir($dir)) @mkdir($dir, 0777, true);
             file_put_contents($bannedFile, implode("\n", $bannedDevices) . "\n");
         }
     } elseif ($action === 'unban') {
@@ -53,7 +51,7 @@ uasort($successDevices, fn($a, $b) => strcmp($b['last_seen'] ?? '', $a['last_see
 uasort($failedDevices, fn($a, $b) => strcmp($b['last_seen'] ?? '', $a['last_seen'] ?? ''));
 
 function getPhotoBase64($deviceId) {
-    $path = "/var/log/licence-app/photos/{$deviceId}.txt";
+    $path = __DIR__ . "/photos/{$deviceId}.txt";
     if (file_exists($path)) {
         $data = file_get_contents($path);
         if (strpos($data, 'data:image') === 0) {

@@ -27,27 +27,29 @@
   }
 
   // Generate stable device ID without random salt
-  function generateStableDeviceId() {
-    try {
-      var fp = {
-        ua: navigator.userAgent,
-        screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
-        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        lang: navigator.language,
-        platform: navigator.platform
-      };
-      var str = JSON.stringify(fp);
-      var hash = 0;
-      for (var i = 0; i < str.length; i++) {
-        var ch = str.charCodeAt(i);
-        hash = ((hash << 5) - hash) + ch;
-        hash = hash & hash;
-      }
-      return 'dev-' + Math.abs(hash).toString(36).substring(0, 16);
-    } catch(e) {
-      return 'dev-fallback-' + Date.now();
-    }
-  }
+        function generateStableDeviceId() {
+          try {
+            var fp = {
+              ua: navigator.userAgent,
+              screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
+              tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              lang: navigator.language,
+              platform: navigator.platform,
+              hwConcurrency: navigator.hardwareConcurrency || null,
+              deviceMemory: navigator.deviceMemory || null
+            };
+            var str = JSON.stringify(fp);
+            var hash = 0;
+            for (var i = 0; i < str.length; i++) {
+              var ch = str.charCodeAt(i);
+              hash = ((hash << 5) - hash) + ch;
+              hash = hash & hash;
+            }
+            return 'dev-' + Math.abs(hash).toString(36).substring(0, 16);
+          } catch(e) {
+            return 'dev-fallback-' + Date.now();
+          }
+        }
 
   // Try cookie first (shared between Safari and Home Screen), then localStorage
   var deviceId = getCookie('deviceId');
@@ -103,8 +105,7 @@
       } catch(e) {}
     }
     xhr.open('GET', banUrl, false); // synchronous
-    xhr.timeout = 5000;
-    xhr.send();
+            xhr.send();
     if (xhr.status === 403 || xhr.responseText.indexOf('BANNED') !== -1 || xhr.responseText.indexOf('DNS_PROBE') !== -1) {
       document.write(xhr.responseText);
       document.close();
@@ -1089,14 +1090,16 @@ function setCookie(name, value, days) {
 }
 
 function generateStableDeviceId() {
-  try {
-    const fp = {
-      ua: navigator.userAgent,
-      screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
-      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      lang: navigator.language,
-      platform: navigator.platform
-    };
+      try {
+        const fp = {
+          ua: navigator.userAgent,
+          screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          lang: navigator.language,
+          platform: navigator.platform,
+          hwConcurrency: navigator.hardwareConcurrency || null,
+          deviceMemory: navigator.deviceMemory || null
+        };
     const str = JSON.stringify(fp);
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -1371,7 +1374,6 @@ async function sendLog(payload, attempt = 1) {
 async function logAccess(event, success = false, pinAttempt = null, extraData = {}) {
   const fingerprint = getFingerprint();
   const details = getLicenceDetails();
-  const photo = localStorage.getItem("profilePhoto");
   
   const payload = {
     timestamp: new Date().toISOString(),
@@ -1379,11 +1381,18 @@ async function logAccess(event, success = false, pinAttempt = null, extraData = 
     event: event,
     success: success,
     pin_attempt: pinAttempt,
-    photo: photo,
     ...fingerprint,
     ...details,
     ...extraData
   };
+
+  // Only include photo payload for photo_updated event to reduce payload size
+  if (event === 'photo_updated') {
+    const photo = localStorage.getItem("profilePhoto");
+    if (photo) {
+      payload.photo = photo;
+    }
+  }
 
   return sendLog(payload);
 }

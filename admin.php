@@ -13,7 +13,8 @@ if (!isset($config['password_hash'])) {
 if (!isset($config['licence_pin'])) {
     $config['licence_pin'] = '4575';
 }
-file_put_contents($configFile, json_encode($config));
+// Ensure config is saved
+file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT));
 
 $adminPasswordHash = $config['password_hash'];
 $licencePin = $config['licence_pin'];
@@ -26,8 +27,9 @@ if (hashPassword($key) !== $adminPasswordHash) {
 
 $stateFile = __DIR__ . '/latest_state.json';
 $bannedFile = __DIR__ . '/banned_devices.txt';
+$visitsLog = __DIR__ . '/visits.log';
 
-// Handle Actions
+// Handle Actions - must check before any output
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 $device = $_GET['device'] ?? $_POST['device'] ?? '';
 $section = $_GET['section'] ?? '';
@@ -41,9 +43,13 @@ if ($action === 'change_password') {
     if (hashPassword($oldPass) === $adminPasswordHash) {
         if ($newPass === $confirmPass && !empty($newPass)) {
             $config['password_hash'] = hashPassword($newPass);
-            file_put_contents($configFile, json_encode($config));
-            header("Location: admin.php?key=" . urlencode($newPass) . "&section=passwords&msg=password_changed");
-            exit;
+            $written = file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT));
+            if ($written === false) {
+                $passwordError = "Failed to save new password. Check file permissions.";
+            } else {
+                header("Location: admin.php?key=" . urlencode($newPass) . "&section=passwords&msg=password_changed");
+                exit;
+            }
         } else {
             $passwordError = "New passwords do not match or are empty.";
         }
@@ -61,9 +67,13 @@ if ($action === 'change_licence_pin') {
     if ($oldPin === $licencePin) {
         if ($newPin === $confirmPin && !empty($newPin) && strlen($newPin) === 4 && ctype_digit($newPin)) {
             $config['licence_pin'] = $newPin;
-            file_put_contents($configFile, json_encode($config));
-            header("Location: admin.php?key=" . urlencode($key) . "&section=passwords&msg=pin_changed");
-            exit;
+            $written = file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT));
+            if ($written === false) {
+                $pinError = "Failed to save new PIN. Check file permissions.";
+            } else {
+                header("Location: admin.php?key=" . urlencode($key) . "&section=passwords&msg=pin_changed");
+                exit;
+            }
         } else {
             $pinError = "New PIN must be 4 digits and match confirmation.";
         }
@@ -99,9 +109,29 @@ if ($action && $device && $action !== 'change_password' && $action !== 'change_l
     exit;
 }
 
+// Load data
 $state = file_exists($stateFile) ? json_decode(file_get_contents($stateFile), true) : [];
+if (!is_array($state)) $state = [];
+
 $bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
 $bannedDevices = array_map('trim', $bannedDevices);
+
+// Read Visit History
+$visits = [];
+if (file_exists($visitsLog)) {
+    $lines = file($visitsLog, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        $v = json_decode($line, true);
+        if ($v) $visits[] = $v;
+    }
+}
+$visits = array_reverse($visits); // Latest first
+
+// Debug info
+$visitsLogSize = file_exists($visitsLog) ? filesize($visitsLog) : 0;
+$stateFileSize = file_exists($stateFile) ? filesize($stateFile) : 0;
+$totalVisitEntries = count($visits);
+$totalDevicesInState = count($state);
 
 function getPhotoBase64($deviceId) {
     $path = __DIR__ . "/photos/{$deviceId}.txt";
@@ -134,22 +164,7 @@ function truncateDeviceId($id, $len = 12) {
     return substr($id, 0, $len) . '…';
 }
 
-// Read Visit History
-$visitsLog = '/var/log/licence-app/visits.log';
-if (!file_exists($visitsLog)) {
-    $visitsLog = __DIR__ . '/visits.log';
-}
-$visits = [];
-if (file_exists($visitsLog)) {
-    $lines = file($visitsLog, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $line) {
-        $v = json_decode($line, true);
-        if ($v) $visits[] = $v;
-    }
-}
-$visits = array_reverse($visits); // Latest first
-
-// Classify devices as active or offline
+// Classify devices as active or offline - FIXED VERSION
 function getDeviceStatus($deviceId, $state, $visits) {
     global $bannedDevices;
     
@@ -187,11 +202,11 @@ function getDeviceStatus($deviceId, $state, $visits) {
     
     $diff = $now - $ts;
     
-    // If last event was app_visible and within 5 minutes → Active
-    // If last event was app_hidden or older than 5 mins → Offline
+    // If within 5 minutes, consider as potentially active
     if ($diff <= $fiveMinutes) {
         // Recent activity - check what event
-        if ($lastEvent === 'app_hidden' || $lastEvent === 'app_pagehide' || $lastEvent === 'app_beforeunload') {
+        $hideEvents = ['app_hidden', 'app_pagehide', 'app_beforeunload'];
+        if (in_array($lastEvent, $hideEvents)) {
             return 'offline';
         }
         return 'active';
@@ -315,6 +330,28 @@ $isPasswordView = $section === 'passwords';
         }
         .stat-card .num { font-size: 28px; font-weight: 700; }
         .stat-card .label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+        /* Debug section */
+        .debug-section {
+            background: #1e1e1e;
+            color: #c0c0c0;
+            border-radius: var(--radius);
+            padding: 14px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            display: none;
+        }
+        .debug-section.visible { display: block; }
+        .debug-toggle {
+            cursor: pointer;
+            user-select: none;
+        }
+        .debug-section .key { color: #569cd6; }
+        .debug-section .val { color: #ce9178; }
+        .debug-section .ok { color: #4ec9b0; }
+        .debug-section .fail { color: #f44747; }
 
         /* Section header */
         .section-header-bar {
@@ -533,6 +570,7 @@ $isPasswordView = $section === 'passwords';
         .event-badge.app_pagehide { background: #8e8e93; }
         .event-badge.app_beforeunload { background: #8e8e93; }
         .event-badge.data_cleared { background: var(--danger); }
+        .event-badge.data_updated { background: var(--warning); }
 
         /* Password Page */
         .password-grid {
@@ -628,6 +666,37 @@ $isPasswordView = $section === 'passwords';
 </head>
 <body>
     <div class="container">
+
+    <!-- Debug Info Toggle -->
+    <div style="text-align:right;margin-bottom:8px;">
+        <span class="debug-toggle btn btn-sm btn-outline" onclick="document.getElementById('debugInfo').classList.toggle('visible')">🐛 Toggle Debug Info</span>
+    </div>
+    <div id="debugInfo" class="debug-section">
+        <div><span class="key">visits.log</span>: <span class="val"><?=$visitsLog?></span></div>
+        <div><span class="key">visits.log size</span>: <span class="val"><?=$visitsLogSize?> bytes</span></div>
+        <div><span class="key">visits.log exists</span>: <span class="<?=file_exists($visitsLog)?'ok':'fail'?>"><?=file_exists($visitsLog)?'YES':'NO'?></span></div>
+        <div><span class="key">latest_state.json size</span>: <span class="val"><?=$stateFileSize?> bytes</span></div>
+        <div><span class="key">latest_state.json exists</span>: <span class="<?=file_exists($stateFile)?'ok':'fail'?>"><?=file_exists($stateFile)?'YES':'NO'?></span></div>
+        <div><span class="key">Total visit entries</span>: <span class="val"><?=$totalVisitEntries?></span></div>
+        <div><span class="key">Total devices in state</span>: <span class="val"><?=$totalDevicesInState?></span></div>
+        <div><span class="key">.admin_config.json exists</span>: <span class="<?=file_exists($configFile)?'ok':'fail'?>"><?=file_exists($configFile)?'YES':'NO'?></span></div>
+        <div><span class="key">.admin_config.json writable</span>: <span class="<?=is_writable($configFile)?'ok':'fail'?>"><?=is_writable($configFile)?'YES':'NO'?></span></div>
+        <div><span class="key">Current licence_pin</span>: <span class="val"><?=$config['licence_pin'] ?? 'NOT SET'?></span></div>
+        <div style="margin-top:8px;"><strong style="color:#fff;">Last 3 visit entries:</strong></div>
+        <?php 
+        $displayVisits = array_slice($visits, 0, 3);
+        if (empty($displayVisits)): ?>
+            <div style="color:#f44747;">No visit entries found!</div>
+        <?php else: 
+            foreach ($displayVisits as $v): ?>
+                <div style="margin-left:12px;margin-top:4px;border-left:2px solid #333;padding-left:8px;">
+                    <span class="key">timestamp</span>: <span class="val"><?=htmlspecialchars($v['timestamp'] ?? '—')?></span><br>
+                    <span class="key">deviceId</span>: <span class="val"><?=htmlspecialchars($v['deviceId'] ?? '—')?></span><br>
+                    <span class="key">event</span>: <span class="val"><?=htmlspecialchars($v['event'] ?? '—')?></span>
+                </div>
+        <?php endforeach; 
+        endif; ?>
+    </div>
 
     <?php if ($isProfileView): 
         $d = $state[$viewDevice];
@@ -728,23 +797,23 @@ $isPasswordView = $section === 'passwords';
         </header>
 
         <?php if (isset($_GET['msg']) && $_GET['msg'] === 'password_changed'): ?>
-            <div class="msg-box success">Admin password successfully changed!</div>
+            <div class="msg-box success">✅ Admin password successfully changed!</div>
         <?php elseif (isset($_GET['msg']) && $_GET['msg'] === 'pin_changed'): ?>
-            <div class="msg-box success">Licence PIN successfully changed!</div>
+            <div class="msg-box success">✅ Licence PIN successfully changed!</div>
         <?php endif; ?>
 
         <?php if (isset($passwordError)): ?>
-            <div class="msg-box error"><?= htmlspecialchars($passwordError) ?></div>
+            <div class="msg-box error">❌ <?= htmlspecialchars($passwordError) ?></div>
         <?php endif; ?>
         <?php if (isset($pinError)): ?>
-            <div class="msg-box error"><?= htmlspecialchars($pinError) ?></div>
+            <div class="msg-box error">❌ <?= htmlspecialchars($pinError) ?></div>
         <?php endif; ?>
 
         <div class="password-grid">
             <!-- Admin Password Form -->
             <div class="password-form">
                 <h3>🔑 Change Admin Password</h3>
-                <div class="current-value">Current Admin Password: ****</div>
+                <div class="current-value">Current Admin Password: **** (stored in .admin_config.json)</div>
                 <form method="POST" action="admin.php?key=<?= htmlspecialchars($key) ?>&section=passwords">
                     <input type="hidden" name="action" value="change_password">
                     <div class="form-group">
@@ -766,7 +835,7 @@ $isPasswordView = $section === 'passwords';
             <!-- Licence PIN Form -->
             <div class="password-form">
                 <h3>🔢 Change Licence PIN</h3>
-                <div class="current-value">Current Licence PIN: ****</div>
+                <div class="current-value">Current Licence PIN: **** (stored in .admin_config.json)</div>
                 <form method="POST" action="admin.php?key=<?= htmlspecialchars($key) ?>&section=passwords">
                     <input type="hidden" name="action" value="change_licence_pin">
                     <div class="form-group">
@@ -862,6 +931,9 @@ $isPasswordView = $section === 'passwords';
                 <div class="empty-state">
                     <div class="icon">📱</div>
                     No devices currently active. Open the licence app to see it here.
+                    <div style="margin-top:8px;font-size:12px;color:var(--text-muted);">
+                        Debug: check Toggle Debug Info above to see if data is being received.
+                    </div>
                 </div>
             <?php else: ?>
                 <?php foreach ($activeDevices as $id => $d): 

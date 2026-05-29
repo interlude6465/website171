@@ -26,6 +26,7 @@ npm-debug.log*
 banned_devices.txt
 ban_hits.log
 ban_debug.log
+debug.log
 latest_state.json
 visits.log
 .admin_config.json

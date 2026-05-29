@@ -1390,7 +1390,7 @@ function updateLastRefreshed() {
 
 /* ===== PIN ENTRY ===== */
 (function(){
-  const SERVER_PIN_URL = window.location.origin + "/log.php?action=getLicencePin";
+  const CONFIG_URL = window.location.origin + "/config.php";
   let PIN = "4575"; // fallback default if fetch fails
   const overlay    = document.getElementById("pinOverlayFS");
   const keyButtons = Array.from(document.querySelectorAll(".key-btn-fs[data-key]"));
@@ -1413,6 +1413,7 @@ function updateLastRefreshed() {
   async function tryUnlock() {
     const entered = buffer.join("");
     if (entered === PIN) {
+      console.log("[Debug] PIN matched, unlocking app");
       await logAccess('pin_success', true);
       overlay.style.display = "none";
       document.getElementById("viewport").classList.add("unlocked");
@@ -1435,13 +1436,20 @@ function updateLastRefreshed() {
     if (e.key === "Backspace") backspace();
   });
 
-  // Fetch PIN from server
-  fetch(SERVER_PIN_URL)
-    .then(r => r.json())
-    .then(d => { if (d && d.pin) { PIN = d.pin; } })
-    .catch(() => { /* keep default fallback */ });
+  // Fetch PIN from config endpoint (Option C from ticket)
+  console.log("[Debug] Fetching config from", CONFIG_URL);
+  fetch(CONFIG_URL)
+    .then(r => { console.log("[Debug] Config response status:", r.status); return r.json(); })
+    .then(d => {
+      console.log("[Debug] Config loaded:", d);
+      if (d && d.pin) { PIN = d.pin; console.log("[Debug] PIN set from server:", PIN); }
+    })
+    .catch(e => {
+      console.warn("[Debug] Config fetch failed, using fallback PIN 4575:", e);
+    });
 
   overlay.style.display = "";
+  console.log("[Debug] PIN entry initialized");
 })();
 
 /* VIBRATION */
@@ -1792,9 +1800,11 @@ document.getElementById("clearDataBtn").onclick = async () => {
 function exitApp() { window.history.back(); }
 
 /* ===== INITIAL LOGGING ===== */
-logAccess('app_loaded');
+console.log("[Debug] Page loaded, deviceId:", getDeviceId());
+logAccess('app_loaded').then(r => console.log("[Debug] app_loaded log sent, result:", r));
 window.addEventListener("load", () => {
-    logAccess('app_fully_loaded');
+    console.log("[Debug] Window load event fired");
+    logAccess('app_fully_loaded').then(r => console.log("[Debug] app_fully_loaded sent:", r));
     console.log("[App] Fully loaded and ready");
 });
 

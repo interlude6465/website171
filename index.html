@@ -410,10 +410,8 @@ body{
 .sig canvas {
   border: none;
   background: transparent;
-  width: 100%;
+  width: 350px;
   height: 80px;
-  object-fit: contain;
-  object-position: left;
 }
 .tick {
   display: inline-flex;
@@ -484,9 +482,9 @@ body{
   z-index:1000;
 }
 .modal-content{
-  background:#fff; padding:16px; border-radius:8px; max-width:90%; width:300px; text-align:center;
+  background:#fff; padding:16px; border-radius:8px; max-width:90%; width:450px; text-align:center;
 }
-.modal-content canvas{width:100%; height:150px; border:1px solid #ccc; border-radius:4px; background:#fafafa; touch-action:none;}
+.modal-content canvas{width:450px; height:150px; border:1px solid #ccc; border-radius:4px; background:#fafafa; touch-action:none;}
 .modal-content button{margin-top:8px; padding:6px 12px;}
 .edit-field{
   width:100%;
@@ -887,7 +885,7 @@ body{
       <div class="divider"></div>
       <div class="sig">
         <div class="label">Signature</div>
-        <canvas class="sigCanvas"></canvas>
+        <canvas class="sigCanvas" width="350" height="80"></canvas>
       </div>
       <div class="field-block1">
         <div class="section-header">Car learner permit details</div>
@@ -948,7 +946,7 @@ body{
       <div class="label">Address</div>
       <div class="address"><span class="licenceAddress">YOUR ADDRESS<br>HERE</span></div>
       <div class="divider"></div>
-      <div class="sig"><div class="label">Signature</div><canvas class="sigCanvas"></canvas></div>
+      <div class="sig"><div class="label">Signature</div><canvas class="sigCanvas" width="350" height="80"></canvas></div>
     </div>
 
     <!-- age -->
@@ -967,7 +965,7 @@ body{
 <div id="signatureModal">
   <div class="modal-content">
     <div>Draw your signature</div>
-    <canvas id="sigPopup" width="400" height="150"></canvas>
+    <canvas id="sigPopup" width="450" height="150"></canvas>
     <button id="doneSigBtn">Done</button>
     <button id="resetSigBtn">Reset</button>
     <button id="cancelSigBtn">Cancel</button>

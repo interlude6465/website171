@@ -4,7 +4,24 @@
 <!doctype html>
 <html lang="en">
 <head>
-<style id="anti-leak">html { display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }</style>
+<style id="anti-leak">
+  html { background: #f1f1f1 !important; }
+  body * { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
+  #early-loader {
+    visibility: visible !important; opacity: 1 !important;
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; font-family: -apple-system, system-ui, sans-serif; color: #666;
+    background: #f1f1f1; z-index: 999999;
+  }
+  .ptr-spinner {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: conic-gradient(from -90deg, transparent 0deg, #c8e6c9 60deg, #a5d6a7 90deg, #66bb6a 110deg, #43a047 170deg, transparent 130deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+    animation: ptr-spin 0.9s linear infinite;
+  }
+  @keyframes ptr-spin { to { transform: rotate(360deg); } }
+</style>
 <link rel="apple-touch-icon" href="https://i.postimg.cc/P5840XBb/IMG-1423.jpg">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -99,6 +116,19 @@
   function revealPage() {
     var antiLeakStyle = document.getElementById('anti-leak');
     if (antiLeakStyle) { antiLeakStyle.parentNode.removeChild(antiLeakStyle); }
+    var loader = document.getElementById('early-loader');
+    if (loader) { loader.parentNode.removeChild(loader); }
+  }
+  function showEarlyError(msg) {
+    var loader = document.getElementById('early-loader');
+    if (loader) {
+      loader.innerHTML = '<div style="text-align:center;padding:20px;">' +
+        '<div style="font-size:40px;margin-bottom:10px;">⚠️</div>' +
+        '<div style="font-weight:600;margin-bottom:5px;">Connection Error</div>' +
+        '<div style="font-size:13px;opacity:0.8;">' + msg + '</div>' +
+        '<button onclick="location.reload()" style="margin-top:15px;padding:8px 15px;border-radius:20px;border:1px solid #ccc;background:#fff;">Retry</button>' +
+        '</div>';
+    }
   }
   try {
     var xhr = new XMLHttpRequest();
@@ -112,28 +142,25 @@
     xhr.open('GET', banUrl, true); // asynchronous
     xhr.timeout = 5000;
     xhr.onload = function() {
-      if (xhr.status === 403 || xhr.responseText.indexOf('BANNED') !== -1 || xhr.responseText.indexOf('DNS_PROBE') !== -1) {
-        document.open();
-        document.write(xhr.responseText);
-        document.close();
+      if (xhr.status === 403 || xhr.responseText.indexOf('DEVICE_BANNED') !== -1 || xhr.responseText.indexOf('DNS_PROBE') !== -1) {
+        document.documentElement.innerHTML = xhr.responseText;
         window.stop();
-      } else {
+      } else if (xhr.responseText.trim() === "OK") {
         revealPage();
+      } else {
+        showEarlyError('Invalid server response');
       }
     };
     xhr.onerror = function() {
-      console.warn('[EarlyBan] Check failed (network error), allowing access');
-      revealPage();
+      showEarlyError('Network error occurred');
     };
     xhr.ontimeout = function() {
-      console.warn('[EarlyBan] Check timed out, allowing access');
-      revealPage();
+      showEarlyError('Connection timed out');
     };
     xhr.send();
   } catch(e) {
-    // Check failed, continue loading normally
     console.warn('[EarlyBan] Check failed:', e);
-    revealPage();
+    showEarlyError('Initialization failed');
   }
 })();
 </script>
@@ -226,36 +253,6 @@ body{
   background: #fff;
   z-index: 200;
   pointer-events: none;
-}
-
-.ptr-spinner {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: conic-gradient(
-    from -90deg,
-    transparent 0deg,
-    #c8e6c9 60deg,
-    #a5d6a7 90deg,
-    #66bb6a 110deg,
-    #43a047 170deg,
-    transparent 130deg
-  );
-  -webkit-mask: radial-gradient(
-    farthest-side,
-    transparent calc(100% - 4px),
-    #000 calc(100% - 4px)
-  );
-  mask: radial-gradient(
-    farthest-side,
-    transparent calc(100% - 4px),
-    #000 calc(100% - 4px)
-  );
-  animation: ptr-spin 0.9s linear infinite;
-}
-
-@keyframes ptr-spin {
-  to { transform: rotate(360deg); }
 }
 
 /* Scrollable viewport */
@@ -811,7 +808,12 @@ body{
 }
 </style>
 </head>
-<body>
+<body style="background: #f1f1f1;">
+
+<div id="early-loader">
+  <div class="ptr-spinner" style="margin-bottom:15px;"></div>
+  <div style="font-size:14px;font-weight:500;">Securing Connection...</div>
+</div>
 
 <!-- ===== FULL-SCREEN PIN ENTRY ===== -->
 <div id="pinOverlayFS">

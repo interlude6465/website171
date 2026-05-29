@@ -161,7 +161,9 @@ if ($action && ($device || $ip_to_ban || $action === 'ban_fingerprint' || $actio
         // Reset failed_attempts for the unbanned device to prevent immediate re-ban
         if (isset($state[$device])) {
             $state[$device]['failed_attempts'] = 0;
-            @file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT));
+            if (@file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT)) === false) {
+                // Log error or handle it as needed
+            }
         }
         // Also try to clear associated IP from bans
         if (isset($state[$device]) && !empty($state[$device]['ip'])) {

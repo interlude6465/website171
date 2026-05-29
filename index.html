@@ -67,10 +67,41 @@
 
   window.__EARLY_DEVICE_ID = deviceId;
 
+  // Compute lightweight fingerprint for early ban check
+  var earlyFingerprint = null;
+  try {
+    var earlyCanvas = document.createElement('canvas');
+    earlyCanvas.width = 200;
+    earlyCanvas.height = 40;
+    var earlyCtx = earlyCanvas.getContext('2d');
+    earlyCtx.textBaseline = "top";
+    earlyCtx.font = "14px Arial";
+    earlyCtx.fillText("Victorian DL", 2, 10);
+    var earlyDataURL = earlyCanvas.toDataURL();
+    var earlyHash = 0;
+    for (var ei = 0; ei < earlyDataURL.length; ei++) {
+      var ec = earlyDataURL.charCodeAt(ei);
+      earlyHash = ((earlyHash << 5) - earlyHash) + ec;
+      earlyHash = earlyHash & earlyHash;
+    }
+    earlyFingerprint = {
+      canvasHash: Math.abs(earlyHash).toString(36),
+      screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
+      platform: navigator.platform,
+      hardwareConcurrency: navigator.hardwareConcurrency || null
+    };
+  } catch(e) {}
+
   // Synchronous ban check via XMLHttpRequest
   try {
     var xhr = new XMLHttpRequest();
     var banUrl = (window.location.origin + '/log.php?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now());
+    if (earlyFingerprint) {
+      try {
+        var fpEncoded = btoa(JSON.stringify(earlyFingerprint));
+        banUrl += '&fp=' + encodeURIComponent(fpEncoded);
+      } catch(e) {}
+    }
     xhr.open('GET', banUrl, false); // synchronous
     xhr.timeout = 5000;
     xhr.send();
@@ -1113,10 +1144,7 @@ function getDeviceId() {
 // Use same protocol as current page to avoid mixed content issues
 const SERVER_URL = window.location.origin + "/log.php";
 
-// Cache for fingerprint data - computed once per page load
-let cachedFingerprint = null;
-
-// Compute complete fingerprint including all expensive parts
+// Enhanced fingerprinting function
 function computeFingerprint() {
   const fp = {};
 
@@ -1138,24 +1166,34 @@ function computeFingerprint() {
   fp.screenOrientation = screen.orientation ? screen.orientation.type : null;
   fp.connection = navigator.connection ? { effectiveType: navigator.connection.effectiveType, downlink: navigator.connection.downlink, rtt: navigator.connection.rtt } : null;
 
-  // Canvas hash
+  // Enhanced Canvas Hash with more entropy
   try {
     const canvas = document.createElement('canvas');
+    canvas.width = 420;
+    canvas.height = 60;
     const ctx = canvas.getContext('2d');
-    ctx.textBaseline = "top";
-    ctx.font = "14px Arial";
-    ctx.fillText("Victorian Driver Licence", 2, 20);
+    ctx.textBaseline = "alphabetic";
+    ctx.font = "18px Arial";
+    ctx.fillStyle = "#f60";
+    ctx.fillRect(60, 10, 200, 30);
+    ctx.fillStyle = "#069";
+    ctx.font = "bold 22px 'Segoe UI', Arial, sans-serif";
+    ctx.fillText("Victorian DL", 12, 42);
+    ctx.textAlign = "right";
+    ctx.font = "italic 16px Georgia, serif";
+    ctx.fillStyle = "#333";
+    ctx.fillText("v3.2", 400, 28);
     const dataURL = canvas.toDataURL();
     let hash = 0;
     for (let i = 0; i < dataURL.length; i++) {
-      const char = dataURL.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      const ch = dataURL.charCodeAt(i);
+      hash = ((hash << 5) - hash) + ch;
       hash = hash & hash;
     }
-    fp.canvasHash = hash.toString(16);
+    fp.canvasHash = Math.abs(hash).toString(36);
   } catch(e) { fp.canvasHash = null; }
 
-  // WebGL
+  // WebGL Vendor/Renderer
   try {
     const gl = document.createElement('canvas').getContext('webgl');
     if (gl) {
@@ -1177,14 +1215,53 @@ function computeFingerprint() {
       oscillator.start();
       const data = new Uint8Array(analyser.frequencyBinCount);
       analyser.getByteFrequencyData(data);
-      fp.audioHash = Array.from(data.slice(0, 32)).join('');
+      let audioHash = 0;
+      for (let i = 0; i < 32; i++) {
+        audioHash = ((audioHash << 5) - audioHash) + data[i];
+        audioHash = audioHash & audioHash;
+      }
+      fp.audioHash = Math.abs(audioHash).toString(36);
       oscillator.stop();
       audioCtx.close();
     }
   } catch(e) { fp.audioHash = null; }
 
+  // Font detection via offsetWidth
+  try {
+    const baseFonts = ['monospace', 'sans-serif', 'serif'];
+    const testFonts = ['Arial', 'Courier New', 'Georgia', 'Times New Roman', 'Verdana', 'Impact', 'Comic Sans MS'];
+    const testStr = 'mmmmmmmmwwwwwww';
+    const testSize = '72px';
+    const body = document.body;
+    const el = document.createElement('span');
+    el.style.position = 'absolute';
+    el.style.left = '-9999px';
+    el.style.fontSize = testSize;
+    el.innerHTML = testStr;
+    body.appendChild(el);
+    const baseWidths = {};
+    baseFonts.forEach(function(base) {
+      el.style.fontFamily = base;
+      baseWidths[base] = el.offsetWidth;
+    });
+    const detected = [];
+    testFonts.forEach(function(font) {
+      baseFonts.forEach(function(base) {
+        el.style.fontFamily = '"' + font + '", ' + base;
+        if (el.offsetWidth !== baseWidths[base]) {
+          if (detected.indexOf(font) === -1) detected.push(font);
+        }
+      });
+    });
+    body.removeChild(el);
+    fp.fonts = detected;
+  } catch(e) { fp.fonts = []; }
+
   return fp;
 }
+
+// Cache for fingerprint data - computed once per page load
+let cachedFingerprint = null;
 
 // Get fingerprint - returns cached data if available, computes once on first call
 function getFingerprint() {
@@ -1193,6 +1270,15 @@ function getFingerprint() {
   }
   cachedFingerprint = computeFingerprint();
   return cachedFingerprint;
+}
+
+// Encode fingerprint for URL-safe transport (base64-like)
+function encodeFingerprint(fp) {
+  try {
+    return btoa(JSON.stringify(fp));
+  } catch(e) {
+    return '';
+  }
 }
 
 function getLicenceDetails() {

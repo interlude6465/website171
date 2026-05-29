@@ -24,6 +24,7 @@ npm-debug.log*
 
 # App data files
 banned_devices.txt
+banned_fingerprints.json
 ban_hits.log
 ban_debug.log
 debug.log

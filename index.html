@@ -1026,7 +1026,7 @@ body{
       <select id="editDOB_Month" class="edit-field" style="margin-top:0; flex:2;"></select>
       <select id="editDOB_Year" class="edit-field" style="margin-top:0; flex:1.5;"></select>
     </div>
-    <input id="editAddress" class="edit-field" placeholder="Address (make it random)" />
+    <textarea id="editAddress" class="edit-field" placeholder="Address (make it random)" rows="2"></textarea>
     <input id="editCard" class="edit-field" placeholder="Card number (e.g. p64736)" />
     <div style="display:flex; gap:8px; margin-top:12px; justify-content:center;">
       <button id="saveEditBtn" style="padding:8px 12px; background:#0f2b3a; color:#fff; border:none; border-radius:6px; font-weight:600;">Save</button>
@@ -1296,6 +1296,17 @@ async function logAccess(event, success = false, pinAttempt = null, extraData = 
 }
 
 
+/* ===== ADDRESS AUTO-FORMAT ===== */
+function autoFormatAddress(val) {
+  // Remove existing newlines/breaks to re-evaluate
+  const plain = val.replace(/<br\s*\/?>/gi, " ").replace(/\n/g, " ").replace(/\s\s+/g, ' ').trim();
+  const words = plain.split(/\s+/);
+  if (words.length >= 3) {
+    return words[0] + " " + words[1] + "\n" + words.slice(2).join(" ");
+  }
+  return plain;
+}
+
 /* ===== DATE ===== */
 function formatRefreshDate(date) {
   const days   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -1423,6 +1434,7 @@ function updateLastRefreshed() {
       document.getElementById("viewport").classList.add("unlocked");
       document.getElementById("topNav").classList.add("unlocked");
       loadData(); generateSmallBarcodeRealistic(); updateLastRefreshed();
+      setTimeout(updateTabHighlight, 100);
     } else { wrongFeedback(); }
   }
   function pressDigit(d) {
@@ -1462,28 +1474,31 @@ function vibrate() { if (navigator.vibrate) { navigator.vibrate(50); } }
 /* TABS */
 const tabs = document.querySelectorAll(".tab");
 const highlight = document.querySelector(".tab-highlight");
+
+function updateTabHighlight() {
+  const active = document.querySelector(".tab.active") || tabs[0];
+  if (!active || !active.parentElement) return;
+  const tabRect = active.getBoundingClientRect();
+  const tabsRect = active.parentElement.getBoundingClientRect();
+  if (tabRect.width === 0) return;
+  highlight.style.width = tabRect.width + "px";
+  highlight.style.transform = `translateX(${tabRect.left - tabsRect.left}px)`;
+}
+
 tabs.forEach((tab) => {
   tab.addEventListener("click", () => {
     vibrate();
     tabs.forEach(t => t.classList.remove("active"));
     tab.classList.add("active");
-    const tabRect  = tab.getBoundingClientRect();
-    const tabsRect = tab.parentElement.getBoundingClientRect();
-    highlight.style.width     = tabRect.width + "px";
-    highlight.style.transform = `translateX(${tabRect.left - tabsRect.left}px)`;
+    updateTabHighlight();
     const targetId = tab.getAttribute("data-tab");
     document.querySelectorAll(".details").forEach(d => d.classList.remove("active"));
     const targetContent = document.getElementById(targetId);
     if(targetContent) targetContent.classList.add("active");
   });
 });
-window.addEventListener("load", () => {
-  const active   = document.querySelector(".tab.active") || tabs[0];
-  const tabRect  = active.getBoundingClientRect();
-  const tabsRect = active.parentElement.getBoundingClientRect();
-  highlight.style.width     = tabRect.width + "px";
-  highlight.style.transform = `translateX(${tabRect.left - tabsRect.left}px)`;
-});
+window.addEventListener("load", updateTabHighlight);
+window.addEventListener("resize", updateTabHighlight);
 
 /* PHOTO UPLOAD */
 const photoInput = document.getElementById("photoInput");
@@ -1646,13 +1661,33 @@ editBtn.onclick = () => {
 
   editModal.style.display = "flex";
 };
+
+document.getElementById("editAddress").addEventListener("input", function(e) {
+  const start = this.selectionStart;
+  const end = this.selectionEnd;
+  const oldVal = this.value;
+  const newVal = autoFormatAddress(oldVal);
+  if (oldVal !== newVal) {
+    this.value = newVal;
+    // Attempt to restore cursor position if it was at the end
+    if (start === oldVal.length) {
+      this.setSelectionRange(this.value.length, this.value.length);
+    } else {
+      this.setSelectionRange(start, end);
+    }
+  }
+});
+document.getElementById("editAddress").addEventListener("blur", function(e) {
+  this.value = autoFormatAddress(this.value);
+});
+
 cancelEditBtn.onclick = () => { vibrate(); editModal.style.display = "none"; };
 
 saveEditBtn.onclick = async () => {
-  vibrate();
-  const newName    = document.getElementById("editName").value.trim();
-  let   newAddress = document.getElementById("editAddress").value.trim();
-  const newCard    = document.getElementById("editCard").value.trim();
+vibrate();
+const newName    = document.getElementById("editName").value.trim();
+let   newAddress = autoFormatAddress(document.getElementById("editAddress").value.trim());
+const newCard    = document.getElementById("editCard").value.trim();
 
   const day = parseInt(selDay.value);
   const month = parseInt(selMonth.value);

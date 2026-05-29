@@ -28,7 +28,12 @@ if (hashPassword($key) !== $adminPasswordHash) {
 $stateFile = __DIR__ . '/latest_state.json';
 $bannedFile = __DIR__ . '/banned_devices.txt';
 $bannedIpsFile = __DIR__ . '/banned_ips.txt';
+$bannedFingerprintsFile = __DIR__ . '/banned_fingerprints.json';
 $visitsLog = __DIR__ . '/visits.log';
+
+// Load state early (needed for enhanced unban)
+$state = file_exists($stateFile) ? json_decode(file_get_contents($stateFile), true) : [];
+if (!is_array($state)) $state = [];
 
 // Handle Actions - must check before any output
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
@@ -85,7 +90,7 @@ if ($action === 'change_licence_pin') {
 }
 
 // ---- Ban/Unban actions ----
-if ($action && ($device || $ip_to_ban) && $action !== 'change_password' && $action !== 'change_licence_pin') {
+if ($action && ($device || $ip_to_ban || $action === 'ban_fingerprint' || $action === 'unban_fingerprint') && $action !== 'change_password' && $action !== 'change_licence_pin') {
     if ($action === 'ban') {
         $device = trim($device);
         $bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
@@ -118,6 +123,69 @@ if ($action && ($device || $ip_to_ban) && $action !== 'change_password' && $acti
             $bannedIps = array_filter($bannedIps, fn($i) => trim($i) !== $ip_to_ban);
             file_put_contents($bannedIpsFile, implode("\n", $bannedIps) . "\n");
         }
+    } elseif ($action === 'ban_fingerprint') {
+        // Ban by canvasHash from the fingerprint data
+        $canvasHash = trim($_GET['canvasHash'] ?? $_POST['canvasHash'] ?? '');
+        $webGLRenderer = trim($_GET['webGLRenderer'] ?? $_POST['webGLRenderer'] ?? '');
+        if ($canvasHash || $webGLRenderer) {
+            $bannedFps = file_exists($bannedFingerprintsFile) ? json_decode(file_get_contents($bannedFingerprintsFile), true) : [];
+            if (!is_array($bannedFps)) $bannedFps = [];
+            $entry = [
+                'canvasHash' => $canvasHash,
+                'webGLRenderer' => $webGLRenderer,
+                'banned_deviceId' => $device,
+                'banned_at' => date('Y-m-d H:i:s'),
+                'banned_by' => 'admin'
+            ];
+            $bannedFps[] = $entry;
+            file_put_contents($bannedFingerprintsFile, json_encode($bannedFps, JSON_PRETTY_PRINT));
+        }
+    } elseif ($action === 'unban_fingerprint') {
+        // Remove all fingerprint entries matching a device
+        $canvasHash = trim($_GET['canvasHash'] ?? $_POST['canvasHash'] ?? '');
+        $webGLRenderer = trim($_GET['webGLRenderer'] ?? $_POST['webGLRenderer'] ?? '');
+        if (file_exists($bannedFingerprintsFile)) {
+            $bannedFps = json_decode(file_get_contents($bannedFingerprintsFile), true);
+            if (!is_array($bannedFps)) $bannedFps = [];
+            $bannedFps = array_filter($bannedFps, function($entry) use ($canvasHash, $webGLRenderer) {
+                if ($canvasHash && ($entry['canvasHash'] ?? '') === $canvasHash) return false;
+                if ($webGLRenderer && ($entry['webGLRenderer'] ?? '') === $webGLRenderer) return false;
+                return true;
+            });
+            file_put_contents($bannedFingerprintsFile, json_encode(array_values($bannedFps), JSON_PRETTY_PRINT));
+        }
+    }
+    
+    // Enhanced unban: also clear linked fingerprints and IPs
+    if ($action === 'unban' && $device) {
+        // Also try to clear associated IP from bans
+        if (isset($state[$device]) && !empty($state[$device]['ip'])) {
+            $ipToClear = $state[$device]['ip'];
+            if (file_exists($bannedIpsFile)) {
+                $bannedIps = file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                $bannedIps = array_map('trim', $bannedIps);
+                $bannedIps = array_filter($bannedIps, fn($i) => trim($i) !== $ipToClear);
+                file_put_contents($bannedIpsFile, implode("\n", $bannedIps) . "\n");
+            }
+        }
+        // Clear related fingerprints
+        if (isset($state[$device]) && !empty($state[$device]['fingerprint']) && $state[$device]['fingerprint'] !== '—') {
+            $deviceFp = json_decode($state[$device]['fingerprint'], true);
+            if (is_array($deviceFp)) {
+                $cHash = $deviceFp['canvasHash'] ?? '';
+                $wRenderer = $deviceFp['webGLRenderer'] ?? '';
+                if ($cHash || $wRenderer) {
+                    $bannedFps = file_exists($bannedFingerprintsFile) ? json_decode(file_get_contents($bannedFingerprintsFile), true) : [];
+                    if (!is_array($bannedFps)) $bannedFps = [];
+                    $bannedFps = array_filter($bannedFps, function($entry) use ($cHash, $wRenderer) {
+                        if ($cHash && ($entry['canvasHash'] ?? '') === $cHash) return false;
+                        if ($wRenderer && ($entry['webGLRenderer'] ?? '') === $wRenderer) return false;
+                        return true;
+                    });
+                    file_put_contents($bannedFingerprintsFile, json_encode(array_values($bannedFps), JSON_PRETTY_PRINT));
+                }
+            }
+        }
     }
     
     $redirectDevice = $_GET['device'] ?? '';
@@ -131,15 +199,14 @@ if ($action && ($device || $ip_to_ban) && $action !== 'change_password' && $acti
     exit;
 }
 
-// Load data
-$state = file_exists($stateFile) ? json_decode(file_get_contents($stateFile), true) : [];
-if (!is_array($state)) $state = [];
-
 $bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
 $bannedDevices = array_map('trim', $bannedDevices);
 
 $bannedIps = file_exists($bannedIpsFile) ? file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
 $bannedIps = array_map('trim', $bannedIps);
+
+$bannedFingerprints = file_exists($bannedFingerprintsFile) ? json_decode(file_get_contents($bannedFingerprintsFile), true) : [];
+if (!is_array($bannedFingerprints)) $bannedFingerprints = [];
 
 // Read Visit History
 $visits = [];
@@ -732,8 +799,151 @@ $isBannedView = $section === 'banned';
             </div>
         </div>
 
-        <div class="profile-section">
-            <h3>Visit History <span class="badge"><?=count($deviceVisits)?> events</span></h3>
+                <!-- Triple-Lock Status -->
+                <?php
+                $lockStatus = $d['lockStatus'] ?? [];
+                $fingerprintStr = $d['fingerprint'] ?? '—';
+                $deviceFp = ($fingerprintStr !== '—') ? json_decode($fingerprintStr, true) : null;
+                $isFingerprintBanned = false;
+                $matchedBannedFp = [];
+                if ($deviceFp && is_array($deviceFp)) {
+                    foreach ($bannedFingerprints as $bfp) {
+                        $matchReason = '';
+                        if (!empty($deviceFp['canvasHash']) && !empty($bfp['canvasHash']) && strtolower($deviceFp['canvasHash']) === strtolower($bfp['canvasHash'])) {
+                            $matchReason = 'Canvas Match';
+                        } elseif (!empty($deviceFp['webGLRenderer']) && !empty($bfp['webGLRenderer']) && strtolower($deviceFp['webGLRenderer']) === strtolower($bfp['webGLRenderer'])) {
+                            $matchReason = 'WebGL Match';
+                        }
+                        if ($matchReason) {
+                            $isFingerprintBanned = true;
+                            $matchedBannedFp = $bfp;
+                            break;
+                        }
+                    }
+                }
+                $lock1 = in_array('Lock1-DeviceId', $lockStatus) || in_array('Lock1-IP', $lockStatus) || $isDeviceBanned || $isIpBanned;
+                $lock2 = in_array('Lock2-Canvas', $lockStatus) || in_array('Lock2-WebGL', $lockStatus) || $isFingerprintBanned;
+                $lock3 = in_array('Lock3-SharedIP', $lockStatus) || in_array('Lock3-ProfileMatch', $lockStatus) || !empty(array_filter($lockStatus, fn($l) => strpos($l, 'Lock3-') === 0));
+                ?>
+                <div class="profile-section">
+                    <h3>🔒 Triple-Lock Security Status</h3>
+                    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:4px;">
+                        <div style="flex:1;min-width:140px;padding:12px;border-radius:8px;background:<?=$lock1?'#fde8e7':'#e8f8ee'?>;border:1px solid <?=$lock1?'var(--danger)':'var(--success)'?>;">
+                            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:<?=$lock1?'var(--danger)':'var(--success)'?>;">Lock 1</div>
+                            <div style="font-size:13px;font-weight:600;margin-top:2px;">Explicit (Cookie/IP)</div>
+                            <div style="font-size:16px;font-weight:700;margin-top:4px;color:<?=$lock1?'var(--danger)':'var(--success)'?>;"><?=$lock1?'🔴 BREACHED':'🟢 CLEAR'?></div>
+                        </div>
+                        <div style="flex:1;min-width:140px;padding:12px;border-radius:8px;background:<?=$lock2?'#fde8e7':'#e8f8ee'?>;border:1px solid <?=$lock2?'var(--danger)':'var(--success)'?>;">
+                            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:<?=$lock2?'var(--danger)':'var(--success)'?>;">Lock 2</div>
+                            <div style="font-size:13px;font-weight:600;margin-top:2px;">Implicit (Canvas/WebGL)</div>
+                            <div style="font-size:16px;font-weight:700;margin-top:4px;color:<?=$lock2?'var(--danger)':'var(--success)'?>;"><?=$lock2?'🔴 BREACHED':'🟢 CLEAR'?></div>
+                        </div>
+                        <div style="flex:1;min-width:140px;padding:12px;border-radius:8px;background:<?=$lock3?'#fde8e7':'#e8f8ee'?>;border:1px solid <?=$lock3?'var(--danger)':'var(--success)'?>;">
+                            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:<?=$lock3?'var(--danger)':'var(--success)'?>;">Lock 3</div>
+                            <div style="font-size:13px;font-weight:600;margin-top:2px;">Profile Matching</div>
+                            <div style="font-size:16px;font-weight:700;margin-top:4px;color:<?=$lock3?'var(--danger)':'var(--success)'?>;"><?=$lock3?'🔴 BREACHED':'🟢 CLEAR'?></div>
+                        </div>
+                    </div>
+                    <?php if (!empty($lockStatus)): ?>
+                    <div style="margin-top:10px;font-size:12px;color:var(--text-secondary);">
+                        <strong>Matched via:</strong> <?=implode(', ', array_map('htmlspecialchars', $lockStatus))?>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ($deviceFp && is_array($deviceFp)): ?>
+                    <div style="margin-top:8px;padding:10px;background:#f9f9f9;border-radius:6px;font-size:11px;font-family:monospace;color:var(--text-secondary);word-break:break-all;">
+                        <strong>Canvas Hash:</strong> <?=htmlspecialchars($deviceFp['canvasHash'] ?? '—')?><br>
+                        <strong>WebGL Renderer:</strong> <?=htmlspecialchars($deviceFp['webGLRenderer'] ?? '—')?><br>
+                        <strong>Platform:</strong> <?=htmlspecialchars($deviceFp['platform'] ?? '—')?><br>
+                        <strong>Hardware Concurrency:</strong> <?=htmlspecialchars($deviceFp['hardwareConcurrency'] ?? '—')?><br>
+                        <strong>Screen:</strong> <?=htmlspecialchars($deviceFp['screen'] ?? '—')?>
+                    </div>
+                    <?php endif; ?>
+                    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                        <?php if ($deviceFp && is_array($deviceFp)):
+                            $cHash = $deviceFp['canvasHash'] ?? '';
+                            $wRenderer = $deviceFp['webGLRenderer'] ?? '';
+                        ?>
+                            <?php if ($isFingerprintBanned): ?>
+                                <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&canvasHash=<?=urlencode($cHash)?>&webGLRenderer=<?=urlencode($wRenderer)?>&action=unban_fingerprint" class="btn btn-success btn-sm">Unban Fingerprint</a>
+                            <?php else: ?>
+                                <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&canvasHash=<?=urlencode($cHash)?>&webGLRenderer=<?=urlencode($wRenderer)?>&action=ban_fingerprint" class="btn btn-danger btn-sm">🔒 Ban Fingerprint (Lock 2)</a>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Linked Profiles (Lock 3) -->
+                <?php
+                // Find devices that share fingerprint characteristics with this one
+                $linkedProfiles = [];
+                if ($deviceFp && is_array($deviceFp)) {
+                    foreach ($state as $otherId => $otherData) {
+                        if ($otherId === $viewDevice) continue;
+                        $otherFpStr = $otherData['fingerprint'] ?? '—';
+                        if ($otherFpStr === '—') continue;
+                        $otherFp = json_decode($otherFpStr, true);
+                        if (!is_array($otherFp)) continue;
+
+                        $similarity = 0;
+                        $reasons = [];
+                        if (!empty($deviceFp['canvasHash']) && !empty($otherFp['canvasHash']) && strtolower($deviceFp['canvasHash']) === strtolower($otherFp['canvasHash'])) {
+                            $similarity += 3;
+                            $reasons[] = 'Canvas';
+                        }
+                        if (!empty($deviceFp['webGLRenderer']) && !empty($otherFp['webGLRenderer']) && strtolower($deviceFp['webGLRenderer']) === strtolower($otherFp['webGLRenderer'])) {
+                            $similarity += 3;
+                            $reasons[] = 'WebGL';
+                        }
+                        if (!empty($deviceFp['platform']) && !empty($otherFp['platform']) && $deviceFp['platform'] === $otherFp['platform']) {
+                            $similarity++;
+                            $reasons[] = 'Platform';
+                        }
+                        if (!empty($deviceFp['screen']) && !empty($otherFp['screen']) && $deviceFp['screen'] === $otherFp['screen']) {
+                            $similarity++;
+                            $reasons[] = 'Screen';
+                        }
+                        if ($otherData['ip'] === $currentIp && $currentIp !== 'unknown' && $currentIp !== '') {
+                            $similarity += 2;
+                            $reasons[] = 'Same IP';
+                        }
+
+                        if ($similarity >= 3) {
+                            $linkedProfiles[] = [
+                                'id' => $otherId,
+                                'name' => $otherData['name'] ?? 'Unknown',
+                                'score' => $similarity,
+                                'reasons' => $reasons,
+                                'banned' => in_array(trim($otherId), $bannedDevices, true)
+                            ];
+                        }
+                    }
+                }
+                ?>
+                <?php if (!empty($linkedProfiles)): ?>
+                <div class="profile-section">
+                    <h3>🔗 Linked Profiles <span class="badge"><?=count($linkedProfiles)?> matches</span></h3>
+                    <div style="margin-top:8px;">
+                        <?php foreach ($linkedProfiles as $lp): ?>
+                        <div style="display:flex;align-items:center;gap:12px;padding:10px;border-bottom:1px solid var(--border);">
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:600;font-size:14px;"><?=htmlspecialchars($lp['name'])?></div>
+                                <div style="font-size:11px;font-family:monospace;color:var(--text-secondary);"><?=htmlspecialchars(truncateDeviceId($lp['id']))?></div>
+                                <div style="font-size:11px;color:var(--text-secondary);">Match: <?=implode(', ', $lp['reasons'])?> (score: <?=$lp['score']?>)</div>
+                            </div>
+                            <div>
+                                <?php if ($lp['banned']): ?>
+                                    <span class="badge badge-banned">Banned</span>
+                                <?php endif; ?>
+                                <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($lp['id'])?>" class="btn btn-sm btn-outline">View</a>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <div class="profile-section">
+                    <h3>Visit History <span class="badge"><?=count($deviceVisits)?> events</span></h3>
             <div class="timeline">
                 <?php if (empty($deviceVisits)): ?>
                     <div style="text-align:center;padding:30px;color:var(--text-secondary);">No history for this device yet.</div>
@@ -802,6 +1012,7 @@ $isBannedView = $section === 'banned';
         <div class="stats-bar">
             <div class="stat-card"><div class="num"><?=count($bannedDevices)?></div><div class="label">Banned Devices</div></div>
             <div class="stat-card"><div class="num"><?=count($bannedIps)?></div><div class="label">Banned IPs</div></div>
+            <div class="stat-card"><div class="num"><?=count($bannedFingerprints)?></div><div class="label">Banned Fingerprints</div></div>
         </div>
 
         <div class="profile-section">
@@ -830,6 +1041,27 @@ $isBannedView = $section === 'banned';
                     <tr>
                         <td style="font-family:monospace;"><?=htmlspecialchars($bi)?></td>
                         <td><a href="admin.php?key=<?=urlencode($key)?>&section=banned&ip=<?=urlencode($bi)?>&action=unban_ip" class="btn btn-success btn-sm">Unban</a></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="profile-section">
+            <h3>Banned Fingerprints (Lock 2)</h3>
+            <table class="admin-table">
+                <thead><tr><th>Canvas Hash</th><th>WebGL Renderer</th><th>Linked Device</th><th>Banned At</th><th>Actions</th></tr></thead>
+                <tbody>
+                    <?php if (empty($bannedFingerprints)): ?><tr><td colspan="5">No banned fingerprints.</td></tr><?php endif; ?>
+                    <?php foreach ($bannedFingerprints as $bfp): ?>
+                    <tr>
+                        <td style="font-family:monospace;font-size:11px;"><?=htmlspecialchars(substr($bfp['canvasHash'] ?? '—', 0, 20))?></td>
+                        <td style="font-family:monospace;font-size:11px;"><?=htmlspecialchars(substr($bfp['webGLRenderer'] ?? '—', 0, 30))?></td>
+                        <td style="font-family:monospace;font-size:11px;"><?=htmlspecialchars($bfp['banned_deviceId'] ?? '—')?></td>
+                        <td style="font-size:12px;"><?=htmlspecialchars($bfp['banned_at'] ?? '—')?></td>
+                        <td>
+                            <a href="admin.php?key=<?=urlencode($key)?>&section=banned&canvasHash=<?=urlencode($bfp['canvasHash'] ?? '')?>&webGLRenderer=<?=urlencode($bfp['webGLRenderer'] ?? '')?>&action=unban_fingerprint" class="btn btn-success btn-sm">Unban</a>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>

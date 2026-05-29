@@ -83,12 +83,7 @@ if ($action && ($device || $ip_to_ban) && !in_array($action, ['change_password',
         if (file_exists($bannedFile)) {
             $bannedDevices = file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
             $bannedDevices = array_filter(array_map('trim', $bannedDevices), fn($d) => $d !== $device);
-            $bannedDevices = array_values($bannedDevices); // re-index
-            if (!empty($bannedDevices)) {
-                file_put_contents($bannedFile, implode("\n", $bannedDevices) . "\n");
-            } else {
-                file_put_contents($bannedFile, ''); // empty file
-            }
+            file_put_contents($bannedFile, implode("\n", $bannedDevices) . "\n");
         }
     } elseif ($action === 'ban_ip') {
         $bannedIps = file_exists($bannedIpsFile) ? file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];

@@ -21,3 +21,10 @@ npm-debug.log*
 # Environment
 .env
 .env.local
+
+# App data files
+banned_devices.txt
+ban_hits.log
+latest_state.json
+visits.log
+photos/

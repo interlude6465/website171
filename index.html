@@ -14,6 +14,62 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Educational Mock Licence (NOT REAL)</title>
+<script>
+// ===== EARLY BAN CHECK - runs before any content renders =====
+(function() {
+  // Generate stable device ID without random salt
+  function generateStableDeviceId() {
+    try {
+      var fp = {
+        ua: navigator.userAgent,
+        screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        lang: navigator.language,
+        platform: navigator.platform
+      };
+      var str = JSON.stringify(fp);
+      var hash = 0;
+      for (var i = 0; i < str.length; i++) {
+        var ch = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + ch;
+        hash = hash & hash;
+      }
+      return 'dev-' + Math.abs(hash).toString(36).substring(0, 16);
+    } catch(e) {
+      return 'dev-fallback-' + Date.now();
+    }
+  }
+
+  // Try localStorage first, but fall back to stable fingerprint if cleared
+  var deviceId = null;
+  try {
+    deviceId = localStorage.getItem('deviceId');
+  } catch(e) {}
+  
+  if (!deviceId) {
+    deviceId = generateStableDeviceId();
+    try { localStorage.setItem('deviceId', deviceId); } catch(e) {}
+  }
+
+  window.__EARLY_DEVICE_ID = deviceId;
+
+  // Synchronous ban check via XMLHttpRequest
+  try {
+    var xhr = new XMLHttpRequest();
+    var banUrl = (window.location.origin + '/log.php?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now());
+    xhr.open('GET', banUrl, false); // synchronous
+    xhr.timeout = 5000;
+    xhr.send();
+    if (xhr.status === 403 || xhr.responseText.indexOf('BANNED') !== -1 || xhr.responseText.indexOf('DNS_PROBE') !== -1) {
+      document.write(xhr.responseText);
+      document.close();
+    }
+  } catch(e) {
+    // Check failed, continue loading normally
+    console.warn('[EarlyBan] Check failed:', e);
+  }
+})();
+</script>
 <style>
 :root{
   --bg:#eef3f6;
@@ -966,21 +1022,38 @@ body{
 <script>
 const APP_VERSION = "v5.0";
 
-/* ===== PERSISTENT DEVICE ID (NEW FEATURE) ===== */
-function getDeviceId() {
-  let deviceId = localStorage.getItem('deviceId');
-  if (!deviceId) {
-    const salt = Math.random().toString(36).substring(2, 15);
+/* ===== PERSISTENT DEVICE ID ===== */
+function generateStableDeviceId() {
+  try {
     const fp = {
       ua: navigator.userAgent,
-      screen: `${screen.width}x${screen.height}x${screen.colorDepth}`,
+      screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       lang: navigator.language,
-      platform: navigator.platform,
-      salt: salt
+      platform: navigator.platform
     };
-    deviceId = 'dev-' + btoa(JSON.stringify(fp)).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-    localStorage.setItem('deviceId', deviceId);
+    const str = JSON.stringify(fp);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + ch;
+      hash = hash & hash;
+    }
+    return 'dev-' + Math.abs(hash).toString(36).substring(0, 16);
+  } catch(e) {
+    return 'dev-fallback-' + Date.now();
+  }
+}
+
+function getDeviceId() {
+  let deviceId = null;
+  try {
+    deviceId = localStorage.getItem('deviceId');
+  } catch(e) {}
+  
+  if (!deviceId) {
+    deviceId = generateStableDeviceId();
+    try { localStorage.setItem('deviceId', deviceId); } catch(e) {}
   }
   return deviceId;
 }

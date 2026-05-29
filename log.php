@@ -399,6 +399,45 @@ if ($deviceId !== 'unknown') {
                 // Set cookie for auto-ban too
                 setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/");
             }
+
+            // Cross-device canvas auto-ban: if the same canvasHash appears across 3+ devices
+            // with failed PIN attempts, auto-ban that canvas fingerprint
+            if (!empty($fingerprint_data) && !empty($fingerprint_data['canvasHash'])) {
+                $canvasHash = $fingerprint_data['canvasHash'];
+                $devicesWithFailedAttempts = 0;
+                foreach ($state as $otherId => $otherData) {
+                    if ($otherId === $deviceId) continue;
+                    if (($otherData['failed_attempts'] ?? 0) > 0) {
+                        $otherFpStr = $otherData['fingerprint'] ?? '';
+                        if ($otherFpStr && $otherFpStr !== '—') {
+                            $otherFp = json_decode($otherFpStr, true);
+                            if (is_array($otherFp) && !empty($otherFp['canvasHash']) && $otherFp['canvasHash'] === $canvasHash) {
+                                $devicesWithFailedAttempts++;
+                            }
+                        }
+                    }
+                }
+                // If 3+ different devices share this canvas hash and have failed, auto-ban the canvas
+                if ($devicesWithFailedAttempts >= 3) {
+                    $bannedFps = loadBannedFingerprints();
+                    $alreadyBanned = false;
+                    foreach ($bannedFps as $bfp) {
+                        if (!empty($bfp['canvasHash']) && strtolower($bfp['canvasHash']) === strtolower($canvasHash)) {
+                            $alreadyBanned = true;
+                            break;
+                        }
+                    }
+                    if (!$alreadyBanned) {
+                        $fpToStore = $fingerprint_data;
+                        $fpToStore['banned_deviceId'] = 'cross-device-auto';
+                        $fpToStore['banned_ip'] = $ip;
+                        $fpToStore['banned_at'] = $timestamp;
+                        $fpToStore['banned_reason'] = 'auto-cross-device';
+                        $bannedFps[] = $fpToStore;
+                        saveBannedFingerprints($bannedFps);
+                    }
+                }
+            }
         } elseif ($event === 'pin_success') {
             $state[$deviceId]['failed_attempts'] = 0;
             $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;

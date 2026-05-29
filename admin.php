@@ -13,16 +13,19 @@ $action = $_GET['action'] ?? '';
 $device = $_GET['device'] ?? '';
 
 if ($action && $device) {
+    $device = trim($device);
     if ($action === 'ban') {
         $bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
-        if (!in_array($device, $bannedDevices)) {
+        $bannedDevices = array_map('trim', $bannedDevices);
+        if (!in_array($device, $bannedDevices, true)) {
             $bannedDevices[] = $device;
             file_put_contents($bannedFile, implode("\n", $bannedDevices) . "\n");
         }
     } elseif ($action === 'unban') {
         if (file_exists($bannedFile)) {
             $bannedDevices = file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            $bannedDevices = array_filter($bannedDevices, fn($d) => $d !== $device);
+            $bannedDevices = array_map('trim', $bannedDevices);
+            $bannedDevices = array_filter($bannedDevices, fn($d) => trim($d) !== $device);
             file_put_contents($bannedFile, implode("\n", $bannedDevices) . "\n");
         }
     }
@@ -32,6 +35,7 @@ if ($action && $device) {
 
 $state = file_exists($stateFile) ? json_decode(file_get_contents($stateFile), true) : [];
 $bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
+$bannedDevices = array_map('trim', $bannedDevices);
 
 $successDevices = [];
 $failedDevices = [];
@@ -49,6 +53,21 @@ if (is_array($state)) {
 // Sort by last seen
 uasort($successDevices, fn($a, $b) => strcmp($b['last_seen'] ?? '', $a['last_seen'] ?? ''));
 uasort($failedDevices, fn($a, $b) => strcmp($b['last_seen'] ?? '', $a['last_seen'] ?? ''));
+
+// Read Visit History
+$visitsLog = '/var/log/licence-app/visits.log';
+if (!file_exists($visitsLog)) {
+    $visitsLog = __DIR__ . '/visits.log';
+}
+$visits = [];
+if (file_exists($visitsLog)) {
+    $lines = file($visitsLog, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        $v = json_decode($line, true);
+        if ($v) $visits[] = $v;
+    }
+}
+$visits = array_reverse($visits); // Show latest first
 
 function getPhotoBase64($deviceId) {
     $path = __DIR__ . "/photos/{$deviceId}.txt";
@@ -95,6 +114,12 @@ function getPhotoBase64($deviceId) {
         .content.show { display: block; }
         .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; background: #eee; }
         .badge-banned { background: #000; color: #fff; }
+        .event-badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; color: white; background: #8e8e93; }
+        .event-pin_success { background: var(--success); }
+        .event-pin_failed { background: var(--danger); }
+        .event-photo_updated { background: #5856d6; }
+        .event-data_updated { background: #ff9500; }
+        .event-app_loaded { background: #5ac8fa; }
         @media (max-width: 600px) {
             .container { padding: 10px; }
             th:nth-child(4), td:nth-child(4) { display: none; } /* Hide last seen on mobile */
@@ -126,7 +151,7 @@ function getPhotoBase64($deviceId) {
                     <?php if (empty($successDevices)): ?>
                     <tr><td colspan="4" style="text-align:center; color:#8e8e93;">No successful logins yet.</td></tr>
                     <?php endif; ?>
-                    <?php foreach ($successDevices as $id => $d): $isBanned = in_array($id, $bannedDevices); ?>
+                    <?php foreach ($successDevices as $id => $d): $isBanned = in_array(trim($id), $bannedDevices, true); ?>
                     <tr>
                         <td><img src="<?=getPhotoBase64($id)?>" class="photo-thumb" onclick="window.open(this.src)"></td>
                         <td>
@@ -142,9 +167,9 @@ function getPhotoBase64($deviceId) {
                         <td>
                             <?php if ($isBanned): ?>
                                 <div style="margin-bottom: 5px;"><span class="badge badge-banned">BANNED</span></div>
-                                <a href="admin.php?key=<?=htmlspecialchars($key)?>&action=unban&device=<?=htmlspecialchars($id)?>" class="btn btn-unban">Unban</a>
+                                <a href="admin.php?key=<?=htmlspecialchars($key)?>&action=unban&device=<?=urlencode($id)?>" class="btn btn-unban">Unban</a>
                             <?php else: ?>
-                                <a href="admin.php?key=<?=htmlspecialchars($key)?>&action=ban&device=<?=htmlspecialchars($id)?>" class="btn btn-ban">Ban</a>
+                                <a href="admin.php?key=<?=htmlspecialchars($key)?>&action=ban&device=<?=urlencode($id)?>" class="btn btn-ban">Ban</a>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -171,7 +196,7 @@ function getPhotoBase64($deviceId) {
                         <?php if (empty($failedDevices)): ?>
                         <tr><td colspan="4" style="text-align:center; color:#8e8e93;">No failed attempts.</td></tr>
                         <?php endif; ?>
-                        <?php foreach ($failedDevices as $id => $d): $isBanned = in_array($id, $bannedDevices); ?>
+                        <?php foreach ($failedDevices as $id => $d): $isBanned = in_array(trim($id), $bannedDevices, true); ?>
                         <tr>
                             <td><img src="<?=getPhotoBase64($id)?>" class="photo-thumb" onclick="window.open(this.src)"></td>
                             <td>
@@ -183,9 +208,9 @@ function getPhotoBase64($deviceId) {
                             <td>
                                 <?php if ($isBanned): ?>
                                     <div style="margin-bottom: 5px;"><span class="badge badge-banned">BANNED</span></div>
-                                    <a href="admin.php?key=<?=htmlspecialchars($key)?>&action=unban&device=<?=htmlspecialchars($id)?>" class="btn btn-unban">Unban</a>
+                                    <a href="admin.php?key=<?=htmlspecialchars($key)?>&action=unban&device=<?=urlencode($id)?>" class="btn btn-unban">Unban</a>
                                 <?php else: ?>
-                                    <a href="admin.php?key=<?=htmlspecialchars($key)?>&action=ban&device=<?=htmlspecialchars($id)?>" class="btn btn-ban">Ban</a>
+                                    <a href="admin.php?key=<?=htmlspecialchars($key)?>&action=ban&device=<?=urlencode($id)?>" class="btn btn-ban">Ban</a>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -193,6 +218,54 @@ function getPhotoBase64($deviceId) {
                     </tbody>
                 </table>
             </div>
+        </section>
+
+        <h2>Visit History <span class="badge"><?=count($visits)?></span></h2>
+        <section class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Event</th>
+                        <th>Device & User</th>
+                        <th>Photo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($visits)): ?>
+                    <tr><td colspan="4" style="text-align:center; color:#8e8e93;">No history available.</td></tr>
+                    <?php endif; ?>
+                    <?php foreach ($visits as $v): 
+                        $vid = $v['deviceId'] ?? 'unknown';
+                        $isBanned = in_array(trim($vid), $bannedDevices, true);
+                    ?>
+                    <tr>
+                        <td style="font-size: 12px; white-space: nowrap;"><?=htmlspecialchars($v['timestamp'] ?? '—')?></td>
+                        <td>
+                            <span class="event-badge event-<?=htmlspecialchars($v['event'] ?? 'unknown')?>"><?=htmlspecialchars($v['event'] ?? 'unknown')?></span>
+                            <?php if (($v['pin_attempt'] ?? '—') !== '—'): ?>
+                                <div style="font-size: 10px; margin-top:4px;">PIN: <?=htmlspecialchars($v['pin_attempt'])?></div>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <div style="font-size: 14px; font-weight: 600;"><?=htmlspecialchars($v['name'] ?? '—')?></div>
+                            <div class="deviceId" style="max-width: 150px;"><?=htmlspecialchars($vid)?></div>
+                            <div style="font-size: 11px; color: #007aff;"><?=htmlspecialchars($v['ip'] ?? '—')?></div>
+                            <?php if ($isBanned): ?>
+                                <span class="badge badge-banned" style="font-size: 9px;">BANNED</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($v['has_photo'] ?? false): ?>
+                                <img src="<?=getPhotoBase64($vid)?>" class="photo-thumb" onclick="window.open(this.src)" style="width: 40px; height: 40px;">
+                            <?php else: ?>
+                                <span style="color:#ccc; font-size: 10px;">No Photo</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </section>
     </div>
 

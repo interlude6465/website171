@@ -9,8 +9,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+require_once __DIR__ . '/helpers.php';
+
 $configFile = __DIR__ . '/.admin_config.json';
-$config = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
+$config = safeReadJson($configFile);
 $pin = $config['licence_pin'] ?? '4575';
 echo json_encode(['pin' => trim($pin), 'version' => time()]);
 ?>

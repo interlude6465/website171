@@ -43,6 +43,8 @@ $state = safeReadJson($stateFile);
 if (!is_array($state)) $state = [];
 
 $approvedDevices = safeReadList($approvedDevicesFile);
+$bannedDevices = safeReadList($bannedFile);
+$bannedIps = safeReadList($bannedIpsFile);
 
 // Handle Actions - must check before any output
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
@@ -205,8 +207,6 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
     exit;
 }
 
-$bannedDevices = safeReadList($bannedFile);
-$bannedIps = safeReadList($bannedIpsFile);
 $bannedFingerprints = safeReadJson($bannedFingerprintsFile);
 
 // Read Visit History

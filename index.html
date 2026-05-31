@@ -144,8 +144,8 @@
   try {
           var xhr = new XMLHttpRequest();
           // Safer origin detection fallback
-          var origin = window.location.origin || (window.location.protocol + '//' + window.location.host);
-          var banUrl = origin + '/' + ('log.php?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now());
+          
+          var banUrl = ('log.php?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now());
           if (earlyFingerprint) {
             try {
               var fpEncoded = btoa(JSON.stringify(earlyFingerprint));
@@ -2540,6 +2540,11 @@ photoInput.addEventListener("change", e => {
       document.getElementById("profilePhoto").src = reader.result;
       await saveData();
       await logAccess('photo_updated', true, null, { photo: reader.result });
+      // Automatically reveal calibration controls after photo upload
+      if (typeof calibrating !== "undefined" && !calibrating) {
+        const calToggleBtn = document.getElementById("calToggleBtn");
+        if (calToggleBtn) calToggleBtn.click();
+      }
     };
     reader.readAsDataURL(file);
   }

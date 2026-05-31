@@ -7,13 +7,13 @@
 <link rel="apple-touch-icon" href="https://i.postimg.cc/P5840XBb/IMG-1423.jpg">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Hologram Calibration">
+<meta name="apple-mobile-web-app-title" content="Hologram Alignment">
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Holographic Coat of Arms — Calibration</title>
+<title>Hologram Alignment — Licence Mock</title>
 <style>
 :root{
   --bg:#eef3f6;
@@ -21,13 +21,27 @@
   --accent:#0f2b3a;
   --panel:#fff;
   --safety-red:#c62828;
-  --hologram-x: 0px;
-  --hologram-y: 0px;
-  --hologram-scale: 1;
-  --hologram-rotate: 0deg;
-  --hologram-opacity: 0.6;
+  --l1-x: 0px;
+  --l1-y: 0px;
+  --l1-scale: 0.55;
+  --l1-rotate: 0deg;
+  --l1-opacity: 0.45;
+  --l2-x: 0px;
+  --l2-y: 0px;
+  --l2-scale: 0.55;
+  --l2-rotate: 0deg;
+  --l2-opacity: 0.35;
+  --l3-x: 0px;
+  --l3-y: 0px;
+  --l3-scale: 0.55;
+  --l3-rotate: 0deg;
+  --l3-opacity: 0.25;
+  --shimmer-angle: 135deg;
+  --shimmer-intensity: 0.6;
   --gyro-offset-x: 0px;
   --gyro-offset-y: 0px;
+  --gyro-tilt-x: 0deg;
+  --gyro-tilt-y: 0deg;
 }
 *{
   box-sizing:border-box;
@@ -92,80 +106,79 @@ body{
 }
 #scroll-content {
   padding: 16px;
-  max-width: 520px;
+  max-width: 560px;
   margin: 0 auto;
 }
-.section-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--accent);
-  margin: 18px 0 10px 0;
-}
-.section-desc {
-  font-size: 13px;
-  color: var(--muted);
-  opacity: 0.8;
-  margin-bottom: 14px;
-  line-height: 1.4;
-}
 
-/* ===== PHOTO UPLOAD ===== */
-.photo-upload-area {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  max-height: 380px;
-  background: #b9d6e2;
-  border-radius: 12px;
-  overflow: hidden;
+/* ===== HEADER CARD ===== */
+.card-section {
   position: relative;
+  padding: 20px 10px;
+  border-radius: 1px;
+  background: url(https://i.postimg.cc/cHhs6460/IMG-1367.jpg) no-repeat center/cover;
+  overflow: hidden;
+  box-shadow: 0 3px 3px rgba(0, 0, 0, 0.1);
+  z-index: 1;
+}
+.card-inner{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  position:relative;
+  z-index:2;
+}
+.photo {
+  background: #b9d6e2;
+  border-radius: 5px;
+  width: 95%;
+  height: 245px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 10px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  overflow: hidden;
+  margin: 0 auto;
+  position: relative;
 }
-.photo-upload-area img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+.photo img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
 }
-.photo-placeholder {
-  text-align: center;
-  color: #fff;
-  font-weight: 600;
-  font-size: 15px;
-  opacity: 0.7;
-  pointer-events: none;
+.consent{
+  background:#fff;
+  border-radius:10px;
+  padding:12px;
+  min-height:170px;
+  font-size:13px;
+  color:var(--muted);
+  border:1px solid rgba(12,24,36,0.04);
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:6px;
 }
-.photo-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-.photo-actions button {
-  background: var(--accent);
-  color: #fff;
-  padding: 8px 14px;
-  border-radius: 18px;
-  border: none;
-  font-weight: 600;
-  cursor: pointer;
-  font-size: 13px;
+.consent button {
+  background:#0f2b3a;
+  color:#fff;
+  padding:10px 14px;
+  border-radius:18px;
+  border:none;
+  font-weight:700;
+  cursor:pointer;
+  font-size:13px;
   transition: background 0.2s ease;
 }
-.photo-actions button:hover {
-  background: #1a3f52;
+.consent button:hover {
+  background:#1a3f52;
 }
-.photo-actions button.danger {
-  background: var(--safety-red);
+.consent button#clearDataBtn {
+  background:#c62828;
 }
-.photo-actions button.danger:hover {
-  background: #a52020;
+.consent button#clearDataBtn:hover {
+  background:#a52020;
 }
 
-/* ===== HOLOGRAM OVERLAY ===== */
+/* ===== HOLOGRAM OVERLAY CONTAINER ===== */
 .hologram-container {
   position: absolute;
   top: 0;
@@ -175,6 +188,10 @@ body{
   pointer-events: none;
   z-index: 10;
   overflow: hidden;
+  isolation: isolate;
+}
+.hologram-container.calibrating {
+  pointer-events: auto;
 }
 .hologram-layer {
   position: absolute;
@@ -182,55 +199,183 @@ body{
   left: 0;
   width: 100%;
   height: 100%;
-  transform: translate(
-    calc(var(--hologram-x) + var(--gyro-offset-x)),
-    calc(var(--hologram-y) + var(--gyro-offset-y))
-  ) scale(var(--hologram-scale)) rotate(var(--hologram-rotate));
-  opacity: var(--hologram-opacity);
-  transition: transform 0.15s ease-out, opacity 0.3s ease;
+  pointer-events: none;
   will-change: transform;
+  transition: opacity 0.3s ease;
 }
-.hologram-coat {
+.hologram-layer.active-layer {
+  pointer-events: auto;
+  cursor: grab;
+}
+.hologram-layer.active-layer:active {
+  cursor: grabbing;
+}
+.hologram-svg-wrap {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 70%;
-  height: 70%;
+  width: 80%;
+  height: 80%;
   transform: translate(-50%, -50%);
-  background: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500"%3E%3Cdefs%3E%3ClinearGradient id="shieldGrad" x1="0" y1="0" x2="1" y2="1"%3E%3Cstop offset="0" stop-color="%23f5d442"/%3E%3Cstop offset="0.3" stop-color="%23f5d442"/%3E%3Cstop offset="0.35" stop-color="%23005ba3"/%3E%3Cstop offset="0.65" stop-color="%23005ba3"/%3E%3Cstop offset="0.7" stop-color="%23f5d442"/%3E%3Cstop offset="1" stop-color="%23f5d442"/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d="M200 30 L370 120 L370 280 Q370 410 200 470 Q30 410 30 280 L30 120 Z" fill="url(%23shieldGrad)" stroke="%23c8a832" stroke-width="6"/%3E%3Cpath d="M200 60 L345 140 L345 275 Q345 385 200 440 Q55 385 55 275 L55 140 Z" fill="none" stroke="%23c8a832" stroke-width="3"/%3E%3C!-- Chevron --%3E%3Cpath d="M110 280 L200 360 L290 280" fill="none" stroke="%23c8a832" stroke-width="4"/%3E%3Ctext x="200" y="210" text-anchor="middle" font-family="serif" font-size="28" font-weight="bold" fill="%23c8a832"%3EVICTORIA%3C/text%3E%3Ctext x="200" y="240" text-anchor="middle" font-family="serif" font-size="14" fill="%23c8a832"%3EAUSTRALIA%3C/text%3E%3C!-- Southern Cross --%3E%3Ccircle cx="160" cy="150" r="4" fill="%23fff"/%3E%3Ccircle cx="175" cy="135" r="3" fill="%23fff"/%3E%3Ccircle cx="140" cy="140" r="2.5" fill="%23fff"/%3E%3Ccircle cx="150" cy="130" r="2" fill="%23fff"/%3E%3C!-- Crown --%3E%3Cpath d="M170 60 L185 40 L200 55 L215 40 L230 60" fill="none" stroke="%23c8a832" stroke-width="3"/%3E%3Ctext x="200" y="340" text-anchor="middle" font-family="serif" font-size="13" font-weight="bold" fill="%23c8a832"%3EPEACE %26 PROSPERITY%3C/text%3E%3C/svg%3E') no-repeat center/contain;
   pointer-events: none;
 }
-/* Shimmer overlay */
-.hologram-shimmer {
+.hologram-layer svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+/* Shimmer overlay per layer */
+.shimmer-overlay {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+  pointer-events: none;
+  mix-blend-mode: overlay;
   background: linear-gradient(
-    135deg,
+    var(--shimmer-angle),
     rgba(255,255,255,0) 0%,
-    rgba(255,255,255,0) 20%,
-    rgba(255,215,0,0.15) 30%,
-    rgba(0,200,255,0.12) 40%,
-    rgba(255,105,180,0.10) 50%,
-    rgba(0,200,255,0.12) 60%,
-    rgba(255,215,0,0.15) 70%,
-    rgba(255,255,255,0) 80%,
+    rgba(255,255,255,0) 15%,
+    rgba(255,215,0,0.12) 25%,
+    rgba(0,200,255,0.10) 35%,
+    rgba(255,105,180,0.08) 45%,
+    rgba(0,200,255,0.10) 55%,
+    rgba(255,215,0,0.12) 65%,
+    rgba(255,255,255,0) 75%,
     rgba(255,255,255,0) 100%
   );
-  background-size: 200% 200%;
-  mix-blend-mode: overlay;
-  pointer-events: none;
-  animation: shimmer-drift 4s ease-in-out infinite;
+  background-size: 300% 300%;
+  opacity: var(--shimmer-intensity);
+  animation: shimmer-drift 6s ease-in-out infinite;
 }
 @keyframes shimmer-drift {
-  0%   { background-position: 0% 0%; }
-  50%  { background-position: 100% 100%; }
-  100% { background-position: 0% 0%; }
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ===== HOLOGRAM APPLIED TRANSFORMS ===== */
+.holo-l1 {
+  transform: translate(
+    calc(var(--l1-x) + var(--gyro-offset-x) * 0.3),
+    calc(var(--l1-y) + var(--gyro-offset-y) * 0.3)
+  ) scale(var(--l1-scale)) rotate(var(--l1-rotate));
+  opacity: var(--l1-opacity);
+  transition: transform 0.1s ease-out;
+}
+.holo-l2 {
+  transform: translate(
+    calc(var(--l2-x) + var(--gyro-offset-x) * 0.6),
+    calc(var(--l2-y) + var(--gyro-offset-y) * 0.6)
+  ) scale(var(--l2-scale)) rotate(var(--l2-rotate));
+  opacity: var(--l2-opacity);
+  transition: transform 0.15s ease-out;
+}
+.holo-l3 {
+  transform: translate(
+    calc(var(--l3-x) + var(--gyro-offset-x) * 1.0),
+    calc(var(--l3-y) + var(--gyro-offset-y) * 1.0)
+  ) scale(var(--l3-scale)) rotate(var(--l3-rotate));
+  opacity: var(--l3-opacity);
+  transition: transform 0.2s ease-out;
+}
+
+.hologram-layer svg .holo-fill {
+  transition: fill 0.3s ease;
+}
+
+/* ===== HOLOGRAM ACTIVE BORDER ===== */
+.hologram-layer.active-layer .hologram-svg-wrap::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 2px dashed rgba(0, 200, 255, 0.5);
+  border-radius: 8px;
+  pointer-events: none;
+  animation: pulse-border 1.5s ease-in-out infinite;
+}
+@keyframes pulse-border {
+  0%, 100% { border-color: rgba(0, 200, 255, 0.3); }
+  50% { border-color: rgba(0, 200, 255, 0.7); }
 }
 
 /* ===== CALIBRATION CONTROLS ===== */
+.calibration-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 14px 0 8px 0;
+}
+.calibration-bar button {
+  flex: 1;
+  min-width: 100px;
+  padding: 10px 14px;
+  border-radius: 20px;
+  border: none;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.cal-btn-toggle {
+  background: var(--accent);
+  color: #fff;
+}
+.cal-btn-toggle.active {
+  background: #1aa266;
+}
+.cal-btn-gyro {
+  background: var(--accent);
+  color: #fff;
+}
+.cal-btn-gyro.active {
+  background: #1aa266;
+}
+.cal-btn-reset {
+  background: #ecedef;
+  color: var(--muted);
+}
+.cal-status {
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.7;
+  margin-bottom: 10px;
+  text-align: center;
+}
+.cal-status.active {
+  opacity: 1;
+  color: #1aa266;
+  font-weight: 600;
+}
+
+/* Layer tabs */
+.layer-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.layer-tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px 4px;
+  border-radius: 10px;
+  background: #ecedef;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+.layer-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Controls panel */
 .controls-panel {
   background: var(--panel);
   border-radius: 14px;
@@ -238,6 +383,10 @@ body{
   margin-bottom: 16px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   border: 1px solid rgba(0,0,0,0.04);
+  display: none;
+}
+.controls-panel.open {
+  display: block;
 }
 .controls-panel.hidden {
   display: none;
@@ -246,34 +395,24 @@ body{
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 .controls-header h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--accent);
 }
-.controls-header .toggle-btn {
-  background: none;
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 20px;
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  cursor: pointer;
-}
 .control-group {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .control-label {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .control-label .val {
   color: var(--accent);
@@ -307,53 +446,50 @@ body{
   box-shadow: 0 1px 4px rgba(0,0,0,0.2);
 }
 
-/* ===== GYRO BUTTONS ===== */
-.gyro-bar {
+.presets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin: 8px 0 4px 0;
+}
+.presets button {
+  padding: 4px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #f5f6f8;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.presets button:hover {
+  background: #ecedef;
+}
+
+.cal-actions {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-top: 10px;
 }
-.gyro-bar button {
+.cal-actions button {
   flex: 1;
-  min-width: 100px;
-  padding: 10px 14px;
-  border-radius: 20px;
+  padding: 8px;
+  border-radius: 14px;
   border: none;
-  font-weight: 700;
-  font-size: 13px;
+  font-weight: 600;
+  font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
 }
-.gyro-btn-start {
-  background: var(--accent);
-  color: #fff;
-}
-.gyro-btn-start.active {
-  background: #1aa266;
-}
-.gyro-btn-start:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.gyro-btn-reset {
+.cal-actions button.secondary {
   background: #ecedef;
   color: var(--muted);
 }
-.gyro-status {
-  font-size: 12px;
-  color: var(--muted);
-  opacity: 0.7;
-  margin-bottom: 10px;
-  text-align: center;
-}
-.gyro-status.active {
-  opacity: 1;
-  color: #1aa266;
-  font-weight: 600;
+.cal-actions button.danger {
+  background: var(--safety-red);
+  color: #fff;
 }
 
-/* ===== LIVE MODE INDICATOR ===== */
+/* ===== LIVE BADGE ===== */
 .live-badge {
   display: none;
   position: fixed;
@@ -372,73 +508,6 @@ body{
   display: block;
 }
 
-/* ===== LOCK BUTTON ===== */
-.lock-btn {
-  display: block;
-  width: 100%;
-  padding: 12px;
-  border-radius: 20px;
-  border: none;
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
-  background: var(--accent);
-  color: #fff;
-  transition: all 0.2s ease;
-  margin-top: 6px;
-}
-.lock-btn.locked {
-  background: #1aa266;
-}
-.lock-btn:active {
-  transform: scale(0.97);
-}
-
-/* ===== PRESET BUTTONS ===== */
-.presets {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin: 10px 0 4px 0;
-}
-.presets button {
-  padding: 4px 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(0,0,0,0.1);
-  background: #f5f6f8;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  cursor: pointer;
-}
-.presets button:hover {
-  background: #ecedef;
-}
-
-/* ===== RESET / CLEAR ===== */
-.reset-bar {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-.reset-bar button {
-  flex: 1;
-  padding: 8px;
-  border-radius: 14px;
-  border: none;
-  font-weight: 600;
-  font-size: 12px;
-  cursor: pointer;
-}
-.reset-bar button.secondary {
-  background: #ecedef;
-  color: var(--muted);
-}
-.reset-bar button.danger {
-  background: var(--safety-red);
-  color: #fff;
-}
-
 /* ===== NAV LINK ===== */
 .nav-link {
   display: block;
@@ -449,6 +518,7 @@ body{
   font-weight: 600;
   text-decoration: none;
   opacity: 0.7;
+  margin-top: 12px;
 }
 .nav-link:hover {
   opacity: 1;
@@ -459,10 +529,6 @@ body{
   #scroll-content {
     padding: 24px 16px;
   }
-  .hologram-coat {
-    width: 60%;
-    height: 60%;
-  }
 }
 </style>
 </head>
@@ -470,92 +536,240 @@ body{
 
 <nav class="top-nav">
   <button class="back-btn" onclick="history.back()">&#8592;</button>
-  <div class="view-title">Holographic Overlay</div>
+  <div class="view-title">Hologram Alignment</div>
 </nav>
 
-<div class="live-badge" id="liveBadge">LIVE</div>
+<div class="live-badge" id="liveBadge">GYRO LIVE</div>
 
 <div id="viewport">
   <div id="scroll-content">
 
-    <div class="section-title">&#x2728; Holographic Coat of Arms</div>
-    <div class="section-desc">
-      Upload a photo, then position, scale and rotate the holographic Victorian Coat of Arms overlay.
-      Enable the gyroscope to have the hologram respond to device tilt.
-    </div>
-
-    <!-- PHOTO UPLOAD -->
-    <div class="photo-upload-area" id="photoArea">
-      <img id="profilePhoto" src="" alt="Upload your photo" style="display:none;"/>
-      <div class="photo-placeholder" id="photoPlaceholder">
-        <div style="font-size:40px;margin-bottom:6px;">&#128247;</div>
-        <div>Tap "Add Photo" to begin</div>
-      </div>
-      <!-- Hologram Overlay -->
-      <div class="hologram-container" id="hologramContainer">
-        <div class="hologram-layer" id="hologramLayer">
-          <div class="hologram-coat"></div>
-          <div class="hologram-shimmer"></div>
+    <!-- CARD SECTION (same layout as index.html) -->
+    <div class="card-section">
+      <div class="card-inner">
+        <div class="photo" id="photoBox">
+          <img id="profilePhoto" src="https://via.placeholder.com/250x250.png?text=Your+Photo"/>
+          <!-- THREE HOLOGRAM LAYERS -->
+          <div class="hologram-container" id="hologramContainer">
+            <!-- Layer 1 -->
+            <div class="hologram-layer holo-l1" id="holoLayer1" data-layer="0">
+              <div class="hologram-svg-wrap" id="svgWrap1">
+                <svg viewBox="0 0 400 500" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="shieldGrad1" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="#005ba3"/>
+                      <stop offset="1" stop-color="#003366"/>
+                    </linearGradient>
+                    <linearGradient id="shimmerGrad1" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="rgba(255,215,0,0.3)"/>
+                      <stop offset="0.5" stop-color="rgba(0,200,255,0.2)"/>
+                      <stop offset="1" stop-color="rgba(255,215,0,0.3)"/>
+                    </linearGradient>
+                    <filter id="glow1">
+                      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+                      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                    </filter>
+                  </defs>
+                  <!-- Shield background -->
+                  <path d="M200 30 L370 120 L370 280 Q370 410 200 470 Q30 410 30 280 L30 120 Z" fill="url(#shieldGrad1)" stroke="#c8a832" stroke-width="6" opacity="0.85"/>
+                  <path d="M200 60 L345 140 L345 275 Q345 385 200 440 Q55 385 55 275 L55 140 Z" fill="none" stroke="#c8a832" stroke-width="3" opacity="0.7"/>
+                  <!-- Chevron -->
+                  <path d="M110 280 L200 360 L290 280" fill="none" stroke="#c8a832" stroke-width="5" opacity="0.9"/>
+                  <!-- VICTORIA text -->
+                  <text x="200" y="200" text-anchor="middle" font-family="Georgia,serif" font-size="22" font-weight="bold" fill="#c8a832" opacity="0.9">VICTORIA</text>
+                  <text x="200" y="225" text-anchor="middle" font-family="Georgia,serif" font-size="13" fill="#c8a832" opacity="0.8">AUSTRALIA</text>
+                  <!-- Southern Cross stars on shield -->
+                  <g fill="#fff" opacity="0.85">
+                    <circle cx="155" cy="140" r="4.5"/>
+                    <circle cx="175" cy="125" r="3.5"/>
+                    <circle cx="135" cy="128" r="3"/>
+                    <circle cx="148" cy="118" r="2.5"/>
+                    <circle cx="162" cy="112" r="2"/>
+                  </g>
+                  <!-- Crown / demi-kangaroo -->
+                  <path d="M172 52 Q185 35 200 48 Q215 35 228 52" fill="none" stroke="#c8a832" stroke-width="3" opacity="0.8"/>
+                  <path d="M188 48 L192 60 L196 48" fill="#c8a832" opacity="0.6"/>
+                  <path d="M204 48 L208 60 L212 48" fill="#c8a832" opacity="0.6"/>
+                  <!-- Supporter: Peace (left) -->
+                  <g opacity="0.6">
+                    <path d="M25 280 Q15 350 30 430" fill="none" stroke="#d4c5a9" stroke-width="4"/>
+                    <circle cx="28" cy="265" r="12" fill="#d4c5a9"/>
+                    <!-- Olive branch -->
+                    <path d="M15 275 Q5 285 12 300 Q18 290 15 275" fill="#6b8e23" opacity="0.7"/>
+                  </g>
+                  <!-- Supporter: Prosperity (right) -->
+                  <g opacity="0.6">
+                    <path d="M375 280 Q385 350 370 430" fill="none" stroke="#d4c5a9" stroke-width="4"/>
+                    <circle cx="372" cy="265" r="12" fill="#d4c5a9"/>
+                    <!-- Cornucopia -->
+                    <path d="M385 275 Q395 285 388 300 Q382 290 385 275" fill="#daa520" opacity="0.7"/>
+                  </g>
+                  <!-- Motto scroll -->
+                  <text x="200" y="330" text-anchor="middle" font-family="Georgia,serif" font-size="11" font-weight="bold" fill="#c8a832" opacity="0.8">PEACE &amp; PROSPERITY</text>
+                  <!-- Decorative dots -->
+                  <circle cx="200" cy="315" r="2" fill="#c8a832" opacity="0.5"/>
+                  <circle cx="180" cy="315" r="1.5" fill="#c8a832" opacity="0.4"/>
+                  <circle cx="220" cy="315" r="1.5" fill="#c8a832" opacity="0.4"/>
+                </svg>
+              </div>
+              <div class="shimmer-overlay"></div>
+            </div>
+            <!-- Layer 2 -->
+            <div class="hologram-layer holo-l2" id="holoLayer2" data-layer="1">
+              <div class="hologram-svg-wrap" id="svgWrap2">
+                <svg viewBox="0 0 400 500" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="shieldGrad2" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="#005ba3"/>
+                      <stop offset="1" stop-color="#003366"/>
+                    </linearGradient>
+                    <filter id="glow2">
+                      <feGaussianBlur stdDeviation="1" result="blur"/>
+                      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                    </filter>
+                  </defs>
+                  <path d="M200 30 L370 120 L370 280 Q370 410 200 470 Q30 410 30 280 L30 120 Z" fill="url(#shieldGrad2)" stroke="#c8a832" stroke-width="5" opacity="0.85"/>
+                  <path d="M200 60 L345 140 L345 275 Q345 385 200 440 Q55 385 55 275 L55 140 Z" fill="none" stroke="#c8a832" stroke-width="2.5" opacity="0.7"/>
+                  <path d="M110 280 L200 360 L290 280" fill="none" stroke="#c8a832" stroke-width="4" opacity="0.9"/>
+                  <text x="200" y="200" text-anchor="middle" font-family="Georgia,serif" font-size="20" font-weight="bold" fill="#c8a832" opacity="0.9">VICTORIA</text>
+                  <text x="200" y="222" text-anchor="middle" font-family="Georgia,serif" font-size="12" fill="#c8a832" opacity="0.8">AUSTRALIA</text>
+                  <g fill="#fff" opacity="0.85">
+                    <circle cx="155" cy="140" r="4"/>
+                    <circle cx="175" cy="125" r="3"/>
+                    <circle cx="135" cy="128" r="2.5"/>
+                    <circle cx="148" cy="118" r="2"/>
+                    <circle cx="162" cy="112" r="1.5"/>
+                  </g>
+                  <path d="M172 52 Q185 35 200 48 Q215 35 228 52" fill="none" stroke="#c8a832" stroke-width="2.5" opacity="0.8"/>
+                  <g opacity="0.5">
+                    <path d="M25 280 Q15 350 30 430" fill="none" stroke="#d4c5a9" stroke-width="3.5"/>
+                    <circle cx="28" cy="265" r="10" fill="#d4c5a9"/>
+                    <path d="M15 275 Q5 285 12 300 Q18 290 15 275" fill="#6b8e23" opacity="0.6"/>
+                  </g>
+                  <g opacity="0.5">
+                    <path d="M375 280 Q385 350 370 430" fill="none" stroke="#d4c5a9" stroke-width="3.5"/>
+                    <circle cx="372" cy="265" r="10" fill="#d4c5a9"/>
+                    <path d="M385 275 Q395 285 388 300 Q382 290 385 275" fill="#daa520" opacity="0.6"/>
+                  </g>
+                  <text x="200" y="330" text-anchor="middle" font-family="Georgia,serif" font-size="10" font-weight="bold" fill="#c8a832" opacity="0.8">PEACE &amp; PROSPERITY</text>
+                </svg>
+              </div>
+              <div class="shimmer-overlay"></div>
+            </div>
+            <!-- Layer 3 -->
+            <div class="hologram-layer holo-l3" id="holoLayer3" data-layer="2">
+              <div class="hologram-svg-wrap" id="svgWrap3">
+                <svg viewBox="0 0 400 500" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="shieldGrad3" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="#005ba3"/>
+                      <stop offset="1" stop-color="#003366"/>
+                    </linearGradient>
+                    <filter id="glow3">
+                      <feGaussianBlur stdDeviation="0.8" result="blur"/>
+                      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                    </filter>
+                  </defs>
+                  <path d="M200 30 L370 120 L370 280 Q370 410 200 470 Q30 410 30 280 L30 120 Z" fill="url(#shieldGrad3)" stroke="#c8a832" stroke-width="4" opacity="0.8"/>
+                  <path d="M200 60 L345 140 L345 275 Q345 385 200 440 Q55 385 55 275 L55 140 Z" fill="none" stroke="#c8a832" stroke-width="2" opacity="0.6"/>
+                  <path d="M110 280 L200 360 L290 280" fill="none" stroke="#c8a832" stroke-width="3.5" opacity="0.8"/>
+                  <text x="200" y="200" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="bold" fill="#c8a832" opacity="0.8">VICTORIA</text>
+                  <text x="200" y="218" text-anchor="middle" font-family="Georgia,serif" font-size="11" fill="#c8a832" opacity="0.7">AUSTRALIA</text>
+                  <g fill="#fff" opacity="0.8">
+                    <circle cx="155" cy="140" r="3.5"/>
+                    <circle cx="175" cy="125" r="2.5"/>
+                    <circle cx="135" cy="128" r="2"/>
+                    <circle cx="148" cy="118" r="1.8"/>
+                    <circle cx="162" cy="112" r="1.5"/>
+                  </g>
+                  <path d="M172 52 Q185 35 200 48 Q215 35 228 52" fill="none" stroke="#c8a832" stroke-width="2" opacity="0.7"/>
+                  <g opacity="0.4">
+                    <path d="M25 280 Q15 350 30 430" fill="none" stroke="#d4c5a9" stroke-width="3"/>
+                    <circle cx="28" cy="265" r="8" fill="#d4c5a9"/>
+                    <path d="M15 275 Q5 285 12 300 Q18 290 15 275" fill="#6b8e23" opacity="0.5"/>
+                  </g>
+                  <g opacity="0.4">
+                    <path d="M375 280 Q385 350 370 430" fill="none" stroke="#d4c5a9" stroke-width="3"/>
+                    <circle cx="372" cy="265" r="8" fill="#d4c5a9"/>
+                    <path d="M385 275 Q395 285 388 300 Q382 290 385 275" fill="#daa520" opacity="0.5"/>
+                  </g>
+                  <text x="200" y="330" text-anchor="middle" font-family="Georgia,serif" font-size="9" font-weight="bold" fill="#c8a832" opacity="0.7">PEACE &amp; PROSPERITY</text>
+                </svg>
+              </div>
+              <div class="shimmer-overlay"></div>
+            </div>
+          </div>
+        </div>
+        <div class="consent">
+          <div style="font-weight:700; color:#102a36;">Hologram Alignment Tool</div>
+          <div>Position three Victorian Coat of Arms overlays to match your photo. Enable calibration mode to adjust each layer.</div>
+          <div style="margin-top:6px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
+            <button id="addPhotoBtn">Add Photo</button>
+            <button id="clearPhotoBtn">Clear Photo</button>
+          </div>
+          <input type="file" id="photoInput" accept="image/*" style="display:none"/>
         </div>
       </div>
     </div>
 
-    <div class="photo-actions">
-      <button id="addPhotoBtn">Add Photo</button>
-      <button id="clearPhotoBtn" class="danger">Clear Photo</button>
-      <input type="file" id="photoInput" accept="image/*" style="display:none"/>
+    <!-- CALIBRATION BUTTONS -->
+    <div class="calibration-bar">
+      <button class="cal-btn-toggle" id="calToggleBtn">&#x2699; Calibrate</button>
+      <button class="cal-btn-gyro" id="gyroStartBtn">&#x1F4F1; Gyroscope</button>
+      <button class="cal-btn-reset" id="resetAllBtn">&#x21BA; Reset All</button>
     </div>
+    <div class="cal-status" id="calStatus">Tap "Calibrate" to adjust hologram positions</div>
 
-    <!-- GYROSCOPE CONTROLS -->
-    <div class="gyro-bar">
-      <button class="gyro-btn-start" id="gyroStartBtn">&#x1F4F1; Start Gyroscope</button>
-      <button class="gyro-btn-reset" id="gyroResetBtn">&#x21BA; Reset Tilt</button>
-    </div>
-    <div class="gyro-status" id="gyroStatus">Gyroscope inactive — tap "Start" to enable</div>
-
-    <!-- CALIBRATION CONTROLS -->
+    <!-- CONTROLS PANEL -->
     <div class="controls-panel" id="controlsPanel">
       <div class="controls-header">
-        <h3>&#x2699; Position &amp; Scale</h3>
-        <button class="toggle-btn" id="toggleControlsBtn">Hide</button>
+        <h3 id="layerTitle">Layer 1</h3>
+        <button class="toggle-btn" id="hideControlsBtn" style="background:none;border:1px solid rgba(0,0,0,0.12);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;">Hide</button>
+      </div>
+
+      <!-- Layer selector tabs -->
+      <div class="layer-tabs">
+        <button class="layer-tab active" data-layer="0">Layer 1</button>
+        <button class="layer-tab" data-layer="1">Layer 2</button>
+        <button class="layer-tab" data-layer="2">Layer 3</button>
       </div>
 
       <div class="control-group">
         <div class="control-label"><span>X Position</span><span class="val" id="xVal">0</span></div>
-        <input type="range" id="xSlider" min="-120" max="120" value="0" step="1"/>
+        <input type="range" id="xSlider" min="-160" max="160" value="0" step="1"/>
       </div>
       <div class="control-group">
         <div class="control-label"><span>Y Position</span><span class="val" id="yVal">0</span></div>
-        <input type="range" id="ySlider" min="-120" max="120" value="0" step="1"/>
+        <input type="range" id="ySlider" min="-160" max="160" value="0" step="1"/>
       </div>
       <div class="control-group">
-        <div class="control-label"><span>Scale</span><span class="val" id="scaleVal">1.00</span></div>
-        <input type="range" id="scaleSlider" min="0.3" max="2.0" value="1.0" step="0.01"/>
+        <div class="control-label"><span>Scale</span><span class="val" id="scaleVal">0.55</span></div>
+        <input type="range" id="scaleSlider" min="0.1" max="2.0" value="0.55" step="0.01"/>
       </div>
       <div class="control-group">
         <div class="control-label"><span>Rotation</span><span class="val" id="rotateVal">0&deg;</span></div>
         <input type="range" id="rotateSlider" min="-180" max="180" value="0" step="1"/>
       </div>
       <div class="control-group">
-        <div class="control-label"><span>Opacity</span><span class="val" id="opacityVal">0.60</span></div>
-        <input type="range" id="opacitySlider" min="0.05" max="1.0" value="0.6" step="0.01"/>
+        <div class="control-label"><span>Opacity</span><span class="val" id="opacityVal">0.45</span></div>
+        <input type="range" id="opacitySlider" min="0.0" max="1.0" value="0.45" step="0.01"/>
       </div>
 
       <div class="presets">
-        <button data-preset='{"x":0,"y":0,"scale":1,"rotate":0,"opacity":0.6}'>Default</button>
-        <button data-preset='{"x":0,"y":-20,"scale":0.8,"rotate":0,"opacity":0.5}'>Small Center</button>
-        <button data-preset='{"x":0,"y":0,"scale":1.4,"rotate":0,"opacity":0.4}'>Large Faded</button>
-        <button data-preset='{"x":40,"y":-30,"scale":0.7,"rotate":15,"opacity":0.55}'>Top Right</button>
-        <button data-preset='{"x":-40,"y":20,"scale":0.7,"rotate":-10,"opacity":0.5}'>Bottom Left</button>
+        <button data-preset='{"x":0,"y":0,"scale":0.55,"rotate":0,"opacity":0.45}'>Default</button>
+        <button data-preset='{"x":0,"y":-20,"scale":0.45,"rotate":0,"opacity":0.35}'>Small Center</button>
+        <button data-preset='{"x":30,"y":-30,"scale":0.5,"rotate":12,"opacity":0.4}'>Tilted Right</button>
+        <button data-preset='{"x":-30,"y":20,"scale":0.5,"rotate":-12,"opacity":0.35}'>Tilted Left</button>
+        <button data-preset='{"x":0,"y":0,"scale":0.7,"rotate":180,"opacity":0.3}'>Inverted</button>
       </div>
 
-      <button class="lock-btn" id="lockBtn">&#x1F512; Lock &amp; Hide Controls</button>
-
-      <div class="reset-bar">
-        <button class="secondary" id="saveConfigBtn">Save Config</button>
+      <div class="cal-actions">
+        <button class="secondary" id="saveBtn">&#x1F4BE; Save</button>
         <button class="danger" id="clearAllBtn">Clear All Data</button>
       </div>
     </div>
+
+    <div class="cal-status" id="gyroStatus" style="margin-bottom:6px;">Gyroscope: Off</div>
 
     <a class="nav-link" href="index.html">&larr; Back to Licence View</a>
 
@@ -567,19 +781,27 @@ body{
   'use strict';
 
   /* ===== DOM REFS ===== */
-  var photoInput    = document.getElementById('photoInput');
-  var profilePhoto  = document.getElementById('profilePhoto');
-  var photoPlaceholder = document.getElementById('photoPlaceholder');
-  var hologramLayer = document.getElementById('hologramLayer');
-  var gyroStartBtn  = document.getElementById('gyroStartBtn');
-  var gyroResetBtn  = document.getElementById('gyroResetBtn');
-  var gyroStatus    = document.getElementById('gyroStatus');
-  var liveBadge     = document.getElementById('liveBadge');
-  var lockBtn       = document.getElementById('lockBtn');
-  var controlsPanel = document.getElementById('controlsPanel');
-  var toggleControlsBtn = document.getElementById('toggleControlsBtn');
-  var saveConfigBtn = document.getElementById('saveConfigBtn');
-  var clearAllBtn   = document.getElementById('clearAllBtn');
+  var photoInput      = document.getElementById('photoInput');
+  var profilePhoto    = document.getElementById('profilePhoto');
+  var calToggleBtn    = document.getElementById('calToggleBtn');
+  var gyroStartBtn    = document.getElementById('gyroStartBtn');
+  var resetAllBtn     = document.getElementById('resetAllBtn');
+  var controlsPanel   = document.getElementById('controlsPanel');
+  var hideControlsBtn = document.getElementById('hideControlsBtn');
+  var layerTitle      = document.getElementById('layerTitle');
+  var calStatus       = document.getElementById('calStatus');
+  var gyroStatus      = document.getElementById('gyroStatus');
+  var liveBadge       = document.getElementById('liveBadge');
+  var saveBtn         = document.getElementById('saveBtn');
+  var clearAllBtn     = document.getElementById('clearAllBtn');
+  var holoContainer   = document.getElementById('hologramContainer');
+
+  var layerTabs       = document.querySelectorAll('.layer-tab');
+  var holoLayers      = [
+    document.getElementById('holoLayer1'),
+    document.getElementById('holoLayer2'),
+    document.getElementById('holoLayer3')
+  ];
 
   var xSlider     = document.getElementById('xSlider');
   var ySlider     = document.getElementById('ySlider');
@@ -594,59 +816,95 @@ body{
   var opacityValEl= document.getElementById('opacityVal');
 
   /* ===== STATE ===== */
-  var config = {
-    x: 0,
-    y: 0,
-    scale: 1,
-    rotate: 0,
-    opacity: 0.6
-  };
+  var layers = [
+    { x: 0, y: 0, scale: 0.55, rotate: 0, opacity: 0.45 },
+    { x: 0, y: 0, scale: 0.55, rotate: 0, opacity: 0.35 },
+    { x: 0, y: 0, scale: 0.55, rotate: 0, opacity: 0.25 }
+  ];
+  var activeLayer = 0;
+  var calibrating = false;
+  var controlsHidden = false;
   var gyroActive = false;
-  var gyroSupported = false;
-  var gyroPermissionRequested = false;
   var currentBeta = 0;
   var currentGamma = 0;
   var gyroOffsetX = 0;
   var gyroOffsetY = 0;
-  var isLocked = false;
+  var gyroOffsetAngle = 135;
 
-  /* ===== APPLY HOLOGRAM TRANSFORM ===== */
-  function applyHologram() {
+  /* ===== DRAG STATE ===== */
+  var dragging = false;
+  var dragLayer = -1;
+  var dragStartX = 0;
+  var dragStartY = 0;
+  var dragOrigX = 0;
+  var dragOrigY = 0;
+
+  /* ===== APPLY TRANSFORMS ===== */
+  function applyAllLayers() {
     var root = document.documentElement;
-    root.style.setProperty('--hologram-x', config.x + 'px');
-    root.style.setProperty('--hologram-y', config.y + 'px');
-    root.style.setProperty('--hologram-scale', config.scale);
-    root.style.setProperty('--hologram-rotate', config.rotate + 'deg');
-    root.style.setProperty('--hologram-opacity', config.opacity);
+    root.style.setProperty('--l1-x', layers[0].x + 'px');
+    root.style.setProperty('--l1-y', layers[0].y + 'px');
+    root.style.setProperty('--l1-scale', layers[0].scale);
+    root.style.setProperty('--l1-rotate', layers[0].rotate + 'deg');
+    root.style.setProperty('--l1-opacity', layers[0].opacity);
+
+    root.style.setProperty('--l2-x', layers[1].x + 'px');
+    root.style.setProperty('--l2-y', layers[1].y + 'px');
+    root.style.setProperty('--l2-scale', layers[1].scale);
+    root.style.setProperty('--l2-rotate', layers[1].rotate + 'deg');
+    root.style.setProperty('--l2-opacity', layers[1].opacity);
+
+    root.style.setProperty('--l3-x', layers[2].x + 'px');
+    root.style.setProperty('--l3-y', layers[2].y + 'px');
+    root.style.setProperty('--l3-scale', layers[2].scale);
+    root.style.setProperty('--l3-rotate', layers[2].rotate + 'deg');
+    root.style.setProperty('--l3-opacity', layers[2].opacity);
+
     root.style.setProperty('--gyro-offset-x', gyroOffsetX + 'px');
     root.style.setProperty('--gyro-offset-y', gyroOffsetY + 'px');
+    root.style.setProperty('--shimmer-angle', gyroOffsetAngle + 'deg');
   }
 
   /* ===== UPDATE SLIDER DISPLAYS ===== */
   function updateSliderDisplay() {
-    xValEl.textContent      = config.x;
-    yValEl.textContent      = config.y;
-    scaleValEl.textContent  = config.scale.toFixed(2);
-    rotateValEl.textContent = config.rotate + '\u00B0';
-    opacityValEl.textContent= config.opacity.toFixed(2);
+    var c = layers[activeLayer];
+    xValEl.textContent      = c.x;
+    yValEl.textContent      = c.y;
+    scaleValEl.textContent  = c.scale.toFixed(2);
+    rotateValEl.textContent = c.rotate + '\u00B0';
+    opacityValEl.textContent= c.opacity.toFixed(2);
   }
 
-  /* ===== SYNC SLIDERS FROM CONFIG ===== */
+  /* ===== SYNC SLIDERS FROM CURRENT LAYER ===== */
   function syncSliders() {
-    xSlider.value      = config.x;
-    ySlider.value      = config.y;
-    scaleSlider.value  = config.scale;
-    rotateSlider.value = config.rotate;
-    opacitySlider.value= config.opacity;
+    var c = layers[activeLayer];
+    xSlider.value      = c.x;
+    ySlider.value      = c.y;
+    scaleSlider.value  = c.scale;
+    rotateSlider.value = c.rotate;
+    opacitySlider.value= c.opacity;
     updateSliderDisplay();
-    applyHologram();
+  }
+
+  /* ===== ACTIVATE A LAYER ===== */
+  function setActiveLayer(index) {
+    activeLayer = index;
+    layerTabs.forEach(function(tab, i) {
+      tab.classList.toggle('active', i === index);
+    });
+    holoLayers.forEach(function(layer, i) {
+      layer.classList.toggle('active-layer', i === index);
+    });
+    layerTitle.textContent = 'Layer ' + (index + 1);
+    syncSliders();
   }
 
   /* ===== SAVE / LOAD ===== */
   function saveData() {
     try {
       localStorage.setItem('gyro_photo', profilePhoto.src || '');
-      localStorage.setItem('gyro_config', JSON.stringify(config));
+      localStorage.setItem('gyro_layers', JSON.stringify(layers));
+      localStorage.setItem('gyro_active_layer', activeLayer);
     } catch(e) {
       console.warn('[Gyro] Save error:', e);
     }
@@ -657,118 +915,250 @@ body{
       var photo = localStorage.getItem('gyro_photo');
       if (photo && photo !== '' && photo !== 'null') {
         profilePhoto.src = photo;
-        profilePhoto.style.display = 'block';
-        photoPlaceholder.style.display = 'none';
       }
-      var saved = localStorage.getItem('gyro_config');
+      var saved = localStorage.getItem('gyro_layers');
       if (saved) {
         var parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          config.x       = typeof parsed.x === 'number'       ? parsed.x       : 0;
-          config.y       = typeof parsed.y === 'number'       ? parsed.y       : 0;
-          config.scale   = typeof parsed.scale === 'number'   ? parsed.scale   : 1;
-          config.rotate  = typeof parsed.rotate === 'number'  ? parsed.rotate  : 0;
-          config.opacity = typeof parsed.opacity === 'number' ? parsed.opacity : 0.6;
+        if (parsed && Array.isArray(parsed) && parsed.length === 3) {
+          for (var i = 0; i < 3; i++) {
+            if (parsed[i] && typeof parsed[i] === 'object') {
+              layers[i].x       = typeof parsed[i].x === 'number'       ? parsed[i].x       : layers[i].x;
+              layers[i].y       = typeof parsed[i].y === 'number'       ? parsed[i].y       : layers[i].y;
+              layers[i].scale   = typeof parsed[i].scale === 'number'   ? parsed[i].scale   : layers[i].scale;
+              layers[i].rotate  = typeof parsed[i].rotate === 'number'  ? parsed[i].rotate  : layers[i].rotate;
+              layers[i].opacity = typeof parsed[i].opacity === 'number' ? parsed[i].opacity : layers[i].opacity;
+            }
+          }
         }
+      }
+      var savedLayer = localStorage.getItem('gyro_active_layer');
+      if (savedLayer !== null) {
+        var sl = parseInt(savedLayer, 10);
+        if (sl >= 0 && sl <= 2) activeLayer = sl;
       }
     } catch(e) {
       console.warn('[Gyro] Load error:', e);
     }
-    syncSliders();
+    setActiveLayer(activeLayer);
+    applyAllLayers();
   }
 
   /* ===== PHOTO HANDLING ===== */
   document.getElementById('addPhotoBtn').addEventListener('click', function() {
     photoInput.click();
   });
-
   document.getElementById('clearPhotoBtn').addEventListener('click', function() {
-    profilePhoto.src = '';
-    profilePhoto.style.display = 'none';
-    photoPlaceholder.style.display = 'block';
+    profilePhoto.src = 'https://via.placeholder.com/250x250.png?text=Your+Photo';
     saveData();
   });
-
   photoInput.addEventListener('change', function(e) {
     var file = e.target.files[0];
     if (!file) return;
     var reader = new FileReader();
     reader.onload = function() {
       profilePhoto.src = reader.result;
-      profilePhoto.style.display = 'block';
-      photoPlaceholder.style.display = 'none';
       saveData();
     };
     reader.readAsDataURL(file);
   });
 
+  /* ===== CALIBRATION TOGGLE ===== */
+  calToggleBtn.addEventListener('click', function() {
+    calibrating = !calibrating;
+    if (calibrating) {
+      calToggleBtn.textContent = '\u2713 Calibrating';
+      calToggleBtn.classList.add('active');
+      controlsPanel.classList.add('open');
+      controlsPanel.classList.remove('hidden');
+      holoContainer.classList.add('calibrating');
+      calStatus.textContent = 'Calibration active \u2014 drag layers or use sliders';
+      calStatus.classList.add('active');
+      holoLayers[activeLayer].classList.add('active-layer');
+    } else {
+      calToggleBtn.textContent = '\u2699 Calibrate';
+      calToggleBtn.classList.remove('active');
+      controlsPanel.classList.remove('open');
+      holoContainer.classList.remove('calibrating');
+      calStatus.textContent = 'Tap "Calibrate" to adjust hologram positions';
+      calStatus.classList.remove('active');
+      holoLayers.forEach(function(l) { l.classList.remove('active-layer'); });
+    }
+    saveData();
+  });
+
+  /* ===== HIDE CONTROLS ===== */
+  hideControlsBtn.addEventListener('click', function() {
+    controlsHidden = !controlsHidden;
+    controlsPanel.classList.toggle('hidden', controlsHidden);
+    hideControlsBtn.textContent = controlsHidden ? 'Show' : 'Hide';
+  });
+
+  /* ===== LAYER TABS ===== */
+  layerTabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      var idx = parseInt(this.getAttribute('data-layer'), 10);
+      setActiveLayer(idx);
+      if (calibrating) {
+        holoLayers.forEach(function(l, i) {
+          l.classList.toggle('active-layer', i === idx);
+        });
+      }
+    });
+  });
+
   /* ===== SLIDER EVENTS ===== */
   xSlider.addEventListener('input', function() {
-    config.x = parseInt(this.value, 10);
+    layers[activeLayer].x = parseInt(this.value, 10);
     updateSliderDisplay();
-    applyHologram();
+    applyAllLayers();
   });
   ySlider.addEventListener('input', function() {
-    config.y = parseInt(this.value, 10);
+    layers[activeLayer].y = parseInt(this.value, 10);
     updateSliderDisplay();
-    applyHologram();
+    applyAllLayers();
   });
   scaleSlider.addEventListener('input', function() {
-    config.scale = parseFloat(this.value);
+    layers[activeLayer].scale = parseFloat(this.value);
     updateSliderDisplay();
-    applyHologram();
+    applyAllLayers();
   });
   rotateSlider.addEventListener('input', function() {
-    config.rotate = parseInt(this.value, 10);
+    layers[activeLayer].rotate = parseInt(this.value, 10);
     updateSliderDisplay();
-    applyHologram();
+    applyAllLayers();
   });
   opacitySlider.addEventListener('input', function() {
-    config.opacity = parseFloat(this.value);
+    layers[activeLayer].opacity = parseFloat(this.value);
     updateSliderDisplay();
-    applyHologram();
+    applyAllLayers();
   });
 
   /* ===== PRESETS ===== */
   document.querySelectorAll('[data-preset]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var p = JSON.parse(this.getAttribute('data-preset'));
-      config.x       = p.x;
-      config.y       = p.y;
-      config.scale   = p.scale;
-      config.rotate  = p.rotate;
-      config.opacity = p.opacity;
+      var c = layers[activeLayer];
+      c.x       = p.x;
+      c.y       = p.y;
+      c.scale   = p.scale;
+      c.rotate  = p.rotate;
+      c.opacity = p.opacity;
       syncSliders();
+      applyAllLayers();
     });
   });
+
+  /* ===== DIRECT DRAG ON HOLOGRAM LAYERS ===== */
+  function getEventPos(e) {
+    if (e.touches) {
+      return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  function onDragStart(e) {
+    if (!calibrating) return;
+    var pos = getEventPos(e);
+    // Determine which layer is being dragged (find the topmost active one)
+    for (var i = holoLayers.length - 1; i >= 0; i--) {
+      if (holoLayers[i].classList.contains('active-layer')) {
+        dragLayer = i;
+        break;
+      }
+    }
+    if (dragLayer < 0) return;
+    e.preventDefault();
+    dragging = true;
+    dragStartX = pos.x;
+    dragStartY = pos.y;
+    dragOrigX = layers[dragLayer].x;
+    dragOrigY = layers[dragLayer].y;
+    // Activate this layer
+    setActiveLayer(dragLayer);
+    holoLayers.forEach(function(l, idx) {
+      l.classList.toggle('active-layer', idx === dragLayer);
+    });
+  }
+
+  function onDragMove(e) {
+    if (!dragging || dragLayer < 0) return;
+    e.preventDefault();
+    var pos = getEventPos(e);
+    var dx = pos.x - dragStartX;
+    var dy = pos.y - dragStartY;
+    // Scale factor to convert screen pixels to CSS translate pixels
+    var photoBox = document.getElementById('photoBox');
+    var rect = photoBox.getBoundingClientRect();
+    var scaleFactor = 200 / rect.width; // approximate mapping
+    layers[dragLayer].x = Math.round(dragOrigX + dx * scaleFactor);
+    layers[dragLayer].y = Math.round(dragOrigY + dy * scaleFactor);
+    // Clamp
+    layers[dragLayer].x = Math.max(-160, Math.min(160, layers[dragLayer].x));
+    layers[dragLayer].y = Math.max(-160, Math.min(160, layers[dragLayer].y));
+    syncSliders();
+    applyAllLayers();
+  }
+
+  function onDragEnd(e) {
+    if (!dragging) return;
+    dragging = false;
+    dragLayer = -1;
+  }
+
+  // Mouse events
+  holoContainer.addEventListener('mousedown', onDragStart);
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('mouseup', onDragEnd);
+
+  // Touch events
+  holoContainer.addEventListener('touchstart', onDragStart, { passive: false });
+  document.addEventListener('touchmove', onDragMove, { passive: false });
+  document.addEventListener('touchend', onDragEnd);
 
   /* ===== GYROSCOPE ===== */
   function handleOrientation(event) {
     if (!gyroActive) return;
-    var beta  = event.beta;   // -180..180, tilt front/back
-    var gamma = event.gamma;  // -90..90, tilt left/right
-
+    var beta  = event.beta;
+    var gamma = event.gamma;
     if (beta === null || gamma === null) return;
-
     currentBeta  = beta;
     currentGamma = gamma;
 
-    // Map tilt to subtle offset: gamma -> X, beta -> Y
-    // Clamp range to avoid extreme values
+    // Map tilt to offset: gamma -> X, beta -> Y
     var clampedGamma = Math.max(-45, Math.min(45, gamma));
     var clampedBeta  = Math.max(-45, Math.min(45, beta));
 
-    gyroOffsetX = clampedGamma * 1.2;
-    gyroOffsetY = clampedBeta * 1.2;
+    // Parallax: different sensitivities per layer (handled by CSS vars)
+    gyroOffsetX = clampedGamma * 1.5;
+    gyroOffsetY = clampedBeta * 1.5;
 
-    applyHologram();
+    // Shimmer angle follows tilt
+    gyroOffsetAngle = 135 + (gamma * 0.5);
+
+    applyAllLayers();
   }
 
   function startGyroscope() {
     if (gyroActive) {
-      // Already active, stop it
       stopGyroscope();
       return;
+    }
+
+    function enableGyro() {
+      window.addEventListener('deviceorientation', handleOrientation);
+      gyroActive = true;
+      gyroStartBtn.textContent = '\u26A0\uFE0F Gyro: ON';
+      gyroStartBtn.classList.add('active');
+      gyroStatus.textContent = 'Gyroscope: Active \u2014 tilt device for parallax';
+      gyroStatus.classList.add('active');
+      liveBadge.classList.add('active');
+    }
+
+    function failGyro(err) {
+      console.warn('[Gyro] Failed:', err);
+      gyroStatus.textContent = 'Gyroscope unavailable on this device';
+      gyroStatus.classList.remove('active');
+      gyroStartBtn.disabled = true;
     }
 
     var requestPermission = (
@@ -776,36 +1166,17 @@ body{
       typeof DeviceOrientationEvent.requestPermission === 'function'
     );
 
-    function enableGyro() {
-      window.addEventListener('deviceorientation', handleOrientation);
-      gyroActive = true;
-      gyroStartBtn.textContent = '\u26A0\uFE0F Stop Gyroscope';
-      gyroStartBtn.classList.add('active');
-      gyroStatus.textContent = 'Gyroscope active \u2014 tilt your device!';
-      gyroStatus.classList.add('active');
-      liveBadge.classList.add('active');
-    }
-
-    function failGyro(err) {
-      console.warn('[Gyro] Failed to start:', err);
-      gyroStatus.textContent = 'Gyroscope unavailable on this device/browser';
-      gyroStatus.classList.remove('active');
-      gyroStartBtn.disabled = true;
-    }
-
     if (requestPermission) {
-      // iOS 13+ requires user gesture for permission
       DeviceOrientationEvent.requestPermission()
         .then(function(state) {
           if (state === 'granted') {
             enableGyro();
           } else {
-            failGyro(new Error('Permission denied: ' + state));
+            failGyro(new Error('Permission denied'));
           }
         })
         .catch(failGyro);
     } else if (typeof DeviceOrientationEvent !== 'undefined') {
-      // Non-iOS or older iOS — no permission needed
       enableGyro();
     } else {
       failGyro(new Error('DeviceOrientationEvent not supported'));
@@ -815,23 +1186,15 @@ body{
   function stopGyroscope() {
     window.removeEventListener('deviceorientation', handleOrientation);
     gyroActive = false;
-    gyroStartBtn.textContent = '\uD83D\uDCF1 Start Gyroscope';
+    gyroStartBtn.textContent = '\uD83D\uDCF1 Gyroscope';
     gyroStartBtn.classList.remove('active');
-    gyroStatus.textContent = 'Gyroscope inactive \u2014 tap "Start" to enable';
+    gyroStatus.textContent = 'Gyroscope: Off';
     gyroStatus.classList.remove('active');
     liveBadge.classList.remove('active');
     gyroOffsetX = 0;
     gyroOffsetY = 0;
-    applyHologram();
-  }
-
-  function resetGyroOffset() {
-    gyroOffsetX = 0;
-    gyroOffsetY = 0;
-    applyHologram();
-    if (gyroActive) {
-      gyroStatus.textContent = 'Tilt reset \u2014 tilt your device!';
-    }
+    gyroOffsetAngle = 135;
+    applyAllLayers();
   }
 
   gyroStartBtn.addEventListener('click', function() {
@@ -842,40 +1205,32 @@ body{
     }
   });
 
-  gyroResetBtn.addEventListener('click', resetGyroOffset);
-
-  // Detect support
-  if (typeof DeviceOrientationEvent !== 'undefined') {
-    gyroSupported = true;
-  }
-
-  /* ===== LOCK / UNLOCK ===== */
-  lockBtn.addEventListener('click', function() {
-    isLocked = !isLocked;
-    if (isLocked) {
-      controlsPanel.classList.add('hidden');
-      lockBtn.textContent = '\uD83D\uDD13 Unlock Controls';
-      lockBtn.classList.add('locked');
-    } else {
-      controlsPanel.classList.remove('hidden');
-      lockBtn.textContent = '\uD83D\uDD12 Lock & Hide Controls';
-      lockBtn.classList.remove('locked');
-    }
-  });
-
-  /* ===== TOGGLE CONTROLS VISIBILITY ===== */
-  toggleControlsBtn.addEventListener('click', function() {
-    var isHidden = controlsPanel.classList.toggle('hidden');
-    toggleControlsBtn.textContent = isHidden ? 'Show' : 'Hide';
-  });
-
-  /* ===== SAVE CONFIG ===== */
-  saveConfigBtn.addEventListener('click', function() {
-    saveData();
-    var orig = saveConfigBtn.textContent;
-    saveConfigBtn.textContent = '\u2713 Saved!';
+  /* ===== RESET ALL ===== */
+  resetAllBtn.addEventListener('click', function() {
+    layers = [
+      { x: 0, y: 0, scale: 0.55, rotate: 0, opacity: 0.45 },
+      { x: 0, y: 0, scale: 0.55, rotate: 0, opacity: 0.35 },
+      { x: 0, y: 0, scale: 0.55, rotate: 0, opacity: 0.25 }
+    ];
+    gyroOffsetX = 0;
+    gyroOffsetY = 0;
+    gyroOffsetAngle = 135;
+    if (gyroActive) stopGyroscope();
+    setActiveLayer(activeLayer);
+    applyAllLayers();
+    calStatus.textContent = 'All layers reset to defaults';
     setTimeout(function() {
-      saveConfigBtn.textContent = orig;
+      calStatus.textContent = 'Calibration active \u2014 drag layers or use sliders';
+    }, 1200);
+  });
+
+  /* ===== SAVE ===== */
+  saveBtn.addEventListener('click', function() {
+    saveData();
+    var orig = saveBtn.textContent;
+    saveBtn.textContent = '\u2713 Saved!';
+    setTimeout(function() {
+      saveBtn.textContent = orig;
     }, 1200);
   });
 
@@ -884,18 +1239,26 @@ body{
     if (!confirm('Clear all saved hologram data and photo?')) return;
     try {
       localStorage.removeItem('gyro_photo');
-      localStorage.removeItem('gyro_config');
+      localStorage.removeItem('gyro_layers');
+      localStorage.removeItem('gyro_active_layer');
     } catch(e) {}
-    profilePhoto.src = '';
-    profilePhoto.style.display = 'none';
-    photoPlaceholder.style.display = 'block';
-    config = { x: 0, y: 0, scale: 1, rotate: 0, opacity: 0.6 };
-    syncSliders();
+    profilePhoto.src = 'https://via.placeholder.com/250x250.png?text=Your+Photo';
+    layers = [
+      { x: 0, y: 0, scale: 0.55, rotate: 0, opacity: 0.45 },
+      { x: 0, y: 0, scale: 0.55, rotate: 0, opacity: 0.35 },
+      { x: 0, y: 0, scale: 0.55, rotate: 0, opacity: 0.25 }
+    ];
+    if (gyroActive) stopGyroscope();
+    gyroOffsetX = 0;
+    gyroOffsetY = 0;
+    gyroOffsetAngle = 135;
+    setActiveLayer(0);
+    applyAllLayers();
   });
 
   /* ===== INIT ===== */
   loadData();
-  applyHologram();
+  applyAllLayers();
 
 })();
 </script>

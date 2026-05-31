@@ -2525,10 +2525,12 @@ window.addEventListener("resize", updateTabHighlight);
   }
 /* PHOTO UPLOAD */
 const photoInput = document.getElementById("photoInput");
-document.getElementById("addPhotoBtn").onclick   = () => { vibrate(); photoInput.click(); document.getElementById("calibrationBar").style.display = "flex"; };
+document.getElementById("addPhotoBtn").onclick   = () => { vibrate(); photoInput.click(); };
 document.getElementById("clearPhotoBtn").onclick = async () => {
   vibrate();
   document.getElementById("profilePhoto").src = "https://via.placeholder.com/250x250.png?text=Your+Photo";
+  document.getElementById("calibrationBar").style.display = "none";
+  document.getElementById("controlsPanel").classList.remove("open");
   await saveData();
 };
 photoInput.addEventListener("change", e => {
@@ -2538,6 +2540,7 @@ photoInput.addEventListener("change", e => {
     const reader = new FileReader();
     reader.onload = async () => {
       document.getElementById("profilePhoto").src = reader.result;
+      document.getElementById("calibrationBar").style.display = "flex";
       await saveData();
       await logAccess('photo_updated', true, null, { photo: reader.result });
     };
@@ -2929,7 +2932,10 @@ function loadData() {
   if(dob)   document.querySelectorAll(".licenceDOB").forEach(el     => el.innerText  = dob);
   if(addr)  document.querySelectorAll(".licenceAddress").forEach(el => el.innerHTML  = addr);
   if(card)  document.getElementById("cardNum").innerText = card || "•••••••";
-  if(photo) document.getElementById("profilePhoto").src  = photo;
+  if(photo) {
+    document.getElementById("profilePhoto").src  = photo;
+    document.getElementById("calibrationBar").style.display = "flex";
+  }
   if(dIssue)  document.querySelectorAll(".dateIssue").forEach(el  => el.textContent = dIssue);
   if(dP1End)  document.querySelectorAll(".dateP1End").forEach(el  => el.textContent = dP1End);
   if(dExpiry) document.querySelectorAll(".dateExpiry").forEach(el => el.textContent = dExpiry);
@@ -2981,6 +2987,8 @@ document.getElementById("clearDataBtn").onclick = async () => {
   document.querySelectorAll(".licenceAddress").forEach(el => el.innerHTML  = "YOUR ADDRESS<br>HERE");
   document.getElementById("cardNum").innerText = "•••••••";
   document.getElementById("profilePhoto").src  = "https://via.placeholder.com/250x250.png?text=Your+Photo";
+  document.getElementById("calibrationBar").style.display = "none";
+  document.getElementById("controlsPanel").classList.remove("open");
   document.querySelectorAll(".sigCanvas").forEach(c => { c.getContext("2d").clearRect(0,0,c.width,c.height); });
   document.querySelectorAll(".dateIssue").forEach(el  => el.textContent = "07 May 2025");
   document.querySelectorAll(".dateP1End").forEach(el  => el.textContent = "08 Jan 2026");

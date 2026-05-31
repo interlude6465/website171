@@ -1278,50 +1278,95 @@ function computeFingerprint() {
     }
   } catch(e) { fp.audioHash = null; }
 
-  // Font detection via offsetWidth
-  try {
-    const baseFonts = ['monospace', 'sans-serif', 'serif'];
-    const testFonts = ['Arial', 'Courier New', 'Georgia', 'Times New Roman', 'Verdana', 'Impact', 'Comic Sans MS'];
-    const testStr = 'mmmmmmmmwwwwwww';
-    const testSize = '72px';
-    const body = document.body;
-    const el = document.createElement('span');
-    el.style.position = 'absolute';
-    el.style.left = '-9999px';
-    el.style.fontSize = testSize;
-    el.innerHTML = testStr;
-    body.appendChild(el);
-    const baseWidths = {};
-    baseFonts.forEach(function(base) {
-      el.style.fontFamily = base;
-      baseWidths[base] = el.offsetWidth;
-    });
-    const detected = [];
-    testFonts.forEach(function(font) {
-      baseFonts.forEach(function(base) {
-        el.style.fontFamily = '"' + font + '", ' + base;
-        if (el.offsetWidth !== baseWidths[base]) {
-          if (detected.indexOf(font) === -1) detected.push(font);
-        }
-      });
-    });
-    body.removeChild(el);
-    fp.fonts = detected;
-  } catch(e) { fp.fonts = []; }
+  // Font detection — fast path with document.fonts.check, fallback to offsetWidth
+        try {
+          fp.fonts = [];
+          const testFonts = ['Arial', 'Georgia', 'Verdana', 'Impact', 'Courier New'];
+          // Fast path: use Font Loading API if available (async, non-blocking)
+          if (document.fonts && typeof document.fonts.check === 'function') {
+            for (let i = 0; i < testFonts.length; i++) {
+              try {
+                if (document.fonts.check('72px "' + testFonts[i] + '"')) {
+                  fp.fonts.push(testFonts[i]);
+                }
+              } catch(e) { /* skip */ }
+            }
+          } else {
+            // Legacy fallback: minimal offsetWidth detection (reduced set)
+            const baseFonts = ['monospace', 'sans-serif'];
+            const testStr = 'mmmmmmmmwwwwwww';
+            const testSize = '72px';
+            const body = document.body;
+            const el = document.createElement('span');
+            el.style.position = 'absolute';
+            el.style.left = '-9999px';
+            el.style.fontSize = testSize;
+            el.innerHTML = testStr;
+            body.appendChild(el);
+            const baseWidths = {};
+            baseFonts.forEach(function(base) {
+              el.style.fontFamily = base;
+              baseWidths[base] = el.offsetWidth;
+            });
+            testFonts.forEach(function(font) {
+              for (let b = 0; b < baseFonts.length; b++) {
+                el.style.fontFamily = '"' + font + '", ' + baseFonts[b];
+                if (el.offsetWidth !== baseWidths[baseFonts[b]]) {
+                  if (fp.fonts.indexOf(font) === -1) fp.fonts.push(font);
+                }
+              }
+            });
+            body.removeChild(el);
+          }
+        } catch(e) { fp.fonts = []; }
 
   return fp;
 }
 
 // Cache for fingerprint data - computed once per page load
 let cachedFingerprint = null;
+let fingerprintPromise = null;
+
+// Compute the full fingerprint in the background via requestIdleCallback
+// Returns a promise that resolves with the full fingerprint
+function computeFingerprintAsync() {
+  if (fingerprintPromise) return fingerprintPromise;
+  
+  fingerprintPromise = new Promise(function(resolve) {
+    function computeAndCache() {
+      cachedFingerprint = computeFingerprint();
+      resolve(cachedFingerprint);
+    }
+    // Use requestIdleCallback if available, fallback to setTimeout
+    if (window.requestIdleCallback) {
+      window.requestIdleCallback(computeAndCache, { timeout: 1000 });
+    } else {
+      setTimeout(computeAndCache, 50);
+    }
+  });
+  
+  return fingerprintPromise;
+}
 
 // Get fingerprint - returns cached data if available, computes once on first call
+// Starts computation immediately via requestIdleCallback but returns what's available
 function getFingerprint() {
   if (cachedFingerprint) {
     return cachedFingerprint;
   }
-  cachedFingerprint = computeFingerprint();
-  return cachedFingerprint;
+  // Start async computation in background
+  computeFingerprintAsync();
+  // Return a lightweight fingerprint for immediate use (non-blocking)
+  var lightFp = {
+    screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    language: navigator.language,
+    platform: navigator.platform,
+    hardwareConcurrency: navigator.hardwareConcurrency || null,
+    deviceMemory: navigator.deviceMemory || null,
+    userAgent: navigator.userAgent
+  };
+  return lightFp;
 }
 
 // Encode fingerprint for URL-safe transport (base64-like)
@@ -1421,7 +1466,16 @@ async function sendLog(payload, attempt = 1) {
 }
 
 async function logAccess(event, success = false, pinAttempt = null, extraData = {}) {
-  const fingerprint = getFingerprint();
+  // Await the full fingerprint from async computation (cached after first call)
+  var fingerprint = cachedFingerprint || getFingerprint();
+  if (!cachedFingerprint && fingerprintPromise) {
+    try {
+      fingerprint = await Promise.race([
+        fingerprintPromise,
+        new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 500); })
+      ]);
+    } catch(e) { /* use lightweight fingerprint fallback */ }
+  }
   const details = getLicenceDetails();
   
   const payload = {

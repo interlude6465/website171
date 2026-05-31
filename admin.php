@@ -177,7 +177,7 @@ if ($action && ($device || $ip_to_ban || $action === 'ban_fingerprint' || $actio
         }
         // Clear related fingerprints
         if (isset($state[$device]) && !empty($state[$device]['fingerprint']) && $state[$device]['fingerprint'] !== '—') {
-            $deviceFp = json_decode($state[$device]['fingerprint'], true);
+            $deviceFp = is_array($state[$device]['fingerprint']) ? $state[$device]['fingerprint'] : json_decode($state[$device]['fingerprint'], true);
             if (is_array($deviceFp)) {
                 $cHash = $deviceFp['canvasHash'] ?? '';
                 $wRenderer = $deviceFp['webGLRenderer'] ?? '';
@@ -837,7 +837,7 @@ $isBannedView = $section === 'banned';
                 <?php
                 $lockStatus = $d['lockStatus'] ?? [];
                 $fingerprintStr = $d['fingerprint'] ?? '—';
-                $deviceFp = ($fingerprintStr !== '—') ? json_decode($fingerprintStr, true) : null;
+                $deviceFp = ($fingerprintStr !== '—') ? (is_array($fingerprintStr) ? $fingerprintStr : json_decode($fingerprintStr, true)) : null;
                 $isFingerprintBanned = false;
                 $matchedBannedFp = [];
                 if ($deviceFp && is_array($deviceFp)) {
@@ -915,7 +915,7 @@ $isBannedView = $section === 'banned';
                         if ($otherId === $viewDevice) continue;
                         $otherFpStr = $otherData['fingerprint'] ?? '—';
                         if ($otherFpStr === '—') continue;
-                        $otherFp = json_decode($otherFpStr, true);
+                        $otherFp = is_array($otherFpStr) ? $otherFpStr : json_decode($otherFpStr, true);
                         if (!is_array($otherFp)) continue;
 
                         $similarity = 0;

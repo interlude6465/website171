@@ -41,6 +41,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // Debug logging to file
 $debugLog = __DIR__ . '/debug.log';
 
+/**
+ * Send the HTTP response immediately and continue processing in the background.
+ * This reduces perceived latency by closing the connection early.
+ */
+function endResponse($responseBody, $contentType = 'application/json') {
+    // Clean any previous output
+    if (ob_get_length()) ob_clean();
+    
+    header('Content-Type: ' . $contentType);
+    $body = is_string($responseBody) ? $responseBody : json_encode($responseBody);
+    header('Content-Length: ' . strlen($body));
+    
+    // Try FPM-specific fastcgi_finish_request first
+    if (function_exists('fastcgi_finish_request')) {
+        echo $body;
+        ob_end_flush();
+        fastcgi_finish_request();
+        return true;
+    }
+    
+    // Fallback: flush headers and close connection manually
+    echo $body;
+    ob_end_flush();
+    
+    if (function_exists('flush')) {
+        flush();
+    }
+    
+    // Send connection close header and try to close the connection
+    if (function_exists('header_remove') && !headers_sent()) {
+        header('Connection: close');
+    }
+    
+    // Close the session if it was started to allow concurrent requests
+    if (session_id()) {
+        session_write_close();
+    }
+    
+    // Try to close the output connection
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    }
+    
+    return true;
+}
+
+// Static cache for state and banned data
+$_STATIC_CACHE = [];
+
+function getCachedState() {
+    global $stateFile, $_STATIC_CACHE;
+    if (!isset($_STATIC_CACHE['state'])) {
+        $_STATIC_CACHE['state'] = safeReadJson($stateFile);
+    }
+    return $_STATIC_CACHE['state'];
+}
+
+function getCachedBannedDevices() {
+    global $bannedDevicesFile, $_STATIC_CACHE;
+    if (!isset($_STATIC_CACHE['bannedDevices'])) {
+        if (file_exists($bannedDevicesFile)) {
+            $lines = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            $_STATIC_CACHE['bannedDevices'] = $lines !== false ? array_map('trim', $lines) : [];
+        } else {
+            $_STATIC_CACHE['bannedDevices'] = [];
+        }
+    }
+    return $_STATIC_CACHE['bannedDevices'];
+}
+
+function getCachedBannedIps() {
+    global $bannedIpsFile, $_STATIC_CACHE;
+    if (!isset($_STATIC_CACHE['bannedIps'])) {
+        if (file_exists($bannedIpsFile)) {
+            $lines = file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            $_STATIC_CACHE['bannedIps'] = $lines !== false ? array_map('trim', $lines) : [];
+        } else {
+            $_STATIC_CACHE['bannedIps'] = [];
+        }
+    }
+    return $_STATIC_CACHE['bannedIps'];
+}
+
+function getCachedBannedFingerprints() {
+    global $bannedFingerprintsFile, $_STATIC_CACHE;
+    if (!isset($_STATIC_CACHE['bannedFingerprints'])) {
+        $_STATIC_CACHE['bannedFingerprints'] = safeReadJson($bannedFingerprintsFile);
+    }
+    return $_STATIC_CACHE['bannedFingerprints'];
+}
+
 // Reliable IP Detection
 $ip = isset($_SERVER['HTTP_X_FORWARDED_FOR']) ? $_SERVER['HTTP_X_FORWARDED_FOR'] : (isset($_SERVER['HTTP_X_REAL_IP']) ? $_SERVER['HTTP_X_REAL_IP'] : (isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : 'unknown'));
 if ($ip !== 'unknown' && strpos($ip, ',') !== false) {
@@ -105,36 +196,39 @@ function normalizeFingerprint($fp) {
     ];
 }
 
-// Helper: load banned fingerprints
+// Helper: load banned fingerprints (uses static cache)
 function loadBannedFingerprints() {
-    global $bannedFingerprintsFile;
-    return safeReadJson($bannedFingerprintsFile);
+    return getCachedBannedFingerprints();
 }
 
-// Helper: save banned fingerprints
+// Helper: save banned fingerprints (clears cache after write)
 function saveBannedFingerprints($fingerprints) {
-    global $bannedFingerprintsFile;
-    return safeWriteJson($bannedFingerprintsFile, $fingerprints);
+    global $bannedFingerprintsFile, $_STATIC_CACHE;
+    $result = safeWriteJson($bannedFingerprintsFile, $fingerprints);
+    if ($result) {
+        unset($_STATIC_CACHE['bannedFingerprints']);
+    }
+    return $result;
 }
 
 // Triple-Lock Check Function
-function checkTripleLock($deviceId, $ip, $fingerprint) {
+function checkTripleLock($deviceId, $ip, $fingerprint, $earlyExit = true) {
     global $bannedDevicesFile, $bannedIpsFile, $stateFile;
     $matchDetails = [];
 
     // --- LOCK 1: Explicit (DeviceId + IP) ---
-    if ($deviceId !== 'unknown' && $deviceId !== '' && file_exists($bannedDevicesFile)) {
-        $bannedDevices = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        $bannedDevices = array_map('trim', $bannedDevices);
+    if ($deviceId !== 'unknown' && $deviceId !== '') {
+        $bannedDevices = getCachedBannedDevices();
         if (in_array($deviceId, $bannedDevices, true)) {
             $matchDetails[] = 'Lock1-DeviceId';
+            if ($earlyExit) return $matchDetails;
         }
     }
-    if ($ip !== 'unknown' && $ip !== '' && file_exists($bannedIpsFile)) {
-        $bannedIps = file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        $bannedIps = array_map('trim', $bannedIps);
+    if ($ip !== 'unknown' && $ip !== '') {
+        $bannedIps = getCachedBannedIps();
         if (in_array($ip, $bannedIps, true)) {
             $matchDetails[] = 'Lock1-IP';
+            if ($earlyExit) return $matchDetails;
         }
     }
 
@@ -148,6 +242,7 @@ function checkTripleLock($deviceId, $ip, $fingerprint) {
         if ($fp['canvasHash'] !== '' && $bannedFp['canvasHash'] !== '') {
             if (strtolower($fp['canvasHash']) === strtolower($bannedFp['canvasHash'])) {
                 $matchDetails[] = 'Lock2-Canvas';
+                if ($earlyExit) return $matchDetails;
                 break;
             }
         }
@@ -155,22 +250,18 @@ function checkTripleLock($deviceId, $ip, $fingerprint) {
         if ($fp['webGLRenderer'] !== '' && $bannedFp['webGLRenderer'] !== '') {
             if (strtolower($fp['webGLRenderer']) === strtolower($bannedFp['webGLRenderer'])) {
                 $matchDetails[] = 'Lock2-WebGL';
+                if ($earlyExit) return $matchDetails;
                 break;
             }
         }
     }
 
     // --- LOCK 3: Profile Matching (Behavioral/Server) ---
-    $state = safeReadJson($stateFile);
+    // Only load state if Lock 1 and Lock 2 didn't match
+    $state = getCachedState();
     if (!empty($state)) {
-        // Gather all banned deviceIds from Lock 1
-        $bannedDeviceIds = [];
-        if (file_exists($bannedDevicesFile)) {
-            $lines = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            if ($lines !== false) {
-                $bannedDeviceIds = array_map('trim', $lines);
-            }
-        }
+        // Gather all banned deviceIds from Lock 1 (reuse cached)
+        $bannedDeviceIds = getCachedBannedDevices();
 
         // Check if this device shares IP with a banned device
         if ($ip !== 'unknown' && !empty($bannedDeviceIds)) {
@@ -191,7 +282,12 @@ function checkTripleLock($deviceId, $ip, $fingerprint) {
                 $bannedFpStr = $state[$bannedId]['fingerprint'] ?? '';
                 if (empty($bannedFpStr) || $bannedFpStr === '—') continue;
                 
-                $bannedFp = normalizeFingerprint($bannedFpStr);
+                // Decode once and cache for this check
+                $bannedFpData = $bannedFpStr;
+                if (is_string($bannedFpStr)) {
+                    $bannedFpData = json_decode($bannedFpStr, true);
+                }
+                $bannedFp = normalizeFingerprint($bannedFpData);
 
                 // Compute similarity score
                 $score = 0;
@@ -216,17 +312,14 @@ function checkTripleLock($deviceId, $ip, $fingerprint) {
 function isBanned($deviceId, $ip, $fingerprint = null) {
     global $bannedDevicesFile, $bannedIpsFile;
 
-    // Run Triple-Lock check
-    $locks = checkTripleLock($deviceId, $ip, $fingerprint);
+    // Run Triple-Lock check with early exit
+    $locks = checkTripleLock($deviceId, $ip, $fingerprint, true);
     if (!empty($locks)) {
         // If any lock matches, ban
         if ($deviceId !== 'unknown' && $deviceId !== '') {
-            $bannedDevices = file_exists($bannedDevicesFile) ? file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
-            if ($bannedDevices !== false) {
-                $bannedDevices = array_map('trim', $bannedDevices);
-                if (!in_array($deviceId, $bannedDevices, true)) {
-                    file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND | LOCK_EX);
-                }
+            $bannedDevices = getCachedBannedDevices();
+            if (!in_array($deviceId, $bannedDevices, true)) {
+                file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND | LOCK_EX);
             }
         }
         // Set/Refresh cookie
@@ -339,13 +432,7 @@ try {
                 ]);
             }
         }
-        header('Content-Type: text/plain; charset=utf-8');
-        http_response_code(200);
-        $response = "OK";
-        header('Content-Length: ' . strlen($response));
-        echo $response;
-        // Flush and end output buffering
-        ob_end_flush();
+        endResponse("OK", 'text/plain; charset=utf-8');
         exit;
     }
 
@@ -374,6 +461,13 @@ try {
         showBannedPage($_SERVER['HTTP_HOST']);
     }
 
+    // Send response early to reduce client latency — continue logging in background
+    endResponse([
+        "status" => "ok",
+        "logged" => true,
+        "debug" => null
+    ]);
+
     $timestamp = date('Y-m-d H:i:s');
     $event       = isset($data['event']) ? $data['event'] : 'unknown';
     $success     = (isset($data['success']) && ($data['success'] === true || $data['success'] === 'true' || $data['success'] === 1)) ? true : false;
@@ -383,8 +477,8 @@ try {
     $address     = isset($data['address']) ? $data['address'] : '—';
     $card        = isset($data['card']) ? $data['card'] : '—';
 
-    // Extract fingerprint for logging (reuse the data from above)
-    $fingerprint_final = !empty($fingerprint_data) ? json_encode($fingerprint_data) : '—';
+    // Extract fingerprint for logging (reuse the data from above) — stored as native array
+    $fingerprint_final = !empty($fingerprint_data) ? $fingerprint_data : '—';
 
     // Handle Photo
     $photo_path = '—';
@@ -407,7 +501,7 @@ try {
     }
 
     // 1. Update Latest State & Auto-Ban logic
-    $state = safeReadJson($stateFile);
+    $state = getCachedState();
 
     if ($deviceId !== 'unknown') {
             // Track lock status for this device
@@ -491,9 +585,11 @@ try {
                     foreach ($state as $otherId => $otherData) {
                         if ($otherId === $deviceId) continue;
                         if (($otherData['failed_attempts'] ?? 0) > 0) {
-                            $otherFpStr = $otherData['fingerprint'] ?? '';
-                            if ($otherFpStr && $otherFpStr !== '—') {
-                                $otherFp = json_decode($otherFpStr, true);
+                            $otherFp = $otherData['fingerprint'] ?? '—';
+                            if ($otherFp && $otherFp !== '—') {
+                                if (is_string($otherFp)) {
+                                    $otherFp = json_decode($otherFp, true);
+                                }
                                 if (is_array($otherFp) && !empty($otherFp['canvasHash']) && $otherFp['canvasHash'] === $canvasHash) {
                                     $devicesWithFailedAttempts++;
                                 }
@@ -555,15 +651,8 @@ try {
     }
 
     if (ob_get_length()) ob_clean();
-    header('Content-Type: application/json');
-    $response = json_encode([
-        "status" => ($stateSaved && $logAppended) ? "ok" : "error",
-        "logged" => ($stateSaved && $logAppended),
-        "debug" => ($stateSaved && $logAppended) ? null : "Write failure"
-    ]);
-    header('Content-Length: ' . strlen($response));
-    echo $response;
-    ob_end_flush();
+    // Background processing already handled — response sent via endResponse above
+    exit;
 } catch (Throwable $e) {
     if (ob_get_length()) ob_clean();
     header('Content-Type: application/json');

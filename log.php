@@ -230,13 +230,21 @@ function isBanned($deviceId, $ip, $fingerprint = null) {
             }
         }
         // Set/Refresh cookie
-        setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/; SameSite=Lax");
+        setcookie('banned', '1', [
+            'expires' => time() + (365 * 24 * 60 * 60),
+            'path' => '/',
+            'samesite' => 'Lax'
+        ]);
         return true;
     }
 
     // If NOT matched by any lock but has cookie, clear it (User was likely unbanned)
     if (isset($_COOKIE['banned'])) {
-        setcookie('banned', '', time() - 3600, "/; SameSite=Lax");
+        setcookie('banned', '', [
+            'expires' => time() - 3600,
+            'path' => '/',
+            'samesite' => 'Lax'
+        ]);
     }
 
     return false;
@@ -324,7 +332,11 @@ try {
         } else {
             // If not banned, but has banned cookie, clear it (Unban action)
             if (isset($_COOKIE['banned'])) {
-                setcookie('banned', '', time() - 3600, "/; SameSite=Lax");
+                setcookie('banned', '', [
+                    'expires' => time() - 3600,
+                    'path' => '/',
+                    'samesite' => 'Lax'
+                ]);
             }
         }
         header('Content-Type: text/plain; charset=utf-8');
@@ -464,7 +476,11 @@ try {
                         saveBannedFingerprints($bannedFps);
                     }
                     // Set cookie for auto-ban too
-                    setcookie('banned', '1', time() + (365 * 24 * 60 * 60), "/; SameSite=Lax");
+                    setcookie('banned', '1', [
+                        'expires' => time() + (365 * 24 * 60 * 60),
+                        'path' => '/',
+                        'samesite' => 'Lax'
+                    ]);
                 }
 
                 // Cross-device canvas auto-ban: if the same canvasHash appears across 3+ devices

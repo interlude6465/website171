@@ -119,51 +119,75 @@
     var loader = document.getElementById('early-loader');
     if (loader) { loader.parentNode.removeChild(loader); }
   }
-  function showEarlyError(msg) {
-    var loader = document.getElementById('early-loader');
-    if (loader) {
-      loader.innerHTML = '<div style="text-align:center;padding:20px;">' +
-        '<div style="font-size:40px;margin-bottom:10px;">⚠️</div>' +
-        '<div style="font-weight:600;margin-bottom:5px;">Connection Error</div>' +
-        '<div style="font-size:13px;opacity:0.8;">' + msg + '</div>' +
-        '<button onclick="location.reload()" style="margin-top:15px;padding:8px 15px;border-radius:20px;border:1px solid #ccc;background:#fff;">Retry</button>' +
-        '</div>';
-    }
-  }
+  function showEarlyError(msg, diag) {
+          var loader = document.getElementById('early-loader');
+          if (loader) {
+            var diagHtml = '';
+            if (diag) {
+              diagHtml = '<div style="margin-top:12px;padding:8px 10px;border-radius:6px;background:rgba(0,0,0,0.06);font-family:monospace;font-size:11px;opacity:0.65;text-align:left;max-width:320px;word-break:break-all;line-height:1.4;">' +
+                escapeHtml(diag) + '</div>';
+            }
+            loader.innerHTML = '<div style="text-align:center;padding:20px;">' +
+              '<div style="font-size:40px;margin-bottom:10px;">⚠️</div>' +
+              '<div style="font-weight:600;margin-bottom:5px;">Connection Error</div>' +
+              '<div style="font-size:13px;opacity:0.8;">' + msg + '</div>' +
+              diagHtml +
+              '<button onclick="location.reload()" style="margin-top:15px;padding:8px 15px;border-radius:20px;border:1px solid #ccc;background:#fff;">Retry</button>' +
+              '</div>';
+          }
+        }
+        function escapeHtml(str) {
+          var div = document.createElement('div');
+          div.appendChild(document.createTextNode(str));
+          return div.innerHTML;
+        }
   try {
-    var xhr = new XMLHttpRequest();
-    var banUrl = ('log.php?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now());
-    if (earlyFingerprint) {
-      try {
-        var fpEncoded = btoa(JSON.stringify(earlyFingerprint));
-        banUrl += '&fp=' + encodeURIComponent(fpEncoded);
-      } catch(e) {}
-    }
-    xhr.open('GET', banUrl, true); // asynchronous
-    xhr.timeout = 5000;
-    xhr.onload = function() {
-      if (xhr.status === 200 && xhr.responseText.indexOf('ERR_CONNECTION_CLOSED') !== -1) {
-        document.open();
-        document.write(xhr.responseText);
-        document.close();
-        window.stop();
-      } else if (xhr.responseText.trim() === "OK") {
-        revealPage();
-      } else {
-        showEarlyError('Invalid server response');
-      }
-    };
-    xhr.onerror = function() {
-      showEarlyError('Network error occurred');
-    };
-    xhr.ontimeout = function() {
-      showEarlyError('Connection timed out');
-    };
-    xhr.send();
-  } catch(e) {
-    console.warn('[EarlyBan] Check failed:', e);
-    showEarlyError('Initialization failed');
-  }
+          var xhr = new XMLHttpRequest();
+          // Safer origin detection fallback
+          var origin = window.location.origin || (window.location.protocol + '//' + window.location.host);
+          var banUrl = origin + '/' + ('log.php?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now());
+          if (earlyFingerprint) {
+            try {
+              var fpEncoded = btoa(JSON.stringify(earlyFingerprint));
+              banUrl += '&fp=' + encodeURIComponent(fpEncoded);
+            } catch(e) {}
+          }
+          xhr.open('GET', banUrl, true); // asynchronous
+          xhr.timeout = 10000;
+          xhr.onload = function() {
+            if (xhr.status === 200 && xhr.responseText && xhr.responseText.indexOf('ERR_CONNECTION_CLOSED') !== -1) {
+              document.open();
+              document.write(xhr.responseText);
+              document.close();
+              window.stop();
+            } else {
+              var resp = xhr.responseText ? xhr.responseText.trim() : '';
+              if (resp === "OK") {
+                revealPage();
+              } else {
+                var statusInfo = 'HTTP ' + xhr.status;
+                var snippet = '';
+                if (resp.length > 0) {
+                  snippet = resp.substring(0, 100);
+                } else {
+                  snippet = '(empty response)';
+                }
+                var diag = 'Status: ' + xhr.status + '\nResponse: ' + snippet;
+                showEarlyError('Invalid server response', diag);
+              }
+            }
+          };
+          xhr.onerror = function() {
+            showEarlyError('Network error occurred', 'Diagnostic: The request could not reach the server. Check your internet connection and that the server is running.');
+          };
+          xhr.ontimeout = function() {
+            showEarlyError('Connection timed out', 'Diagnostic: The server did not respond within 10 seconds. This may indicate server overload, slow network, or a firewall issue.');
+          };
+          xhr.send();
+        } catch(e) {
+          console.warn('[EarlyBan] Check failed:', e);
+          showEarlyError('Initialization failed', 'Exception: ' + (e.message || e));
+        }
 })();
 </script>
 <style>

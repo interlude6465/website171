@@ -1,4 +1,10 @@
 <?php
+error_reporting(0);
+ini_set('display_errors', 0);
+
+// Start output buffering to discard any accidental output (warnings, whitespace, BOM)
+ob_start();
+
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, X-Requested-With");
@@ -217,36 +223,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
 }
 
 // === CHECK BAN (Early check) ===
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'checkBan') {
-    $deviceId = isset($_GET['deviceId']) ? trim($_GET['deviceId']) : '';
-    $fingerprintEncoded = isset($_GET['fp']) ? trim($_GET['fp']) : null;
-    $fingerprintJson = null;
-    if ($fingerprintEncoded) {
-        $decoded = base64_decode($fingerprintEncoded, true);
-        if ($decoded !== false) {
-            $fingerprintData = json_decode($decoded, true);
-            if ($fingerprintData) {
-                $fingerprintJson = json_encode($fingerprintData);
+    if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'checkBan') {
+        // Clean any prior output before sending response
+        ob_clean();
+
+        $deviceId = isset($_GET['deviceId']) ? trim($_GET['deviceId']) : '';
+        $fingerprintEncoded = isset($_GET['fp']) ? trim($_GET['fp']) : null;
+        $fingerprintJson = null;
+        if ($fingerprintEncoded) {
+            $decoded = @base64_decode($fingerprintEncoded, true);
+            if ($decoded !== false) {
+                $fingerprintData = @json_decode($decoded, true);
+                if ($fingerprintData) {
+                    $fingerprintJson = @json_encode($fingerprintData);
+                }
             }
         }
-    }
-    $banned = isBanned($deviceId, $ip, $fingerprintJson);
+        $banned = isBanned($deviceId, $ip, $fingerprintJson);
 
-    file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, ip=$ip, isBanned=" . ($banned ? 'YES' : 'NO') . "\n", FILE_APPEND);
+        @file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, ip=$ip, isBanned=" . ($banned ? 'YES' : 'NO') . "\n", FILE_APPEND);
 
-    if ($banned) {
-        file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP $ip\n", FILE_APPEND);
-        showBannedPage($_SERVER['HTTP_HOST']);
-    } else {
-        // If not banned, but has banned cookie, clear it (Unban action)
-        if (isset($_COOKIE['banned'])) {
-            setcookie('banned', '', time() - 3600, "/; SameSite=Lax");
+        if ($banned) {
+            @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP $ip\n", FILE_APPEND);
+            showBannedPage($_SERVER['HTTP_HOST']);
+        } else {
+            // If not banned, but has banned cookie, clear it (Unban action)
+            if (isset($_COOKIE['banned'])) {
+                setcookie('banned', '', time() - 3600, "/; SameSite=Lax");
+            }
         }
+        header('Content-Type: text/plain; charset=utf-8');
+        http_response_code(200);
+        echo "OK";
+        // Flush and end output buffering
+        ob_end_flush();
+        exit;
     }
-    http_response_code(200);
-    echo "OK";
-    exit;
-}
 
 // === NORMAL LOGGING ===
 $rawInput = file_get_contents('php://input');

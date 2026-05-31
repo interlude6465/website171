@@ -1,0 +1,903 @@
+<!-- DISCLAIMER -->
+<!-- This mock is for educational demonstrations and internal testing. It is not a real ID and should not be used to impersonate, deceive, or commit fraud. No real data or official security features are included. The author and contributors are not responsible for any misuse by third parties. By using or distributing this material, you agree to comply with all laws and ethics guidelines.-->
+
+<!doctype html>
+<html lang="en">
+<head>
+<link rel="apple-touch-icon" href="https://i.postimg.cc/P5840XBb/IMG-1423.jpg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hologram Calibration">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Holographic Coat of Arms — Calibration</title>
+<style>
+:root{
+  --bg:#eef3f6;
+  --muted:#435166;
+  --accent:#0f2b3a;
+  --panel:#fff;
+  --safety-red:#c62828;
+  --hologram-x: 0px;
+  --hologram-y: 0px;
+  --hologram-scale: 1;
+  --hologram-rotate: 0deg;
+  --hologram-opacity: 0.6;
+  --gyro-offset-x: 0px;
+  --gyro-offset-y: 0px;
+}
+*{
+  box-sizing:border-box;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+body{
+  margin:0;
+  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  background:#ffffff;
+  color:var(--muted);
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+.top-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+  z-index: 300;
+}
+.back-btn {
+  position: absolute;
+  left: 12px;
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: #0f2b3a;
+}
+.view-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: #0f2b3a;
+}
+#viewport {
+  width:100vw;
+  height:100vh;
+  background:#ffffff;
+  position:relative;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-top: 48px;
+  padding-bottom: 60px;
+  -webkit-overflow-scrolling: touch;
+}
+#scroll-content {
+  padding: 16px;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 18px 0 10px 0;
+}
+.section-desc {
+  font-size: 13px;
+  color: var(--muted);
+  opacity: 0.8;
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+
+/* ===== PHOTO UPLOAD ===== */
+.photo-upload-area {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 380px;
+  background: #b9d6e2;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+.photo-upload-area img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.photo-placeholder {
+  text-align: center;
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+.photo-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.photo-actions button {
+  background: var(--accent);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 18px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s ease;
+}
+.photo-actions button:hover {
+  background: #1a3f52;
+}
+.photo-actions button.danger {
+  background: var(--safety-red);
+}
+.photo-actions button.danger:hover {
+  background: #a52020;
+}
+
+/* ===== HOLOGRAM OVERLAY ===== */
+.hologram-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+  overflow: hidden;
+}
+.hologram-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: translate(
+    calc(var(--hologram-x) + var(--gyro-offset-x)),
+    calc(var(--hologram-y) + var(--gyro-offset-y))
+  ) scale(var(--hologram-scale)) rotate(var(--hologram-rotate));
+  opacity: var(--hologram-opacity);
+  transition: transform 0.15s ease-out, opacity 0.3s ease;
+  will-change: transform;
+}
+.hologram-coat {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 70%;
+  height: 70%;
+  transform: translate(-50%, -50%);
+  background: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500"%3E%3Cdefs%3E%3ClinearGradient id="shieldGrad" x1="0" y1="0" x2="1" y2="1"%3E%3Cstop offset="0" stop-color="%23f5d442"/%3E%3Cstop offset="0.3" stop-color="%23f5d442"/%3E%3Cstop offset="0.35" stop-color="%23005ba3"/%3E%3Cstop offset="0.65" stop-color="%23005ba3"/%3E%3Cstop offset="0.7" stop-color="%23f5d442"/%3E%3Cstop offset="1" stop-color="%23f5d442"/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d="M200 30 L370 120 L370 280 Q370 410 200 470 Q30 410 30 280 L30 120 Z" fill="url(%23shieldGrad)" stroke="%23c8a832" stroke-width="6"/%3E%3Cpath d="M200 60 L345 140 L345 275 Q345 385 200 440 Q55 385 55 275 L55 140 Z" fill="none" stroke="%23c8a832" stroke-width="3"/%3E%3C!-- Chevron --%3E%3Cpath d="M110 280 L200 360 L290 280" fill="none" stroke="%23c8a832" stroke-width="4"/%3E%3Ctext x="200" y="210" text-anchor="middle" font-family="serif" font-size="28" font-weight="bold" fill="%23c8a832"%3EVICTORIA%3C/text%3E%3Ctext x="200" y="240" text-anchor="middle" font-family="serif" font-size="14" fill="%23c8a832"%3EAUSTRALIA%3C/text%3E%3C!-- Southern Cross --%3E%3Ccircle cx="160" cy="150" r="4" fill="%23fff"/%3E%3Ccircle cx="175" cy="135" r="3" fill="%23fff"/%3E%3Ccircle cx="140" cy="140" r="2.5" fill="%23fff"/%3E%3Ccircle cx="150" cy="130" r="2" fill="%23fff"/%3E%3C!-- Crown --%3E%3Cpath d="M170 60 L185 40 L200 55 L215 40 L230 60" fill="none" stroke="%23c8a832" stroke-width="3"/%3E%3Ctext x="200" y="340" text-anchor="middle" font-family="serif" font-size="13" font-weight="bold" fill="%23c8a832"%3EPEACE %26 PROSPERITY%3C/text%3E%3C/svg%3E') no-repeat center/contain;
+  pointer-events: none;
+}
+/* Shimmer overlay */
+.hologram-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0) 20%,
+    rgba(255,215,0,0.15) 30%,
+    rgba(0,200,255,0.12) 40%,
+    rgba(255,105,180,0.10) 50%,
+    rgba(0,200,255,0.12) 60%,
+    rgba(255,215,0,0.15) 70%,
+    rgba(255,255,255,0) 80%,
+    rgba(255,255,255,0) 100%
+  );
+  background-size: 200% 200%;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  animation: shimmer-drift 4s ease-in-out infinite;
+}
+@keyframes shimmer-drift {
+  0%   { background-position: 0% 0%; }
+  50%  { background-position: 100% 100%; }
+  100% { background-position: 0% 0%; }
+}
+
+/* ===== CALIBRATION CONTROLS ===== */
+.controls-panel {
+  background: var(--panel);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid rgba(0,0,0,0.04);
+}
+.controls-panel.hidden {
+  display: none;
+}
+.controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.controls-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.controls-header .toggle-btn {
+  background: none;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.control-group {
+  margin-bottom: 10px;
+}
+.control-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.control-label .val {
+  color: var(--accent);
+  font-weight: 700;
+}
+.control-group input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: #d0d5dd;
+  outline: none;
+}
+.control-group input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.control-group input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+/* ===== GYRO BUTTONS ===== */
+.gyro-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.gyro-bar button {
+  flex: 1;
+  min-width: 100px;
+  padding: 10px 14px;
+  border-radius: 20px;
+  border: none;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.gyro-btn-start {
+  background: var(--accent);
+  color: #fff;
+}
+.gyro-btn-start.active {
+  background: #1aa266;
+}
+.gyro-btn-start:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.gyro-btn-reset {
+  background: #ecedef;
+  color: var(--muted);
+}
+.gyro-status {
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.7;
+  margin-bottom: 10px;
+  text-align: center;
+}
+.gyro-status.active {
+  opacity: 1;
+  color: #1aa266;
+  font-weight: 600;
+}
+
+/* ===== LIVE MODE INDICATOR ===== */
+.live-badge {
+  display: none;
+  position: fixed;
+  top: 56px;
+  right: 12px;
+  background: rgba(26,162,102,0.9);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 12px;
+  z-index: 200;
+  pointer-events: none;
+}
+.live-badge.active {
+  display: block;
+}
+
+/* ===== LOCK BUTTON ===== */
+.lock-btn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  border-radius: 20px;
+  border: none;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  transition: all 0.2s ease;
+  margin-top: 6px;
+}
+.lock-btn.locked {
+  background: #1aa266;
+}
+.lock-btn:active {
+  transform: scale(0.97);
+}
+
+/* ===== PRESET BUTTONS ===== */
+.presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 10px 0 4px 0;
+}
+.presets button {
+  padding: 4px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #f5f6f8;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.presets button:hover {
+  background: #ecedef;
+}
+
+/* ===== RESET / CLEAR ===== */
+.reset-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.reset-bar button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 14px;
+  border: none;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+.reset-bar button.secondary {
+  background: #ecedef;
+  color: var(--muted);
+}
+.reset-bar button.danger {
+  background: var(--safety-red);
+  color: #fff;
+}
+
+/* ===== NAV LINK ===== */
+.nav-link {
+  display: block;
+  text-align: center;
+  padding: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  opacity: 0.7;
+}
+.nav-link:hover {
+  opacity: 1;
+}
+
+/* ===== RESPONSIVE ===== */
+@media(min-width:700px){
+  #scroll-content {
+    padding: 24px 16px;
+  }
+  .hologram-coat {
+    width: 60%;
+    height: 60%;
+  }
+}
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <button class="back-btn" onclick="history.back()">&#8592;</button>
+  <div class="view-title">Holographic Overlay</div>
+</nav>
+
+<div class="live-badge" id="liveBadge">LIVE</div>
+
+<div id="viewport">
+  <div id="scroll-content">
+
+    <div class="section-title">&#x2728; Holographic Coat of Arms</div>
+    <div class="section-desc">
+      Upload a photo, then position, scale and rotate the holographic Victorian Coat of Arms overlay.
+      Enable the gyroscope to have the hologram respond to device tilt.
+    </div>
+
+    <!-- PHOTO UPLOAD -->
+    <div class="photo-upload-area" id="photoArea">
+      <img id="profilePhoto" src="" alt="Upload your photo" style="display:none;"/>
+      <div class="photo-placeholder" id="photoPlaceholder">
+        <div style="font-size:40px;margin-bottom:6px;">&#128247;</div>
+        <div>Tap "Add Photo" to begin</div>
+      </div>
+      <!-- Hologram Overlay -->
+      <div class="hologram-container" id="hologramContainer">
+        <div class="hologram-layer" id="hologramLayer">
+          <div class="hologram-coat"></div>
+          <div class="hologram-shimmer"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="photo-actions">
+      <button id="addPhotoBtn">Add Photo</button>
+      <button id="clearPhotoBtn" class="danger">Clear Photo</button>
+      <input type="file" id="photoInput" accept="image/*" style="display:none"/>
+    </div>
+
+    <!-- GYROSCOPE CONTROLS -->
+    <div class="gyro-bar">
+      <button class="gyro-btn-start" id="gyroStartBtn">&#x1F4F1; Start Gyroscope</button>
+      <button class="gyro-btn-reset" id="gyroResetBtn">&#x21BA; Reset Tilt</button>
+    </div>
+    <div class="gyro-status" id="gyroStatus">Gyroscope inactive — tap "Start" to enable</div>
+
+    <!-- CALIBRATION CONTROLS -->
+    <div class="controls-panel" id="controlsPanel">
+      <div class="controls-header">
+        <h3>&#x2699; Position &amp; Scale</h3>
+        <button class="toggle-btn" id="toggleControlsBtn">Hide</button>
+      </div>
+
+      <div class="control-group">
+        <div class="control-label"><span>X Position</span><span class="val" id="xVal">0</span></div>
+        <input type="range" id="xSlider" min="-120" max="120" value="0" step="1"/>
+      </div>
+      <div class="control-group">
+        <div class="control-label"><span>Y Position</span><span class="val" id="yVal">0</span></div>
+        <input type="range" id="ySlider" min="-120" max="120" value="0" step="1"/>
+      </div>
+      <div class="control-group">
+        <div class="control-label"><span>Scale</span><span class="val" id="scaleVal">1.00</span></div>
+        <input type="range" id="scaleSlider" min="0.3" max="2.0" value="1.0" step="0.01"/>
+      </div>
+      <div class="control-group">
+        <div class="control-label"><span>Rotation</span><span class="val" id="rotateVal">0&deg;</span></div>
+        <input type="range" id="rotateSlider" min="-180" max="180" value="0" step="1"/>
+      </div>
+      <div class="control-group">
+        <div class="control-label"><span>Opacity</span><span class="val" id="opacityVal">0.60</span></div>
+        <input type="range" id="opacitySlider" min="0.05" max="1.0" value="0.6" step="0.01"/>
+      </div>
+
+      <div class="presets">
+        <button data-preset='{"x":0,"y":0,"scale":1,"rotate":0,"opacity":0.6}'>Default</button>
+        <button data-preset='{"x":0,"y":-20,"scale":0.8,"rotate":0,"opacity":0.5}'>Small Center</button>
+        <button data-preset='{"x":0,"y":0,"scale":1.4,"rotate":0,"opacity":0.4}'>Large Faded</button>
+        <button data-preset='{"x":40,"y":-30,"scale":0.7,"rotate":15,"opacity":0.55}'>Top Right</button>
+        <button data-preset='{"x":-40,"y":20,"scale":0.7,"rotate":-10,"opacity":0.5}'>Bottom Left</button>
+      </div>
+
+      <button class="lock-btn" id="lockBtn">&#x1F512; Lock &amp; Hide Controls</button>
+
+      <div class="reset-bar">
+        <button class="secondary" id="saveConfigBtn">Save Config</button>
+        <button class="danger" id="clearAllBtn">Clear All Data</button>
+      </div>
+    </div>
+
+    <a class="nav-link" href="index.html">&larr; Back to Licence View</a>
+
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  /* ===== DOM REFS ===== */
+  var photoInput    = document.getElementById('photoInput');
+  var profilePhoto  = document.getElementById('profilePhoto');
+  var photoPlaceholder = document.getElementById('photoPlaceholder');
+  var hologramLayer = document.getElementById('hologramLayer');
+  var gyroStartBtn  = document.getElementById('gyroStartBtn');
+  var gyroResetBtn  = document.getElementById('gyroResetBtn');
+  var gyroStatus    = document.getElementById('gyroStatus');
+  var liveBadge     = document.getElementById('liveBadge');
+  var lockBtn       = document.getElementById('lockBtn');
+  var controlsPanel = document.getElementById('controlsPanel');
+  var toggleControlsBtn = document.getElementById('toggleControlsBtn');
+  var saveConfigBtn = document.getElementById('saveConfigBtn');
+  var clearAllBtn   = document.getElementById('clearAllBtn');
+
+  var xSlider     = document.getElementById('xSlider');
+  var ySlider     = document.getElementById('ySlider');
+  var scaleSlider = document.getElementById('scaleSlider');
+  var rotateSlider= document.getElementById('rotateSlider');
+  var opacitySlider=document.getElementById('opacitySlider');
+
+  var xValEl      = document.getElementById('xVal');
+  var yValEl      = document.getElementById('yVal');
+  var scaleValEl  = document.getElementById('scaleVal');
+  var rotateValEl = document.getElementById('rotateVal');
+  var opacityValEl= document.getElementById('opacityVal');
+
+  /* ===== STATE ===== */
+  var config = {
+    x: 0,
+    y: 0,
+    scale: 1,
+    rotate: 0,
+    opacity: 0.6
+  };
+  var gyroActive = false;
+  var gyroSupported = false;
+  var gyroPermissionRequested = false;
+  var currentBeta = 0;
+  var currentGamma = 0;
+  var gyroOffsetX = 0;
+  var gyroOffsetY = 0;
+  var isLocked = false;
+
+  /* ===== APPLY HOLOGRAM TRANSFORM ===== */
+  function applyHologram() {
+    var root = document.documentElement;
+    root.style.setProperty('--hologram-x', config.x + 'px');
+    root.style.setProperty('--hologram-y', config.y + 'px');
+    root.style.setProperty('--hologram-scale', config.scale);
+    root.style.setProperty('--hologram-rotate', config.rotate + 'deg');
+    root.style.setProperty('--hologram-opacity', config.opacity);
+    root.style.setProperty('--gyro-offset-x', gyroOffsetX + 'px');
+    root.style.setProperty('--gyro-offset-y', gyroOffsetY + 'px');
+  }
+
+  /* ===== UPDATE SLIDER DISPLAYS ===== */
+  function updateSliderDisplay() {
+    xValEl.textContent      = config.x;
+    yValEl.textContent      = config.y;
+    scaleValEl.textContent  = config.scale.toFixed(2);
+    rotateValEl.textContent = config.rotate + '\u00B0';
+    opacityValEl.textContent= config.opacity.toFixed(2);
+  }
+
+  /* ===== SYNC SLIDERS FROM CONFIG ===== */
+  function syncSliders() {
+    xSlider.value      = config.x;
+    ySlider.value      = config.y;
+    scaleSlider.value  = config.scale;
+    rotateSlider.value = config.rotate;
+    opacitySlider.value= config.opacity;
+    updateSliderDisplay();
+    applyHologram();
+  }
+
+  /* ===== SAVE / LOAD ===== */
+  function saveData() {
+    try {
+      localStorage.setItem('gyro_photo', profilePhoto.src || '');
+      localStorage.setItem('gyro_config', JSON.stringify(config));
+    } catch(e) {
+      console.warn('[Gyro] Save error:', e);
+    }
+  }
+
+  function loadData() {
+    try {
+      var photo = localStorage.getItem('gyro_photo');
+      if (photo && photo !== '' && photo !== 'null') {
+        profilePhoto.src = photo;
+        profilePhoto.style.display = 'block';
+        photoPlaceholder.style.display = 'none';
+      }
+      var saved = localStorage.getItem('gyro_config');
+      if (saved) {
+        var parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          config.x       = typeof parsed.x === 'number'       ? parsed.x       : 0;
+          config.y       = typeof parsed.y === 'number'       ? parsed.y       : 0;
+          config.scale   = typeof parsed.scale === 'number'   ? parsed.scale   : 1;
+          config.rotate  = typeof parsed.rotate === 'number'  ? parsed.rotate  : 0;
+          config.opacity = typeof parsed.opacity === 'number' ? parsed.opacity : 0.6;
+        }
+      }
+    } catch(e) {
+      console.warn('[Gyro] Load error:', e);
+    }
+    syncSliders();
+  }
+
+  /* ===== PHOTO HANDLING ===== */
+  document.getElementById('addPhotoBtn').addEventListener('click', function() {
+    photoInput.click();
+  });
+
+  document.getElementById('clearPhotoBtn').addEventListener('click', function() {
+    profilePhoto.src = '';
+    profilePhoto.style.display = 'none';
+    photoPlaceholder.style.display = 'block';
+    saveData();
+  });
+
+  photoInput.addEventListener('change', function(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function() {
+      profilePhoto.src = reader.result;
+      profilePhoto.style.display = 'block';
+      photoPlaceholder.style.display = 'none';
+      saveData();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  /* ===== SLIDER EVENTS ===== */
+  xSlider.addEventListener('input', function() {
+    config.x = parseInt(this.value, 10);
+    updateSliderDisplay();
+    applyHologram();
+  });
+  ySlider.addEventListener('input', function() {
+    config.y = parseInt(this.value, 10);
+    updateSliderDisplay();
+    applyHologram();
+  });
+  scaleSlider.addEventListener('input', function() {
+    config.scale = parseFloat(this.value);
+    updateSliderDisplay();
+    applyHologram();
+  });
+  rotateSlider.addEventListener('input', function() {
+    config.rotate = parseInt(this.value, 10);
+    updateSliderDisplay();
+    applyHologram();
+  });
+  opacitySlider.addEventListener('input', function() {
+    config.opacity = parseFloat(this.value);
+    updateSliderDisplay();
+    applyHologram();
+  });
+
+  /* ===== PRESETS ===== */
+  document.querySelectorAll('[data-preset]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var p = JSON.parse(this.getAttribute('data-preset'));
+      config.x       = p.x;
+      config.y       = p.y;
+      config.scale   = p.scale;
+      config.rotate  = p.rotate;
+      config.opacity = p.opacity;
+      syncSliders();
+    });
+  });
+
+  /* ===== GYROSCOPE ===== */
+  function handleOrientation(event) {
+    if (!gyroActive) return;
+    var beta  = event.beta;   // -180..180, tilt front/back
+    var gamma = event.gamma;  // -90..90, tilt left/right
+
+    if (beta === null || gamma === null) return;
+
+    currentBeta  = beta;
+    currentGamma = gamma;
+
+    // Map tilt to subtle offset: gamma -> X, beta -> Y
+    // Clamp range to avoid extreme values
+    var clampedGamma = Math.max(-45, Math.min(45, gamma));
+    var clampedBeta  = Math.max(-45, Math.min(45, beta));
+
+    gyroOffsetX = clampedGamma * 1.2;
+    gyroOffsetY = clampedBeta * 1.2;
+
+    applyHologram();
+  }
+
+  function startGyroscope() {
+    if (gyroActive) {
+      // Already active, stop it
+      stopGyroscope();
+      return;
+    }
+
+    var requestPermission = (
+      typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function'
+    );
+
+    function enableGyro() {
+      window.addEventListener('deviceorientation', handleOrientation);
+      gyroActive = true;
+      gyroStartBtn.textContent = '\u26A0\uFE0F Stop Gyroscope';
+      gyroStartBtn.classList.add('active');
+      gyroStatus.textContent = 'Gyroscope active \u2014 tilt your device!';
+      gyroStatus.classList.add('active');
+      liveBadge.classList.add('active');
+    }
+
+    function failGyro(err) {
+      console.warn('[Gyro] Failed to start:', err);
+      gyroStatus.textContent = 'Gyroscope unavailable on this device/browser';
+      gyroStatus.classList.remove('active');
+      gyroStartBtn.disabled = true;
+    }
+
+    if (requestPermission) {
+      // iOS 13+ requires user gesture for permission
+      DeviceOrientationEvent.requestPermission()
+        .then(function(state) {
+          if (state === 'granted') {
+            enableGyro();
+          } else {
+            failGyro(new Error('Permission denied: ' + state));
+          }
+        })
+        .catch(failGyro);
+    } else if (typeof DeviceOrientationEvent !== 'undefined') {
+      // Non-iOS or older iOS — no permission needed
+      enableGyro();
+    } else {
+      failGyro(new Error('DeviceOrientationEvent not supported'));
+    }
+  }
+
+  function stopGyroscope() {
+    window.removeEventListener('deviceorientation', handleOrientation);
+    gyroActive = false;
+    gyroStartBtn.textContent = '\uD83D\uDCF1 Start Gyroscope';
+    gyroStartBtn.classList.remove('active');
+    gyroStatus.textContent = 'Gyroscope inactive \u2014 tap "Start" to enable';
+    gyroStatus.classList.remove('active');
+    liveBadge.classList.remove('active');
+    gyroOffsetX = 0;
+    gyroOffsetY = 0;
+    applyHologram();
+  }
+
+  function resetGyroOffset() {
+    gyroOffsetX = 0;
+    gyroOffsetY = 0;
+    applyHologram();
+    if (gyroActive) {
+      gyroStatus.textContent = 'Tilt reset \u2014 tilt your device!';
+    }
+  }
+
+  gyroStartBtn.addEventListener('click', function() {
+    if (gyroActive) {
+      stopGyroscope();
+    } else {
+      startGyroscope();
+    }
+  });
+
+  gyroResetBtn.addEventListener('click', resetGyroOffset);
+
+  // Detect support
+  if (typeof DeviceOrientationEvent !== 'undefined') {
+    gyroSupported = true;
+  }
+
+  /* ===== LOCK / UNLOCK ===== */
+  lockBtn.addEventListener('click', function() {
+    isLocked = !isLocked;
+    if (isLocked) {
+      controlsPanel.classList.add('hidden');
+      lockBtn.textContent = '\uD83D\uDD13 Unlock Controls';
+      lockBtn.classList.add('locked');
+    } else {
+      controlsPanel.classList.remove('hidden');
+      lockBtn.textContent = '\uD83D\uDD12 Lock & Hide Controls';
+      lockBtn.classList.remove('locked');
+    }
+  });
+
+  /* ===== TOGGLE CONTROLS VISIBILITY ===== */
+  toggleControlsBtn.addEventListener('click', function() {
+    var isHidden = controlsPanel.classList.toggle('hidden');
+    toggleControlsBtn.textContent = isHidden ? 'Show' : 'Hide';
+  });
+
+  /* ===== SAVE CONFIG ===== */
+  saveConfigBtn.addEventListener('click', function() {
+    saveData();
+    var orig = saveConfigBtn.textContent;
+    saveConfigBtn.textContent = '\u2713 Saved!';
+    setTimeout(function() {
+      saveConfigBtn.textContent = orig;
+    }, 1200);
+  });
+
+  /* ===== CLEAR ALL ===== */
+  clearAllBtn.addEventListener('click', function() {
+    if (!confirm('Clear all saved hologram data and photo?')) return;
+    try {
+      localStorage.removeItem('gyro_photo');
+      localStorage.removeItem('gyro_config');
+    } catch(e) {}
+    profilePhoto.src = '';
+    profilePhoto.style.display = 'none';
+    photoPlaceholder.style.display = 'block';
+    config = { x: 0, y: 0, scale: 1, rotate: 0, opacity: 0.6 };
+    syncSliders();
+  });
+
+  /* ===== INIT ===== */
+  loadData();
+  applyHologram();
+
+})();
+</script>
+</body>
+</html>

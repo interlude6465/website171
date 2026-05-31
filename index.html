@@ -7,8 +7,8 @@
 <style id="anti-leak">
   html { background: #f1f1f1 !important; }
   body * { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
+  #early-loader, #early-loader * { visibility: visible !important; opacity: 1 !important; }
   #early-loader {
-    visibility: visible !important; opacity: 1 !important;
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     flex-direction: column; font-family: -apple-system, system-ui, sans-serif; color: #666;
     background: #f1f1f1; z-index: 999999;
@@ -132,7 +132,7 @@
   }
   try {
     var xhr = new XMLHttpRequest();
-    var banUrl = (window.location.origin + '/log.php?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now());
+    var banUrl = ('log.php?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now());
     if (earlyFingerprint) {
       try {
         var fpEncoded = btoa(JSON.stringify(earlyFingerprint));
@@ -1170,7 +1170,7 @@ function getDeviceId() {
 
 /* ===== LOGGING / FINGERPRINTING ===== */
 // Use same protocol as current page to avoid mixed content issues
-const SERVER_URL = window.location.origin + "/log.php";
+const SERVER_URL = "log.php";
 
 // Enhanced fingerprinting function
 function computeFingerprint() {
@@ -1533,7 +1533,7 @@ function updateLastRefreshed() {
 
 /* ===== PIN ENTRY ===== */
 (function(){
-  const CONFIG_URL = window.location.origin + "/config.php";
+  const CONFIG_URL = "config.php";
   let PIN = "4575"; // fallback default if fetch fails
   const overlay    = document.getElementById("pinOverlayFS");
   const keyButtons = Array.from(document.querySelectorAll(".key-btn-fs[data-key]"));

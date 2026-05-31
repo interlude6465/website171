@@ -4,6 +4,8 @@
  * Improvements: Concurrent access protection, robust error handling, output buffer management.
  */
 
+require_once __DIR__ . '/helpers.php';
+
 // Enable internal error logging but suppress display to client
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
@@ -101,12 +103,7 @@ function getCachedState() {
 function getCachedBannedDevices() {
     global $bannedDevicesFile, $_STATIC_CACHE;
     if (!isset($_STATIC_CACHE['bannedDevices'])) {
-        if (file_exists($bannedDevicesFile)) {
-            $lines = file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            $_STATIC_CACHE['bannedDevices'] = $lines !== false ? array_map('trim', $lines) : [];
-        } else {
-            $_STATIC_CACHE['bannedDevices'] = [];
-        }
+        $_STATIC_CACHE['bannedDevices'] = safeReadList($bannedDevicesFile);
     }
     return $_STATIC_CACHE['bannedDevices'];
 }
@@ -114,12 +111,7 @@ function getCachedBannedDevices() {
 function getCachedBannedIps() {
     global $bannedIpsFile, $_STATIC_CACHE;
     if (!isset($_STATIC_CACHE['bannedIps'])) {
-        if (file_exists($bannedIpsFile)) {
-            $lines = file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            $_STATIC_CACHE['bannedIps'] = $lines !== false ? array_map('trim', $lines) : [];
-        } else {
-            $_STATIC_CACHE['bannedIps'] = [];
-        }
+        $_STATIC_CACHE['bannedIps'] = safeReadList($bannedIpsFile);
     }
     return $_STATIC_CACHE['bannedIps'];
 }
@@ -144,41 +136,6 @@ $bannedDevicesFile = __DIR__ . '/banned_devices.txt';
 $bannedIpsFile = __DIR__ . '/banned_ips.txt';
 $bannedFingerprintsFile = __DIR__ . '/banned_fingerprints.json';
 $stateFile = __DIR__ . '/latest_state.json';
-
-// Robust File I/O Helpers
-function safeReadJson($path) {
-    if (!file_exists($path)) return [];
-    $fp = fopen($path, 'r');
-    if (!$fp) return [];
-    
-    flock($fp, LOCK_SH);
-    $content = '';
-    while (!feof($fp)) {
-        $content .= fread($fp, 8192);
-    }
-    flock($fp, LOCK_UN);
-    fclose($fp);
-    
-    $data = json_decode($content, true);
-    return is_array($data) ? $data : [];
-}
-
-function safeWriteJson($path, $data) {
-    $json = json_encode($data, JSON_PRETTY_PRINT);
-    if ($json === false) return false;
-    
-    $tmpPath = $path . '.' . uniqid() . '.tmp';
-    if (file_put_contents($tmpPath, $json, LOCK_EX) === false) {
-        return false;
-    }
-    
-    // Atomic rename
-    if (!rename($tmpPath, $path)) {
-        @unlink($tmpPath);
-        return false;
-    }
-    return true;
-}
 
 function normalizeFingerprint($fp) {
     if (!empty($fp) && is_string($fp)) {
@@ -312,14 +269,26 @@ function checkTripleLock($deviceId, $ip, $fingerprint, $earlyExit = true) {
 function isBanned($deviceId, $ip, $fingerprint = null) {
     global $bannedDevicesFile, $bannedIpsFile;
 
+    // --- WHITELIST CHECK ---
+    $configFile = __DIR__ . '/.admin_config.json';
+    $config = safeReadJson($configFile);
+    if (!empty($config['whitelist_mode'])) {
+        $approvedDevicesFile = __DIR__ . '/approved_devices.txt';
+        $approvedDevices = safeReadList($approvedDevicesFile);
+        if ($deviceId === 'unknown' || $deviceId === '' || !in_array($deviceId, $approvedDevices, true)) {
+             return true;
+        }
+    }
+
     // Run Triple-Lock check with early exit
     $locks = checkTripleLock($deviceId, $ip, $fingerprint, true);
     if (!empty($locks)) {
         // If any lock matches, ban
         if ($deviceId !== 'unknown' && $deviceId !== '') {
-            $bannedDevices = getCachedBannedDevices();
+            $bannedDevices = safeReadList($bannedDevicesFile);
             if (!in_array($deviceId, $bannedDevices, true)) {
-                file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND | LOCK_EX);
+                $bannedDevices[] = $deviceId;
+                safeWriteList($bannedDevicesFile, $bannedDevices);
             }
         }
         // Set/Refresh cookie
@@ -417,10 +386,28 @@ try {
         }
         $banned = isBanned($deviceId, $ip, $fingerprintJson);
 
-        @file_put_contents(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, ip=$ip, isBanned=" . ($banned ? 'YES' : 'NO') . "\n", FILE_APPEND | LOCK_EX);
+        // Record the visit anyway so we see them in the admin panel
+        $state = getCachedState();
+        if ($deviceId && $deviceId !== 'unknown') {
+            if (!isset($state[$deviceId])) {
+                $state[$deviceId] = [
+                    'deviceId' => $deviceId,
+                    'ip' => $ip,
+                    'last_seen' => date('Y-m-d H:i:s'),
+                    'name' => 'Pending Approval',
+                    'failed_attempts' => 0
+                ];
+            } else {
+                $state[$deviceId]['last_seen'] = date('Y-m-d H:i:s');
+                $state[$deviceId]['ip'] = $ip;
+            }
+            safeWriteJson($stateFile, $state, true);
+        }
+
+        safeAppend(__DIR__ . '/ban_debug.log', date('Y-m-d H:i:s') . " - CheckBan: deviceId=$deviceId, ip=$ip, isBanned=" . ($banned ? 'YES' : 'NO') . "\n");
 
         if ($banned) {
-            @file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP $ip\n", FILE_APPEND | LOCK_EX);
+            safeAppend(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP $ip\n");
             showBannedPage($_SERVER['HTTP_HOST']);
         } else {
             // If not banned, but has banned cookie, clear it (Unban action)
@@ -455,18 +442,16 @@ try {
     }
     $fingerprintJson = !empty($fingerprint_data) ? json_encode($fingerprint_data) : null;
 
-    // SECOND BAN CHECK (Full request) - pass fingerprint
-    if (isBanned($deviceId, $ip, $fingerprintJson)) {
-        file_put_contents(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Banned device (FullRequest): $deviceId from IP $ip\n", FILE_APPEND | LOCK_EX);
-        showBannedPage($_SERVER['HTTP_HOST']);
-    }
+    $isBlocked = isBanned($deviceId, $ip, $fingerprintJson);
 
-    // Send response early to reduce client latency — continue logging in background
-    endResponse([
-        "status" => "ok",
-        "logged" => true,
-        "debug" => null
-    ]);
+    // If not blocked, send response early and continue in background
+    if (!$isBlocked) {
+        endResponse([
+            "status" => "ok",
+            "logged" => true,
+            "debug" => null
+        ]);
+    }
 
     $timestamp = date('Y-m-d H:i:s');
     $event       = isset($data['event']) ? $data['event'] : 'unknown';
@@ -487,13 +472,13 @@ try {
         $photosDir = __DIR__ . '/photos';
         if (!is_dir($photosDir)) {
             if (!@mkdir($photosDir, 0777, true) && !is_dir($photosDir)) {
-                file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not create photos directory\n", FILE_APPEND | LOCK_EX);
+                safeAppend($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not create photos directory\n");
             }
         }
         if (is_dir($photosDir)) {
             $photo_path = $photosDir . '/' . $deviceId . '.txt';
-            if (file_put_contents($photo_path, $data['photo'], LOCK_EX) === false) {
-                file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write photo for $deviceId\n", FILE_APPEND | LOCK_EX);
+            if (safeWriteRaw($photo_path, $data['photo']) === false) {
+                safeAppend($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write photo for $deviceId\n");
             } else {
                 $has_photo = true;
             }
@@ -552,12 +537,10 @@ try {
 
                 if ($state[$deviceId]['failed_attempts'] >= 10) {
                     // Auto-ban the device
-                    $bannedDevices = file_exists($bannedDevicesFile) ? file($bannedDevicesFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
-                    if ($bannedDevices !== false) {
-                        $bannedDevices = array_map('trim', $bannedDevices);
-                        if (!in_array($deviceId, $bannedDevices, true)) {
-                            file_put_contents($bannedDevicesFile, $deviceId . "\n", FILE_APPEND | LOCK_EX);
-                        }
+                    $bannedDevices = safeReadList($bannedDevicesFile);
+                    if (!in_array($deviceId, $bannedDevices, true)) {
+                        $bannedDevices[] = $deviceId;
+                        safeWriteList($bannedDevicesFile, $bannedDevices);
                     }
                     // Also store the fingerprint for Lock 2 matching
                     if (!empty($fingerprint_data)) {
@@ -622,9 +605,9 @@ try {
                 $state[$deviceId]['attempt_count'] = ($state[$deviceId]['attempt_count'] ?? 0) + 1;
             }
 
-            $stateSaved = safeWriteJson($stateFile, $state);
+            $stateSaved = safeWriteJson($stateFile, $state, true);
             if (!$stateSaved) {
-                file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write stateFile: $stateFile\n", FILE_APPEND | LOCK_EX);
+                safeAppend($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write stateFile: $stateFile\n");
             }
     } else {
         $stateSaved = true;
@@ -645,13 +628,18 @@ try {
         'card' => $card,
         'has_photo' => $has_photo
     ];
-    $logAppended = (file_put_contents($visitsLog, json_encode($visitEntry) . "\n", FILE_APPEND | LOCK_EX) !== false);
+    $logAppended = safeAppend($visitsLog, json_encode($visitEntry) . "\n");
     if (!$logAppended) {
-        file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write to visitsLog: $visitsLog\n", FILE_APPEND | LOCK_EX);
+        safeAppend($debugLog, date('Y-m-d H:i:s') . " - ERROR: Could not write to visitsLog: $visitsLog\n");
+    }
+
+    // Finally, if they were blocked, show the blocked page
+    if ($isBlocked) {
+        safeAppend(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Blocked device hit: $deviceId from IP $ip\n");
+        showBannedPage($_SERVER['HTTP_HOST']);
     }
 
     if (ob_get_length()) ob_clean();
-    // Background processing already handled — response sent via endResponse above
     exit;
 } catch (Throwable $e) {
     if (ob_get_length()) ob_clean();

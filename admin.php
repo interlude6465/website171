@@ -1,10 +1,12 @@
 <?php
+require_once __DIR__ . '/helpers.php';
+
 function hashPassword($password) {
     return hash('sha256', $password . 'saltysalt123');
 }
 
 $configFile = __DIR__ . '/.admin_config.json';
-$config = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
+$config = safeReadJson($configFile);
 
 // Initial setup or migration
 if (!isset($config['password_hash'])) {
@@ -13,11 +15,15 @@ if (!isset($config['password_hash'])) {
 if (!isset($config['licence_pin'])) {
     $config['licence_pin'] = '4575';
 }
+if (!isset($config['whitelist_mode'])) {
+    $config['whitelist_mode'] = false;
+}
 // Ensure config is saved
-file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT));
+safeWriteJson($configFile, $config, true);
 
 $adminPasswordHash = $config['password_hash'];
 $licencePin = $config['licence_pin'];
+$whitelistMode = $config['whitelist_mode'];
 
 $key = $_GET['key'] ?? '';
 if (hashPassword($key) !== $adminPasswordHash) {
@@ -28,12 +34,15 @@ if (hashPassword($key) !== $adminPasswordHash) {
 $stateFile = __DIR__ . '/latest_state.json';
 $bannedFile = __DIR__ . '/banned_devices.txt';
 $bannedIpsFile = __DIR__ . '/banned_ips.txt';
+$approvedDevicesFile = __DIR__ . '/approved_devices.txt';
 $bannedFingerprintsFile = __DIR__ . '/banned_fingerprints.json';
 $visitsLog = __DIR__ . '/visits.log';
 
 // Load state early (needed for enhanced unban)
-$state = file_exists($stateFile) ? json_decode(file_get_contents($stateFile), true) : [];
+$state = safeReadJson($stateFile);
 if (!is_array($state)) $state = [];
+
+$approvedDevices = safeReadList($approvedDevicesFile);
 
 // Handle Actions - must check before any output
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
@@ -50,12 +59,11 @@ if ($action === 'change_password') {
     if (hashPassword($oldPass) === $adminPasswordHash) {
         if ($newPass === $confirmPass && !empty($newPass)) {
             $config['password_hash'] = hashPassword($newPass);
-            $written = file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT));
-            if ($written === false) {
-                $passwordError = "Failed to save new password. Check file permissions.";
-            } else {
+            if (safeWriteJson($configFile, $config, true)) {
                 header("Location: admin.php?key=" . urlencode($newPass) . "&section=passwords&msg=password_changed");
                 exit;
+            } else {
+                $passwordError = "Failed to save new password. Check file permissions.";
             }
         } else {
             $passwordError = "New passwords do not match or are empty.";
@@ -74,12 +82,11 @@ if ($action === 'change_licence_pin') {
     if ($oldPin === $licencePin) {
         if ($newPin === $confirmPin && !empty($newPin) && strlen($newPin) === 4 && ctype_digit($newPin)) {
             $config['licence_pin'] = $newPin;
-            $written = file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT));
-            if ($written === false) {
-                $pinError = "Failed to save new PIN. Check file permissions.";
-            } else {
+            if (safeWriteJson($configFile, $config, true)) {
                 header("Location: admin.php?key=" . urlencode($key) . "&section=passwords&msg=pin_changed");
                 exit;
+            } else {
+                $pinError = "Failed to save new PIN. Check file permissions.";
             }
         } else {
             $pinError = "New PIN must be 4 digits and match confirmation.";
@@ -89,113 +96,105 @@ if ($action === 'change_licence_pin') {
     }
 }
 
-// ---- Ban/Unban actions ----
-if ($action && ($device || $ip_to_ban || $action === 'ban_fingerprint' || $action === 'unban_fingerprint') && $action !== 'change_password' && $action !== 'change_licence_pin') {
+// ---- Whitelist Toggle Action ----
+if ($action === 'toggle_whitelist') {
+    $config['whitelist_mode'] = !($config['whitelist_mode'] ?? false);
+    safeWriteJson($configFile, $config, true);
+    header("Location: admin.php?key=" . urlencode($key) . "&section=" . ($section ?: 'banned'));
+    exit;
+}
+
+// ---- Ban/Unban/Whitelist actions ----
+if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', 'unban_fingerprint', 'approve', 'unapprove']))) {
     if ($action === 'ban') {
         $device = trim($device);
-        $bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
-        $bannedDevices = array_map('trim', $bannedDevices);
-        if (!in_array($device, $bannedDevices, true)) {
+        if ($device && !in_array($device, $bannedDevices, true)) {
             $bannedDevices[] = $device;
-            file_put_contents($bannedFile, implode("\n", $bannedDevices) . "\n");
+            safeWriteList($bannedFile, $bannedDevices);
         }
     } elseif ($action === 'unban') {
         $device = trim($device);
-        if (file_exists($bannedFile)) {
-            $bannedDevices = file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            $bannedDevices = array_map('trim', $bannedDevices);
-            $bannedDevices = array_filter($bannedDevices, fn($d) => trim($d) !== $device);
-            file_put_contents($bannedFile, implode("\n", $bannedDevices) . "\n");
+        $bannedDevices = array_filter($bannedDevices, fn($d) => trim($d) !== $device);
+        safeWriteList($bannedFile, $bannedDevices);
+
+        // Enhanced unban: also clear linked fingerprints, IPs, and reset failed_attempts
+        if (isset($state[$device])) {
+            $state[$device]['failed_attempts'] = 0;
+            $ipToClear = $state[$device]['ip'] ?? '';
+            
+            // Clear associated IP
+            if ($ipToClear) {
+                $bannedIps = safeReadList($bannedIpsFile);
+                $bannedIps = array_filter($bannedIps, fn($i) => trim($i) !== $ipToClear);
+                safeWriteList($bannedIpsFile, $bannedIps);
+            }
+            
+            // Clear related fingerprints
+            if (!empty($state[$device]['fingerprint']) && $state[$device]['fingerprint'] !== '—') {
+                $deviceFp = is_array($state[$device]['fingerprint']) ? $state[$device]['fingerprint'] : json_decode($state[$device]['fingerprint'], true);
+                if (is_array($deviceFp)) {
+                    $cHash = $deviceFp['canvasHash'] ?? '';
+                    $wRenderer = $deviceFp['webGLRenderer'] ?? '';
+                    if ($cHash || $wRenderer) {
+                        $bannedFps = safeReadJson($bannedFingerprintsFile);
+                        $bannedFps = array_filter($bannedFps, function($entry) use ($cHash, $wRenderer) {
+                            if ($cHash && ($entry['canvasHash'] ?? '') === $cHash) return false;
+                            if ($wRenderer && ($entry['webGLRenderer'] ?? '') === $wRenderer) return false;
+                            return true;
+                        });
+                        safeWriteJson($bannedFingerprintsFile, array_values($bannedFps));
+                    }
+                }
+            }
+            safeWriteJson($stateFile, $state, true);
         }
     } elseif ($action === 'ban_ip') {
         $ip_to_ban = trim($ip_to_ban);
-        $bannedIps = file_exists($bannedIpsFile) ? file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
-        $bannedIps = array_map('trim', $bannedIps);
-        if (!in_array($ip_to_ban, $bannedIps, true)) {
+        if ($ip_to_ban && !in_array($ip_to_ban, $bannedIps, true)) {
             $bannedIps[] = $ip_to_ban;
-            file_put_contents($bannedIpsFile, implode("\n", $bannedIps) . "\n");
+            safeWriteList($bannedIpsFile, $bannedIps);
         }
     } elseif ($action === 'unban_ip') {
         $ip_to_ban = trim($ip_to_ban);
-        if (file_exists($bannedIpsFile)) {
-            $bannedIps = file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            $bannedIps = array_map('trim', $bannedIps);
-            $bannedIps = array_filter($bannedIps, fn($i) => trim($i) !== $ip_to_ban);
-            file_put_contents($bannedIpsFile, implode("\n", $bannedIps) . "\n");
+        $bannedIps = array_filter($bannedIps, fn($i) => trim($i) !== $ip_to_ban);
+        safeWriteList($bannedIpsFile, $bannedIps);
+    } elseif ($action === 'approve') {
+        $device = trim($device);
+        if ($device && !in_array($device, $approvedDevices)) {
+            $approvedDevices[] = $device;
+            safeWriteList($approvedDevicesFile, $approvedDevices);
         }
+    } elseif ($action === 'unapprove') {
+        $device = trim($device);
+        $approvedDevices = array_filter($approvedDevices, fn($d) => $d !== $device);
+        safeWriteList($approvedDevicesFile, $approvedDevices);
     } elseif ($action === 'ban_fingerprint') {
-        // Ban by canvasHash from the fingerprint data
         $canvasHash = trim($_GET['canvasHash'] ?? $_POST['canvasHash'] ?? '');
         $webGLRenderer = trim($_GET['webGLRenderer'] ?? $_POST['webGLRenderer'] ?? '');
         if ($canvasHash || $webGLRenderer) {
-            $bannedFps = file_exists($bannedFingerprintsFile) ? json_decode(file_get_contents($bannedFingerprintsFile), true) : [];
-            if (!is_array($bannedFps)) $bannedFps = [];
-            $entry = [
+            $bannedFps = safeReadJson($bannedFingerprintsFile);
+            $bannedFps[] = [
                 'canvasHash' => $canvasHash,
                 'webGLRenderer' => $webGLRenderer,
                 'banned_deviceId' => $device,
                 'banned_at' => date('Y-m-d H:i:s'),
                 'banned_by' => 'admin'
             ];
-            $bannedFps[] = $entry;
-            file_put_contents($bannedFingerprintsFile, json_encode($bannedFps, JSON_PRETTY_PRINT));
+            safeWriteJson($bannedFingerprintsFile, $bannedFps);
         }
     } elseif ($action === 'unban_fingerprint') {
-        // Remove all fingerprint entries matching a device
         $canvasHash = trim($_GET['canvasHash'] ?? $_POST['canvasHash'] ?? '');
         $webGLRenderer = trim($_GET['webGLRenderer'] ?? $_POST['webGLRenderer'] ?? '');
-        if (file_exists($bannedFingerprintsFile)) {
-            $bannedFps = json_decode(file_get_contents($bannedFingerprintsFile), true);
-            if (!is_array($bannedFps)) $bannedFps = [];
-            $bannedFps = array_filter($bannedFps, function($entry) use ($canvasHash, $webGLRenderer) {
-                if ($canvasHash && ($entry['canvasHash'] ?? '') === $canvasHash) return false;
-                if ($webGLRenderer && ($entry['webGLRenderer'] ?? '') === $webGLRenderer) return false;
-                return true;
-            });
-            file_put_contents($bannedFingerprintsFile, json_encode(array_values($bannedFps), JSON_PRETTY_PRINT));
-        }
+        $bannedFps = safeReadJson($bannedFingerprintsFile);
+        $bannedFps = array_filter($bannedFps, function($entry) use ($canvasHash, $webGLRenderer) {
+            if ($canvasHash && ($entry['canvasHash'] ?? '') === $canvasHash) return false;
+            if ($webGLRenderer && ($entry['webGLRenderer'] ?? '') === $webGLRenderer) return false;
+            return true;
+        });
+        safeWriteJson($bannedFingerprintsFile, array_values($bannedFps));
     }
-    
-    // Enhanced unban: also clear linked fingerprints, IPs, and reset failed_attempts
-    if ($action === 'unban' && $device) {
-        // Reset failed_attempts for the unbanned device to prevent immediate re-ban
-        if (isset($state[$device])) {
-            $state[$device]['failed_attempts'] = 0;
-            if (@file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT)) === false) {
-                // Log error or handle it as needed
-            }
-        }
-        // Also try to clear associated IP from bans
-        if (isset($state[$device]) && !empty($state[$device]['ip'])) {
-            $ipToClear = $state[$device]['ip'];
-            if (file_exists($bannedIpsFile)) {
-                $bannedIps = file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-                $bannedIps = array_map('trim', $bannedIps);
-                $bannedIps = array_filter($bannedIps, fn($i) => trim($i) !== $ipToClear);
-                file_put_contents($bannedIpsFile, implode("\n", $bannedIps) . "\n");
-            }
-        }
-        // Clear related fingerprints
-        if (isset($state[$device]) && !empty($state[$device]['fingerprint']) && $state[$device]['fingerprint'] !== '—') {
-            $deviceFp = is_array($state[$device]['fingerprint']) ? $state[$device]['fingerprint'] : json_decode($state[$device]['fingerprint'], true);
-            if (is_array($deviceFp)) {
-                $cHash = $deviceFp['canvasHash'] ?? '';
-                $wRenderer = $deviceFp['webGLRenderer'] ?? '';
-                if ($cHash || $wRenderer) {
-                    $bannedFps = file_exists($bannedFingerprintsFile) ? json_decode(file_get_contents($bannedFingerprintsFile), true) : [];
-                    if (!is_array($bannedFps)) $bannedFps = [];
-                    $bannedFps = array_filter($bannedFps, function($entry) use ($cHash, $wRenderer) {
-                        if ($cHash && ($entry['canvasHash'] ?? '') === $cHash) return false;
-                        if ($wRenderer && ($entry['webGLRenderer'] ?? '') === $wRenderer) return false;
-                        return true;
-                    });
-                    file_put_contents($bannedFingerprintsFile, json_encode(array_values($bannedFps), JSON_PRETTY_PRINT));
-                }
-            }
-        }
-    }
-    
-    $redirectDevice = $_GET['device'] ?? '';
+
+    $redirectDevice = $_GET['device'] ?? $_POST['device'] ?? '';
     if ($redirectDevice) {
         header("Location: admin.php?key=" . urlencode($key) . "&device=" . urlencode($redirectDevice));
     } elseif ($section === 'banned') {
@@ -206,14 +205,9 @@ if ($action && ($device || $ip_to_ban || $action === 'ban_fingerprint' || $actio
     exit;
 }
 
-$bannedDevices = file_exists($bannedFile) ? file($bannedFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
-$bannedDevices = array_map('trim', $bannedDevices);
-
-$bannedIps = file_exists($bannedIpsFile) ? file($bannedIpsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [];
-$bannedIps = array_map('trim', $bannedIps);
-
-$bannedFingerprints = file_exists($bannedFingerprintsFile) ? json_decode(file_get_contents($bannedFingerprintsFile), true) : [];
-if (!is_array($bannedFingerprints)) $bannedFingerprints = [];
+$bannedDevices = safeReadList($bannedFile);
+$bannedIps = safeReadList($bannedIpsFile);
+$bannedFingerprints = safeReadJson($bannedFingerprintsFile);
 
 // Read Visit History
 $visits = [];
@@ -234,8 +228,8 @@ $totalDevicesInState = count($state);
 
 function getPhotoBase64($deviceId) {
     $path = __DIR__ . "/photos/{$deviceId}.txt";
-    if (file_exists($path)) {
-        $data = file_get_contents($path);
+    $data = safeReadRaw($path);
+    if ($data) {
         if (strpos($data, 'data:image') === 0) {
             return $data;
         }
@@ -250,10 +244,12 @@ function getDevicePhoto($deviceId) {
         return $photo;
     }
     global $state;
-    if (isset($state[$deviceId]['photo_path']) && $state[$deviceId]['photo_path'] !== '—' && file_exists($state[$deviceId]['photo_path'])) {
-        $data = file_get_contents($state[$deviceId]['photo_path']);
-        if (strpos($data, 'data:image') === 0) return $data;
-        return 'data:image/jpeg;base64,' . $data;
+    if (isset($state[$deviceId]['photo_path']) && $state[$deviceId]['photo_path'] !== '—') {
+        $data = safeReadRaw($state[$deviceId]['photo_path']);
+        if ($data) {
+            if (strpos($data, 'data:image') === 0) return $data;
+            return 'data:image/jpeg;base64,' . $data;
+        }
     }
     return null;
 }
@@ -265,6 +261,7 @@ function checkWritability() {
         'Photos Dir' => __DIR__ . '/photos',
         'Banned Devices' => __DIR__ . '/banned_devices.txt',
         'Banned IPs' => __DIR__ . '/banned_ips.txt',
+        'Approved Devices' => __DIR__ . '/approved_devices.txt',
         'Banned Fingerprints' => __DIR__ . '/banned_fingerprints.json',
         'Admin Config' => __DIR__ . '/.admin_config.json'
     ];
@@ -776,6 +773,7 @@ $isBannedView = $section === 'banned';
     <?php if ($isProfileView): 
         $d = $state[$viewDevice];
         $isDeviceBanned = in_array(trim($viewDevice), $bannedDevices, true);
+        $isDeviceApproved = in_array(trim($viewDevice), $approvedDevices, true);
         $currentIp = $d['ip'] ?? '';
         $isIpBanned = $currentIp && in_array(trim($currentIp), $bannedIps, true);
         $photo = getDevicePhoto($viewDevice);
@@ -809,6 +807,17 @@ $isBannedView = $section === 'banned';
                 </div>
             </div>
             <div class="ban-area">
+                <div style="margin-bottom:10px;">
+                    <div class="lbl" style="font-size:10px;text-transform:uppercase;margin-bottom:4px;">Whitelist Status</div>
+                    <?php if ($isDeviceApproved): ?>
+                        <span class="badge badge-success">APPROVED</span>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=unapprove" class="btn btn-outline btn-sm">Revoke Approval</a>
+                    <?php else: ?>
+                        <span class="badge badge-warning">PENDING</span>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=approve" class="btn btn-success btn-sm">Approve Device</a>
+                    <?php endif; ?>
+                </div>
+
                 <div style="margin-bottom:10px;">
                     <div class="lbl" style="font-size:10px;text-transform:uppercase;margin-bottom:4px;">Device Control</div>
                     <?php if ($isDeviceBanned): ?>
@@ -1072,6 +1081,41 @@ $isBannedView = $section === 'banned';
         </div>
 
         <div class="profile-section">
+            <h3>🛡️ Security Settings</h3>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:15px; background:#f9f9f9; border-radius:10px; border:1px solid var(--border);">
+                <div>
+                    <div style="font-weight:700; font-size:15px;">Whitelist Mode</div>
+                    <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">When enabled, only approved devices can access the application.</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span class="badge <?=$whitelistMode ? 'badge-success' : 'badge-muted'?>" style="font-size:12px; padding:5px 12px;"><?=$whitelistMode ? 'ACTIVE' : 'DISABLED'?></span>
+                    <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=banned&action=toggle_whitelist" class="btn <?=$whitelistMode ? 'btn-danger' : 'btn-success'?>">
+                        <?=$whitelistMode ? 'Disable Whitelist' : 'Enable Whitelist'?>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="profile-section">
+            <h3>Approved Devices</h3>
+            <table class="admin-table">
+                <thead><tr><th>Device ID</th><th>Actions</th></tr></thead>
+                <tbody>
+                    <?php if (empty($approvedDevices)): ?><tr><td colspan="2">No approved devices.</td></tr><?php endif; ?>
+                    <?php foreach ($approvedDevices as $ad): ?>
+                    <tr>
+                        <td style="font-family:monospace;"><?=htmlspecialchars($ad)?></td>
+                        <td>
+                            <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($ad)?>" class="btn btn-primary btn-sm">View</a>
+                            <a href="admin.php?key=<?=urlencode($key)?>&section=banned&device=<?=urlencode($ad)?>&action=unapprove" class="btn btn-outline btn-sm">Revoke</a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="profile-section">
             <h3>Banned Devices</h3>
             <table class="admin-table">
                 <thead><tr><th>Device ID</th><th>Actions</th></tr></thead>
@@ -1186,6 +1230,11 @@ $isBannedView = $section === 'banned';
                 <div class="info">
                     <div class="name"><?=htmlspecialchars($d['name'] ?? 'Unknown')?></div>
                     <div class="sub"><?=truncateDeviceId($id)?></div>
+                    <?php if (in_array($id, $approvedDevices)): ?>
+                        <div style="font-size:9px; color:var(--success); font-weight:700; margin-top:2px;">✓ APPROVED</div>
+                    <?php else: ?>
+                        <div style="font-size:9px; color:var(--warning); font-weight:700; margin-top:2px;">? PENDING</div>
+                    <?php endif; ?>
                 </div>
                 <span class="status-badge online">Active</span>
             </a>
@@ -1207,6 +1256,11 @@ $isBannedView = $section === 'banned';
                 <div class="info">
                     <div class="name" style="<?=$isBanned?'text-decoration:line-through;':''?>"><?=htmlspecialchars($d['name'] ?? 'Unknown')?></div>
                     <div class="sub"><?=truncateDeviceId($id)?></div>
+                    <?php if (in_array($id, $approvedDevices)): ?>
+                        <div style="font-size:9px; color:var(--success); font-weight:700; margin-top:2px;">✓ APPROVED</div>
+                    <?php else: ?>
+                        <div style="font-size:9px; color:var(--warning); font-weight:700; margin-top:2px;">? PENDING</div>
+                    <?php endif; ?>
                 </div>
                 <span class="status-badge <?=$isBanned?'banned-sm':'offline'?>"><?=$isBanned?'Banned':'Offline'?></span>
             </a>

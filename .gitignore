@@ -24,6 +24,7 @@ npm-debug.log*
 
 # App data files
 banned_devices.txt
+approved_devices.txt
 banned_fingerprints.json
 ban_hits.log
 ban_debug.log
@@ -32,3 +33,4 @@ latest_state.json
 visits.log
 .admin_config.json
 photos/
+*.bak

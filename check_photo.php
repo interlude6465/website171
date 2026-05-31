@@ -9,9 +9,9 @@ if (empty($deviceId)) {
     exit;
 }
 
-$photoFile = __DIR__ . '/photos/' . $deviceId . '.jpg';
+$photoFile = __DIR__ . '/photos/' . $deviceId . '.txt';
 $hasPhoto = false;
-if (file_exists($photoFile) && filesize($photoFile) > 1000) {
+if (file_exists($photoFile) && filesize($photoFile) > 100) {
     $hasPhoto = true;
 }
 

@@ -1,0 +1,471 @@
+Put your HTML text here
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>myVicRoads</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:-apple-system,'SF Pro Display','Helvetica Neue',sans-serif;-webkit-tap-highlight-color:transparent;}</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const TAB_ICONS = {
+      home:     { inactive: "https://media.base44.com/images/public/69f2966cd9daf8a2a1d9c62d/0fd021f51_image.png" },
+      vehicles: { inactive: "https://media.base44.com/images/public/69f2966cd9daf8a2a1d9c62d/851981a40_image.png" },
+      licence:  { inactive: "https://media.base44.com/images/public/69f2966cd9daf8a2a1d9c62d/cfa5fac71_image.png" },
+      payments: { inactive: "https://media.base44.com/images/public/69f2966cd9daf8a2a1d9c62d/f52a93bd9_image.png" },
+      profile:  { inactive: "https://media.base44.com/images/public/69f2966cd9daf8a2a1d9c62d/58ae6f78c_image.png" },
+    };
+    const TABS = [
+      { id: "home", label: "Home" },
+      { id: "vehicles", label: "Vehicles" },
+      { id: "licence", label: "Licence" },
+      { id: "payments", label: "Payments" },
+      { id: "profile", label: "Profile" }
+    ];
+
+    function TabBar({ active, onTab }) {
+      return (
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e8e8e8", display: "flex", padding: "4px 0 8px", zIndex: 100 }}>
+          {TABS.map((t) => (
+            <div key={t.id} onClick={() => onTab(t.id)} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }}>
+              <img src={TAB_ICONS[t.id].inactive} alt={t.label} style={{ width: t.id === "vehicles" ? 58 : t.id === "licence" ? 68 : 54, height: t.id === "vehicles" ? 68 : t.id === "licence" ? 78 : 64, objectFit: "contain", marginTop: t.id === "licence" ? -1 : 5 }} />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function PinScreen({ onUnlock }) {
+      const [pin, setPin] = useState("");
+      const press = (n) => { if (pin.length >= 6) return; const next = pin + n; setPin(next); if (next.length === 6) setTimeout(() => onUnlock(), 100); };
+      const del = () => setPin((p) => p.slice(0, -1));
+      return (
+        <div style={{ background: "#fff", height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          <svg width="80" height="80" viewBox="0 0 80 80" fill="none" style={{ marginBottom: 24 }}>
+            <rect x="15" y="35" width="50" height="38" rx="8" fill="#2a7a3b" />
+            <path d="M27 35V26C27 18.3 33.3 12 41 12C48.7 12 55 18.3 55 26V35" stroke="#2a7a3b" strokeWidth="5" fill="none" strokeLinecap="round" />
+            <circle cx="40" cy="51" r="6" fill="#1a3a2a" />
+            <rect x="37.5" y="51" width="5" height="9" rx="2.5" fill="#1a3a2a" />
+          </svg>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "#1a1a2e", marginBottom: 32, textAlign: "center" }}>Please enter your existing PIN code</div>
+          <div style={{ display: "flex", gap: 20, marginBottom: 48 }}>
+            {[0,1,2,3,4,5].map((i) => <div key={i} style={{ width: 24, height: 24, borderRadius: "50%", border: "2px solid #333", background: i < pin.length ? "#1a1a2e" : "transparent" }} />)}
+          </div>
+          <div style={{ width: "100%", maxWidth: 320 }}>
+            {[[1,2,3],[4,5,6],[7,8,9]].map((row, ri) => (
+              <div key={ri} style={{ display: "flex", justifyContent: "space-around", marginBottom: 16 }}>
+                {row.map((n) => <button key={n} onClick={() => press(String(n))} style={{ width: 72, height: 72, borderRadius: "50%", border: "none", background: "transparent", fontSize: 28, fontWeight: 400, color: "#1a1a2e", cursor: "pointer" }}>{n}</button>)}
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 16 }}>
+              <button onClick={() => alert("Please contact VicRoads to reset your PIN.")} style={{ width: 72, height: 72, borderRadius: "50%", border: "none", background: "transparent", fontSize: 15, fontWeight: 500, color: "#666", cursor: "pointer" }}>Forgot?</button>
+              <button onClick={() => press("0")} style={{ width: 72, height: 72, borderRadius: "50%", border: "none", background: "transparent", fontSize: 28, fontWeight: 400, color: "#1a1a2e", cursor: "pointer" }}>0</button>
+              <button onClick={del} style={{ width: 72, height: 72, borderRadius: "50%", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24"><path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" /><line x1="18" y1="9" x2="12" y2="15" /><line x1="12" y1="9" x2="18" y2="15" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function HomeScreen({ onTab, onAdmin, adminData, onViewDetails }) {
+      return (
+        <div style={{ background: "#f0f2f4", minHeight: "100vh" }}>
+          <div style={{ padding: "52px 20px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f0f2f4" }}>
+            <h1 onClick={onAdmin} style={{ fontSize: 28, fontWeight: 700, color: "#1a2636", cursor: "pointer", margin: 0 }}>Hi {adminData.firstName}</h1>
+          </div>
+          <div style={{ paddingBottom: 90 }}>
+            <div onClick={() => onTab("licence")} style={{ background: "#fff", borderRadius: 16, margin: "0 16px 12px", padding: "18px 20px", cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <img src="https://media.base44.com/images/public/69f2966cd9daf8a2a1d9c62d/f2f74fa60_image.png" alt="Demerit" style={{ width: 40, height: 40, objectFit: "contain" }} />
+                <div style={{ fontSize: 16, fontWeight: 600, color: "#1a2636" }}>Demerit points balance</div>
+              </div>
+            </div>
+            <div onClick={() => onTab("vehicles")} style={{ background: "#fff", borderRadius: 16, margin: "0 16px 12px", padding: "18px 20px", cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <img src="https://media.base44.com/images/public/69f2966cd9daf8a2a1d9c62d/f70877583_image.png" alt="Vehicles" style={{ width: 40, height: 40, objectFit: "contain" }} />
+                <div style={{ fontSize: 16, fontWeight: 600, color: "#1a2636" }}>Registered vehicles</div>
+              </div>
+            </div>
+            <div style={{ height: 16 }} />
+            <div onClick={onViewDetails} style={{ background: "linear-gradient(135deg,#1a3a4a 0%,#2d5a7a 100%)", borderRadius: 16, margin: "0 16px 12px", padding: 20, cursor: "pointer", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div><div style={{ fontSize: 18, fontWeight: 700 }}>My licence</div><div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>Tap to view licence</div></div>
+              <div style={{ fontSize: 20, opacity: 0.8 }}>⤢</div>
+            </div>
+          </div>
+          <TabBar active="home" onTab={onTab} />
+        </div>
+      );
+    }
+
+    function VehiclesScreen({ onTab }) {
+      return (
+        <div style={{ background: "#f0f2f4", minHeight: "100vh" }}>
+          <div style={{ padding: "52px 20px 12px" }}><h1 style={{ fontSize: 28, fontWeight: 700, color: "#1a2636", margin: 0 }}>Vehicles</h1></div>
+          <div style={{ paddingBottom: 90 }}>
+            {["My registered vehicles","Manage registration renewal","Change your garage address","Apprentice registration discount","Unregistered vehicle permits","My vehicle reports"].map((item, i) => (
+              <div key={i} style={{ background: "#fff", borderRadius: 16, margin: "0 16px 12px", padding: "18px 20px", cursor: "pointer" }}>
+                <div style={{ fontSize: 16, fontWeight: i === 0 ? 600 : 500, color: "#1a2636" }}>{item}</div>
+              </div>
+            ))}
+          </div>
+          <TabBar active="vehicles" onTab={onTab} />
+        </div>
+      );
+    }
+
+    function LicenceScreen({ onTab, onViewDetails }) {
+      return (
+        <div style={{ background: "#f0f2f4", minHeight: "100vh" }}>
+          <div style={{ padding: "52px 20px 12px" }}><h1 style={{ fontSize: 28, fontWeight: 700, color: "#1a2636", margin: 0 }}>Licence</h1></div>
+          <div style={{ paddingBottom: 90 }}>
+            <div onClick={onViewDetails} style={{ background: "linear-gradient(135deg,#1a3a4a 0%,#2d5a7a 100%)", borderRadius: 16, margin: "0 16px 12px", padding: 20, cursor: "pointer", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div><div style={{ fontSize: 18, fontWeight: 700 }}>My licence</div><div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>Tap to view licence</div></div>
+              <div style={{ fontSize: 20, opacity: 0.8 }}>⤢</div>
+            </div>
+            {["View demerit points","Manage licence renewal","Order driver history report","Update address on licence","Access myLearners","Replace licence"].map((item, i) => (
+              <div key={i} style={{ background: "#fff", borderRadius: 16, margin: "0 16px 12px", padding: "18px 20px", cursor: "pointer" }}>
+                <div style={{ fontSize: 16, fontWeight: i === 0 ? 600 : 500, color: "#1a2636" }}>{item}</div>
+              </div>
+            ))}
+          </div>
+          <TabBar active="licence" onTab={onTab} />
+        </div>
+      );
+    }
+
+    function PaymentsScreen({ onTab }) {
+      return (
+        <div style={{ background: "#f0f2f4", minHeight: "100vh" }}>
+          <div style={{ padding: "52px 20px 12px" }}><h1 style={{ fontSize: 28, fontWeight: 700, color: "#1a2636", margin: 0 }}>Payments</h1></div>
+          <div style={{ paddingBottom: 90 }}>
+            {[
+              { title: "Manage payment methods", sub: "Store your credit card and bank account details to make payments" },
+              { title: "Direct debit payments", sub: "Manage direct debit settings" },
+              { title: "Transaction history", sub: "View recent transactions made using your myVicRoads account" }
+            ].map((item, i) => (
+              <div key={i} style={{ background: "#fff", borderRadius: 16, margin: "0 16px 12px", padding: "18px 20px", cursor: "pointer" }}>
+                <div style={{ fontSize: 16, fontWeight: i === 0 ? 600 : 500, color: "#1a2636" }}>{item.title}</div>
+                {item.sub && <div style={{ fontSize: 13, color: "#666", marginTop: 2 }}>{item.sub}</div>}
+              </div>
+            ))}
+          </div>
+          <TabBar active="payments" onTab={onTab} />
+        </div>
+      );
+    }
+
+    function ProfileScreen({ onTab, onLogout }) {
+      return (
+        <div style={{ background: "#f0f2f4", minHeight: "100vh" }}>
+          <div style={{ padding: "52px 20px 12px" }}><h1 style={{ fontSize: 28, fontWeight: 700, color: "#1a2636", margin: 0 }}>Profile</h1></div>
+          <div style={{ paddingBottom: 90 }}>
+            <div style={{ background: "#fff", borderRadius: 16, margin: "0 16px 12px", padding: "18px 20px" }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: "#1a2636", marginBottom: 12 }}>Profile and settings</div>
+              {["Personal information","Addresses","Security settings","Passkey settings"].map((item, i) => (
+                <div key={i}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", cursor: "pointer" }}>
+                    <div style={{ fontSize: 16, fontWeight: 500, color: "#1a2636" }}>{item}</div>
+                    <span style={{ color: "#ccc", fontSize: 18 }}>›</span>
+                  </div>
+                  {i < 3 && <hr style={{ border: "none", borderTop: "1px solid #f0f0f0", margin: 0 }} />}
+                </div>
+              ))}
+            </div>
+            <div style={{ background: "#fff", borderRadius: 16, margin: "0 16px 12px", padding: "18px 20px" }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: "#1a2636", marginBottom: 12 }}>App controls</div>
+              {["Biometrics and settings","Help and info","Provide app feedback"].map((item, i) => (
+                <div key={i}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", cursor: "pointer" }}>
+                    <div style={{ fontSize: 16, fontWeight: 500, color: "#1a2636" }}>{item}</div>
+                    <span style={{ color: "#ccc", fontSize: 18 }}>›</span>
+                  </div>
+                  {i < 2 && <hr style={{ border: "none", borderTop: "1px solid #f0f0f0", margin: 0 }} />}
+                </div>
+              ))}
+            </div>
+            <div onClick={onLogout} style={{ background: "#fff", borderRadius: 16, margin: "0 16px 12px", padding: "18px 20px", cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 18 }}>🚪</span>
+                <div style={{ fontSize: 16, fontWeight: 500, color: "#c0392b" }}>Log out</div>
+              </div>
+            </div>
+          </div>
+          <TabBar active="profile" onTab={onTab} />
+        </div>
+      );
+    }
+
+    function ViewDetailsScreen({ onBack, onQR, adminData }) {
+      const [permitTab, setPermitTab] = useState("permit");
+      const now = new Date();
+      const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      const h = now.getHours(), m = now.getMinutes().toString().padStart(2,"0");
+      const ampm = h >= 12 ? "pm" : "am";
+      const refreshed = "Last refreshed: " + days[now.getDay()] + " " + now.getDate() + " " + months[now.getMonth()] + " " + now.getFullYear() + " " + (h % 12 || 12) + ":" + m + ampm;
+      const isP = adminData.permitType === "P";
+      return (
+        <div style={{ background: "#fff", minHeight: "100vh", overflowY: "auto" }}>
+          <div style={{ padding: "52px 20px 12px", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+            <span onClick={onBack} style={{ position: "absolute", left: 20, fontSize: 24, cursor: "pointer", color: "#1a2636" }}>‹</span>
+            <span style={{ fontSize: 18, fontWeight: 600, color: "#1a2636" }}>View details</span>
+          </div>
+          <div style={{ textAlign: "center", fontSize: 13, color: "#888", padding: "6px 0 12px" }}>{refreshed}</div>
+          <img src="https://media.base44.com/images/public/69f323ef83c6a2c5e576cb40/339d5c6c5_image.png" alt="Licence Banner" style={{ width: "100%", display: "block", objectFit: "cover" }} />
+          <div style={{ background: "#e8f0e8", padding: 14, display: "flex", gap: 12 }}>
+            <div style={{ width: "50%", height: 240, background: "#ccc", borderRadius: 12, overflow: "hidden", flexShrink: 0, position: "relative", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+              {adminData.photo ?
+              <>
+                <img src={adminData.photo} alt="Photo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img src="https://media.base44.com/images/public/69f2966cd9daf8a2a1d9c62d/abf30cf57_image.png" alt="Overlay" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover", mixBlendMode: "multiply", pointerEvents: "none" }} />
+              </> :
+              <img src="https://media.base44.com/images/public/69f2966cd9daf8a2a1d9c62d/abf30cf57_image.png" alt="Overlay" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              }
+            </div>
+            <div style={{ flex: 1, height: 240, background: "#fff", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <p style={{ fontSize: 13, color: "#444", textAlign: "center", lineHeight: 1.5, margin: 0 }}>Presenting a QR code allows your driver licence information to be scanned and shared.</p>
+              <p style={{ fontSize: 13, color: "#444", textAlign: "center", margin: 0 }}><strong>Do you consent to share your information?</strong></p>
+              <button onClick={onQR} style={{ background: "#1a2636", color: "#fff", border: "none", borderRadius: 20, padding: "10px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer", width: "100%" }}>Reveal QR code</button>
+            </div>
+          </div>
+          <div style={{ display: "flex", margin: "16px 20px", background: "#f0f0f0", borderRadius: 24, padding: 4 }}>
+            {["permit","identity","age"].map((t) => (
+              <button key={t} onClick={() => setPermitTab(t)} style={{ flex: 1, padding: 10, borderRadius: 20, border: "none", background: permitTab === t ? "#1a2636" : "transparent", fontSize: 15, fontWeight: 500, color: permitTab === t ? "#fff" : "#888", cursor: "pointer" }}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </div>
+          {permitTab === "permit" && (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, padding: "20px 20px 16px" }}>
+                <div style={{ gridColumn: "1 / -1", fontSize: 22, fontWeight: 700, color: "#1a2636", paddingBottom: 16 }}>{adminData.fullName}</div>
+                {[
+                  { label: "Permit number", val: adminData.permitNum },
+                  { label: "Expiry", val: adminData.expiry },
+                  { label: "Permit type", val: "Car", badge: true },
+                  { label: "Date of birth", val: adminData.dob }
+                ].map((f, i) => (
+                  <div key={i}>
+                    <div style={{ fontSize: 13, color: "#888" }}>{f.label}</div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: "#1a2636", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
+                      {f.val}
+                      {f.badge && <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", background: isP ? "#c0392b" : "#f5c518", color: isP ? "#fff" : "#000", fontWeight: 900, fontSize: 12, width: 22, height: 22, borderRadius: 4 }}>{isP ? "P" : "L"}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: "0 20px 16px" }}>
+                <div style={{ fontSize: 13, color: "#888" }}>Address</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "#1a2636", marginTop: 2 }}>{adminData.addr1}<br />{adminData.addr2}</div>
+              </div>
+              <div style={{ height: 1, background: "#e8e8e8", margin: "4px 0" }} />
+              <div style={{ padding: "0 20px 16px" }}>
+                <div style={{ fontSize: 13, color: "#888" }}>Signature</div>
+                <div style={{ marginTop: 8 }}>
+                  {adminData.sig ? <img src={adminData.sig} alt="Signature" style={{ height: 100, objectFit: "contain" }} /> : <div style={{ fontStyle: "italic", color: "#888", fontSize: 18 }}>{adminData.firstName}</div>}
+                </div>
+              </div>
+              <div style={{ height: 1, background: "#e8e8e8", margin: "4px 0" }} />
+              <div style={{ padding: "10px 20px", background: "#f5f5f5", fontSize: 14, fontWeight: 700, color: "#444" }}>{isP ? "Car probationary licence details" : "Car learner permit details"}</div>
+              <div style={{ padding: "0 20px 20px" }}>
+                {[
+                  { label: "Permit status", val: "Current", dot: true },
+                  { label: "Proficiency", val: isP ? "Probationary" : "Learner", badge: true },
+                  { label: "Issue date", val: adminData.issueDate },
+                  { label: "Expiry", val: adminData.expiry }
+                ].map((f, i) => (
+                  <div key={i} style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 13, color: "#888" }}>{f.label}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                      {f.dot && <div style={{ width: 18, height: 18, background: "#2a7a3b", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}><svg viewBox="0 0 11 11" fill="none" width="11" height="11"><path d="M2 5.5l2.5 2.5 4.5-4.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg></div>}
+                      {f.badge && <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", background: isP ? "#c0392b" : "#f5c518", color: isP ? "#fff" : "#000", fontWeight: 900, fontSize: 12, width: 22, height: 22, borderRadius: 4 }}>{isP ? "P" : "L"}</span>}
+                      <span style={{ fontSize: 15, fontWeight: 600, color: "#1a2636" }}>{f.val}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: "10px 20px", background: "#f5f5f5", fontSize: 14, fontWeight: 700, color: "#444" }}>Other details</div>
+              <div style={{ padding: "0 20px 20px" }}>
+                <div style={{ marginBottom: 14 }}><div style={{ fontSize: 13, color: "#888" }}>Conditions</div><div style={{ fontSize: 15, fontWeight: 600, color: "#1a2636", marginTop: 2 }}>No conditions</div></div>
+
+              </div>
+              <div style={{ height: 1, background: "#e8e8e8", margin: "4px 0" }} />
+              <div style={{ padding: "10px 20px 4px" }}>
+                <img src="https://media.base44.com/images/public/69f323ef83c6a2c5e576cb40/88d155073_image.png" alt="Barcode" style={{ width: "100%", height: "auto", display: "block", borderRadius: 4 }} />
+              </div>
+            </div>
+          )}
+          {permitTab === "identity" && (
+            <div style={{ padding: "16px 20px" }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#1a2636", marginBottom: 20 }}>{adminData.fullName}</div>
+              <hr style={{ border: "none", borderTop: "1px solid #eee", margin: "0 0 16px" }} />
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 13, color: "#888", marginBottom: 4 }}>Address</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "#1a2636" }}>{adminData.addr1}<br />{adminData.addr2}</div>
+              </div>
+              <hr style={{ border: "none", borderTop: "1px solid #eee", margin: "0 0 16px" }} />
+              <div>
+                <div style={{ fontSize: 13, color: "#888", marginBottom: 8 }}>Signature</div>
+                <div style={{ height: 50 }}>
+                  {adminData.sig ? <img src={adminData.sig} alt="Signature" style={{ height: 100, objectFit: "contain" }} /> : <div style={{ fontStyle: "italic", color: "#888", fontSize: 18 }}>{adminData.firstName}</div>}
+                </div>
+              </div>
+            </div>
+          )}
+          {permitTab === "age" && (
+            <div style={{ padding: "16px 20px" }}>
+              <div style={{ fontSize: 13, color: "#888", marginBottom: 12 }}>Age status</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 28, height: 28, background: "#2a7a3b", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg viewBox="0 0 11 11" fill="none" width="14" height="14"><path d="M2 5.5l2.5 2.5 4.5-4.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
+                <span style={{ fontSize: 18, fontWeight: 700, color: "#1a2636" }}>Over 18</span>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function QRScreen({ onClose }) {
+      const [secs, setSecs] = useState(119);
+      useEffect(() => { const iv = setInterval(() => setSecs((s) => s <= 0 ? 119 : s - 1), 1000); return () => clearInterval(iv); }, []);
+      const m = Math.floor(secs / 60), s = secs % 60;
+      const timerStr = m + ":" + (s < 10 ? "0" + s : s);
+      return (
+        <div style={{ background: "#fff", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div style={{ width: "100%", padding: "52px 20px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ width: 60 }} />
+            <span style={{ fontSize: 18, fontWeight: 600, color: "#1a2636" }}>Verify Licence</span>
+            <span onClick={onClose} style={{ fontSize: 16, color: "#2a7a3b", fontWeight: 600, cursor: "pointer" }}>Close</span>
+          </div>
+          <img src="https://media.base44.com/images/public/69f2966cd9daf8a2a1d9c62d/37e892cc8_image.png" alt="QR" style={{ width: "80vw", maxWidth: 340, height: "auto", margin: "20px auto", display: "block" }} />
+          <div style={{ fontSize: 18, color: "#555", marginBottom: 20 }}>QR expires <span style={{ fontWeight: 700, color: "#1a2636" }}>{timerStr}</span></div>
+          <div style={{ padding: "0 24px", fontSize: 14, color: "#444", lineHeight: 1.6 }}>
+            By presenting this QR code you <strong>consent</strong> to share some or all of your driver licence information.
+            <div style={{ marginTop: 16, fontWeight: 700, color: "#1a2636", fontSize: 15 }}>You're sharing:</div>
+            <ul style={{ listStyle: "disc", paddingLeft: 20, marginTop: 8 }}>
+              {["Victorian driver licence photo","Full name, birth date and address","Licence number, type and expiry date","Licence status","Proficiency"].map((l, i) => <li key={i} style={{ fontSize: 14, color: "#444", marginBottom: 4 }}>{l}</li>)}
+            </ul>
+          </div>
+        </div>
+      );
+    }
+
+    function AdminScreen({ onBack, adminData, onSave }) {
+      const [data, setData] = useState({ ...adminData });
+      const set = (k, v) => setData((d) => ({ ...d, [k]: v }));
+      const handlePhoto = (e) => { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = (ev) => set("photo", ev.target.result); r.readAsDataURL(file); };
+      const handleSig = (e) => { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = (ev) => set("sig", ev.target.result); r.readAsDataURL(file); };
+      const inputStyle = { width: "100%", padding: "12px 14px", border: "1.5px solid #ddd", borderRadius: 10, fontSize: 15, color: "#1a2636", background: "#fff", outline: "none", boxSizing: "border-box" };
+      const labelStyle = { fontSize: 14, color: "#555", display: "block", marginBottom: 6 };
+      return (
+        <div style={{ background: "#fff", minHeight: "100vh" }}>
+          <div style={{ padding: "52px 20px 12px", display: "flex", alignItems: "center", gap: 12 }}>
+            <span onClick={onBack} style={{ fontSize: 24, cursor: "pointer", color: "#1a2636" }}>‹</span>
+            <h1 style={{ fontSize: 20, fontWeight: 600, color: "#1a2636", margin: 0 }}>Admin Panel</h1>
+          </div>
+          <div style={{ overflowY: "auto", paddingBottom: 100 }}>
+            <div style={{ background: "#2a7a3b", borderRadius: 14, margin: "0 16px 20px", padding: 18 }}>
+              <h2 style={{ color: "#fff", fontSize: 20, fontWeight: 700, margin: 0 }}>Editor mode</h2>
+              <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 14, marginTop: 4, marginBottom: 0 }}>Put in your preferences for your information</p>
+            </div>
+            <div style={{ padding: "0 20px", marginBottom: 20 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1a2636", marginBottom: 14 }}>Personal Information</h3>
+              {[
+                { label: "Full Name", key: "fullName" },
+                { label: "First Name (for greeting)", key: "firstName" },
+                { label: "Address Line 1", key: "addr1" },
+                { label: "Address Line 2", key: "addr2" },
+                { label: "Date of Birth", key: "dob" }
+              ].map((f) => (
+                <div key={f.key} style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>{f.label}</label>
+                  <input style={inputStyle} value={data[f.key]} onChange={(e) => set(f.key, e.target.value)} />
+                </div>
+              ))}
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>Licence Photo</label>
+                {data.photo && <img src={data.photo} style={{ width: 120, height: 150, objectFit: "cover", borderRadius: 8, display: "block", marginBottom: 10 }} alt="photo" />}
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 16px", border: "1.5px solid #ddd", borderRadius: 8, background: "#fff", fontSize: 14, cursor: "pointer", color: "#333" }}>
+                  Upload Photo <input type="file" accept="image/*" onChange={handlePhoto} style={{ display: "none" }} />
+                </label>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>Signature Image</label>
+                {data.sig && <img src={data.sig} style={{ width: 100, height: 60, objectFit: "contain", borderRadius: 8, display: "block", marginBottom: 10 }} alt="sig" />}
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 16px", border: "1.5px solid #ddd", borderRadius: 8, background: "#fff", fontSize: 14, cursor: "pointer", color: "#333" }}>
+                  Upload Signature <input type="file" accept="image/*" onChange={handleSig} style={{ display: "none" }} />
+                </label>
+              </div>
+            </div>
+            <div style={{ padding: "0 20px", marginBottom: 20 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1a2636", marginBottom: 14 }}>Licence Information</h3>
+              {[
+                { label: "Permit Number", key: "permitNum" },
+                { label: "Issue Date", key: "issueDate" },
+                { label: "Expiry Date", key: "expiry" },
+                { label: "Card Number", key: "cardNum" }
+              ].map((f) => (
+                <div key={f.key} style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>{f.label}</label>
+                  <input style={inputStyle} value={data[f.key]} onChange={(e) => set(f.key, e.target.value)} />
+                </div>
+              ))}
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>Permit Type</label>
+                <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+                  {[{ t: "P", label: "🔴 Probationary (P)" }, { t: "L", label: "🟡 Learner (L)" }].map((opt) => (
+                    <div key={opt.t} onClick={() => set("permitType", opt.t)} style={{ flex: 1, padding: 10, border: "2px solid " + (data.permitType === opt.t ? (opt.t === "P" ? "#c0392b" : "#f5c518") : "#ddd"), borderRadius: 10, textAlign: "center", cursor: "pointer", fontSize: 15, fontWeight: 600, background: data.permitType === opt.t ? (opt.t === "P" ? "#fef0ee" : "#fffbe6") : "transparent" }}>
+                      {opt.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <button onClick={() => onSave(data)} style={{ position: "sticky", bottom: 20, margin: "0 16px 24px", background: "#2a7a3b", color: "#fff", border: "none", borderRadius: 14, padding: 16, fontSize: 16, fontWeight: 700, width: "calc(100% - 32px)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>Save All Changes</button>
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [screen, setScreen] = React.useState("pin");
+      const [tab, setTab] = React.useState("home");
+      const [adminData, setAdminData] = React.useState({
+        fullName: "", firstName: "",
+        addr1: "", addr2: "",
+        dob: "", permitNum: "",
+        issueDate: "", expiry: "",
+        cardNum: "", permitType: "P",
+        photo: null, sig: null
+      });
+      const goTab = (t) => { setTab(t); setScreen("main"); };
+      if (screen === "pin") return <PinScreen onUnlock={() => setScreen("main")} />;
+      if (screen === "viewdetails") return <ViewDetailsScreen onBack={() => setScreen("main")} onQR={() => setScreen("qr")} adminData={adminData} />;
+      if (screen === "qr") return <QRScreen onClose={() => setScreen("viewdetails")} />;
+      if (screen === "admin") return <AdminScreen onBack={() => setScreen("main")} adminData={adminData} onSave={(d) => { setAdminData(d); setScreen("main"); }} />;
+      return (
+        <div style={{ fontFamily: "-apple-system,'SF Pro Display','Helvetica Neue',sans-serif", WebkitTapHighlightColor: "transparent" }}>
+          {tab === "home" && <HomeScreen onTab={goTab} onAdmin={() => setScreen("admin")} adminData={adminData} onViewDetails={() => setScreen("viewdetails")} />}
+          {tab === "vehicles" && <VehiclesScreen onTab={goTab} />}
+          {tab === "licence" && <LicenceScreen onTab={goTab} onViewDetails={() => setScreen("viewdetails")} />}
+          {tab === "payments" && <PaymentsScreen onTab={goTab} />}
+          {tab === "profile" && <ProfileScreen onTab={goTab} onLogout={() => { setScreen("pin"); setTab("home"); }} />}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

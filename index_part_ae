@@ -1,0 +1,60 @@
+          <span class="verifier-detail-value" id="verifierType">Car</span>
+        </div>
+        <div class="verifier-detail-row">
+          <span class="verifier-detail-label">Proficiency</span>
+          <span class="verifier-detail-value" id="verifierProficiency">Probationary</span>
+        </div>
+      </div>
+
+      <!-- Signature -->
+      <div class="verifier-sig-wrap">
+        <span class="verifier-sig-label">Signature</span>
+        <canvas id="verifierSigCanvas" width="280" height="64" style="width:100%;max-width:280px;height:64px;display:block;"></canvas>
+      </div>
+
+      <!-- Verified date footer -->
+      <div class="verifier-footer">
+        <div class="verifier-divider"></div>
+        <div class="verifier-verified">
+          <span class="verifier-verified-label">Details verified:</span>
+          <span class="verifier-verified-date" id="verifierDate">—</span>
+        </div>
+        <div class="verifier-brand">
+          <span>Powered by VicRoads</span>
+          <span class="verifier-app-version">myVicRoads v1.3.5</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===== INJECT SCROLL SPACERS (real DOM children for iOS scroll fix) ===== -->
+<script>
+(function injectScrollSpacers() {
+  var selectors = [
+    '.home-scroll',
+    '#screenVehicles .app-screen-scroll',
+    '#screenPayments .app-screen-scroll'
+  ];
+  function inject() {
+    selectors.forEach(function (sel) {
+      var el = document.querySelector(sel);
+      if (!el) return;
+      if (el.querySelector(':scope > .scroll-spacer')) return;
+      var spacer = document.createElement('div');
+      spacer.className = 'scroll-spacer';
+      spacer.setAttribute('aria-hidden', 'true');
+      el.appendChild(spacer);
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', inject);
+  } else {
+    inject();
+  }
+})();
+</script>
+
+</body>
+</html>

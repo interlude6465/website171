@@ -1,0 +1,65 @@
+# DEX symbol scan for animation APIs
+# 61 unique matches (deduped, sorted)
+# patterns: 104
+
+ > EnterExitTransition
+!Landroid/animation/ValueAnimator;
+"Landroid/animation/ObjectAnimator;
+$Animator must be an ObjectAnimator: 
+$Landroid/animation/TimeInterpolator;
+$supportStartPostponedEnterTransition
+$this$AnimatedVisibility
+$this$keyframes
+&Landroid/transition/TransitionManager;
+)Landroid/view/animation/PathInterpolator;
+)[Landroid/animation/PropertyValuesHolder;
++Landroid/view/animation/LinearInterpolator;
+/Landroid/view/animation/AccelerateInterpolator;
+/Landroid/view/animation/DecelerateInterpolator;
+1Landroid/transition/Transition$EpicenterCallback;
+2Landroid/graphics/drawable/AnimatedVectorDrawable;
+2Landroid/transition/Transition$TransitionListener;
+5Landroid/graphics/drawable/AnimatedStateListDrawable;
+7Landroidx/swiperefreshlayout/widget/SwipeRefreshLayout;
+8Landroid/animation/ValueAnimator$AnimatorUpdateListener;
+9Landroid/view/animation/AccelerateDecelerateInterpolator;
+AnimatedVisibility
+Crossfade
+EnterTransition.None
+EnterTransition: 
+ExitTransition.None
+ExitTransition: 
+FParameters to CubicBezierEasing cannot be NaN. Actual parameters are: 
+Fade - 
+Fade(alpha=0.0, animationSpec=
+Impulse
+KError: Final position of the spring must be set before the animation starts
+Landroid/animation/AnimatorSet;
+Slide - 
+SwipeRefreshLayout
+YParameters to CubicBezierEasing cannot be NaN. Actual parameters are: 0.2, 0.0, 0.8, 1.0.
+YParameters to CubicBezierEasing cannot be NaN. Actual parameters are: 0.4, 0.0, 1.0, 1.0.
+ZParameters to CubicBezierEasing cannot be NaN. Actual parameters are: 0.0, 0.0, 0.65, 1.0.
+ZParameters to CubicBezierEasing cannot be NaN. Actual parameters are: 0.1, 0.0, 0.45, 1.0.
+]snap preference should be one of the constants defined in SmoothScroller, starting with SNAP_
+decayAnimationSpec
+getAllowEnterTransitionOverlap
+getAnimatedVisibility
+getEnterTransition
+getEnterTransitionCallback
+getExitTransition
+getExitTransitionCallback
+getSharedElementEnterTransition
+lowVelocityAnimationSpec
+postponeEnterTransition
+setAllowEnterTransitionOverlap
+setDuration
+setEnterTransition
+setExitTransition
+setInterpolator
+setRepeatCount
+setRepeatMode
+setSharedElementEnterTransition
+setStartDelay
+startPostponedEnterTransition
+supportPostponeEnterTransition

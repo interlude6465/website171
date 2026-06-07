@@ -1,0 +1,564 @@
+<!-- DISCLAIMER -->
+<!-- This mock is for educational demonstrations and internal testing. It is not a real ID and should not be used to impersonate, deceive, or commit fraud. No real data or official security features are included. The author and contributors are not responsible for any misuse by third parties. By using or distributing this material, you agree to comply with all laws and ethics guidelines.-->
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Verification of Permit (NOT REAL)</title>
+<link rel="apple-touch-icon" href="https://i.postimg.cc/P5840XBb/IMG-1423.jpg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<!-- VicRoads font (loaded from same apk_loot folder as the main app) -->
+<style>
+@font-face {
+  font-family: 'VicRoads';
+  src: url('apk_loot/fonts/vic_regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'VicRoads';
+  src: url('apk_loot/fonts/vic_medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'VicRoads';
+  src: url('apk_loot/fonts/vic_semibold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --vr-navy: #1a1f36;
+  --vr-label: #6b7280;
+  --vr-divider: #e5e7eb;
+  --vr-page-bg: #ecf0f4;
+  --vr-red: #DE3523;
+  --vr-green: #1aa266;
+  --vr-green-card: #c8dcb0;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background: var(--vr-page-bg);
+  color: var(--vr-navy);
+  font-family: 'VicRoads', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  font-size: 15px;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== TOP BAR (Verification of Permit / Close) ===== */
+.top-bar {
+  position: sticky;
+  top: 0;
+  background: #ecf0f4;
+  padding: 56px 18px 14px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  z-index: 100;
+}
+.top-bar-back {
+  justify-self: start;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  margin: -8px;
+  color: var(--vr-navy);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+}
+.top-bar-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--vr-navy);
+  text-align: center;
+}
+.top-bar-close {
+  justify-self: end;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  margin: -8px;
+  color: var(--vr-navy);
+  font-size: 17px;
+  font-weight: 500;
+  font-family: inherit;
+}
+
+/* ===== VERIFIED BADGE ===== */
+.verified-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 18px 28px;
+  background: #ecf0f4;
+}
+.verified-tick {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--vr-green);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.verified-tick svg { width: 32px; height: 32px; }
+.verified-text {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--vr-navy);
+}
+
+/* ===== RED BANNER ===== */
+.banner {
+  background: var(--vr-red);
+  color: #ffffff;
+  padding: 14px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  box-shadow:
+    0 3px 6px rgba(0, 0, 0, 0.25),
+    inset 0 -3px 4px rgba(255, 255, 255, 0.10);
+}
+.banner-left { display: flex; flex-direction: column; gap: 2px; }
+.banner-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+.banner-sub {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.92;
+}
+.banner-logo {
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+.banner-logo svg { display: block; width: 100px; height: 24px; }
+
+/* ===== SAGE GREEN PHOTO PANEL ===== */
+.photo-panel {
+  background: var(--vr-green-card);
+  background-image:
+    url('apk_loot/logos/floral_bgro_w.png');
+  background-size: cover;
+  background-position: center;
+  padding: 28px 20px 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  position: relative;
+}
+.photo-frame {
+  position: relative;
+  width: 70%;
+  max-width: 240px;
+  aspect-ratio: 3/4;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #b9d6e2;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+.photo-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* Coat-of-arms overlay — same as the main licence card */
+.photo-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url('apk_loot/logos/vic_coat_of_arms.png');
+  background-size: 80% auto;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.35;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+/* ===== NAME + DETAILS ===== */
+.details-section {
+  background: #ffffff;
+  padding: 22px 22px 6px;
+}
+.name {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--vr-navy);
+  margin-bottom: 8px;
+  letter-spacing: 0.3px;
+}
+.divider {
+  height: 1px;
+  background: rgba(0,0,0,0.08);
+  margin: 12px 0;
+}
+.detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+}
+.detail-label {
+  font-size: 13px;
+  color: var(--vr-label);
+  font-weight: 400;
+}
+.detail-value {
+  font-size: 15px;
+  color: var(--vr-navy);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* ===== SECTION HEADER (grey strip) ===== */
+.section-header {
+  background: #ecedef;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--vr-navy);
+}
+
+/* ===== PERMIT STATUS / PROFICIENCY ===== */
+.status-section {
+  background: #ffffff;
+  padding: 14px 22px;
+}
+.status-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+}
+.status-row-label {
+  font-size: 13px;
+  color: var(--vr-label);
+}
+.status-row-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.status-row-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--vr-navy);
+}
+.tick-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--vr-green);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--vr-red);
+  min-width: 22px;
+  text-align: center;
+}
+.pill.pill-l { background: #FFF001; color: #000; }
+.pill.pill-p1 { background: #DE3523; color: #fff; }
+.pill.pill-p2 { background: #397E58; color: #fff; }
+
+/* ===== DETAILS VERIFIED FOOTER ===== */
+.verified-footer {
+  margin: 20px 16px 28px;
+  padding: 18px 14px 14px;
+  background: #ecedef;
+  border-radius: 8px;
+  text-align: center;
+}
+.verified-footer-label {
+  font-size: 13px;
+  color: var(--vr-label);
+  font-weight: 400;
+  margin-bottom: 8px;
+}
+.verified-footer-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+.verified-footer-logo svg { height: 22px; width: auto; }
+.verified-footer-date {
+  font-size: 14px;
+  color: var(--vr-navy);
+  font-weight: 500;
+}
+
+/* ===== SIGNATURE (optional small footer block) ===== */
+.sig-block {
+  background: #ffffff;
+  padding: 14px 22px 18px;
+}
+.sig-label {
+  font-size: 13px;
+  color: var(--vr-label);
+  margin-bottom: 6px;
+}
+.sig-canvas {
+  width: 100%;
+  max-width: 280px;
+  height: 60px;
+  display: block;
+}
+
+@media (min-width: 480px) {
+  body { max-width: 420px; margin: 0 auto; box-shadow: 0 0 30px rgba(0,0,0,0.08); min-height: 100vh; background: #ecf0f4; }
+}
+</style>
+</head>
+<body>
+
+<!-- Top status bar -->
+<div class="top-bar">
+  <button class="top-bar-back" onclick="history.back()" aria-label="Back">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>
+  </button>
+  <div class="top-bar-title">Verification of Permit</div>
+  <button class="top-bar-close" onclick="window.close()">Close</button>
+</div>
+
+<!-- Verified badge -->
+<div class="verified-badge">
+  <div class="verified-tick">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+  </div>
+  <div class="verified-text" id="verifiedText">Permit Verified</div>
+</div>
+
+<!-- Red banner (Probationary) -->
+<div class="banner" id="banner">
+  <div class="banner-left">
+    <div class="banner-title" id="bannerTitle">PROBATIONARY DRIVER LICENCE</div>
+    <div class="banner-sub">Victoria Australia</div>
+  </div>
+  <div class="banner-logo">
+    <!-- White VicRoads wordmark -->
+    <svg viewBox="0 0 100 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="#ffffff">
+        <path d="M7 4 L4 14 L1 4 L0 4 L3 16 L5 16 L8 4 Z"/>
+        <path d="M10 4 L10 16 L11.5 16 L11.5 4 Z"/>
+        <text x="14" y="14" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff">vicroads</text>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<!-- Photo with coat of arms overlay -->
+<div class="photo-panel">
+  <div class="photo-frame">
+    <img id="licencePhoto" src="https://via.placeholder.com/250x340.png?text=Photo" alt="Licence photo"/>
+  </div>
+</div>
+
+<!-- Name + address -->
+<div class="details-section">
+  <div class="name" id="fullName">YOUR NAME HERE</div>
+  <div class="divider"></div>
+  <div class="detail-row">
+    <span class="detail-label">Address</span>
+    <span class="detail-value" id="address">YOUR ADDRESS<br>HERE</span>
+  </div>
+</div>
+
+<!-- Section header -->
+<div class="section-header" id="sectionHeader">Car learner permit details</div>
+
+<!-- Status / Proficiency -->
+<div class="status-section">
+  <div class="status-row">
+    <span class="status-row-label">Permit status</span>
+    <div class="status-row-content">
+      <span class="tick-icon">✓</span>
+      <span class="status-row-value">Current</span>
+    </div>
+  </div>
+  <div class="status-row">
+    <span class="status-row-label">Proficiency</span>
+    <div class="status-row-content">
+      <span class="pill pill-p1" id="profPill">P</span>
+      <span class="status-row-value" id="profText">Probationary</span>
+    </div>
+  </div>
+</div>
+
+<!-- Signature -->
+<div class="sig-block">
+  <div class="sig-label">Signature</div>
+  <canvas id="sigCanvas" class="sig-canvas" width="350" height="80"></canvas>
+</div>
+
+<!-- Details verified footer -->
+<div class="verified-footer">
+  <div class="verified-footer-label">Details verified with</div>
+  <div class="verified-footer-logo">
+    <!-- Navy VicRoads wordmark -->
+    <svg viewBox="0 0 100 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="#253544">
+        <path d="M7 4 L4 14 L1 4 L0 4 L3 16 L5 16 L8 4 Z"/>
+        <path d="M10 4 L10 16 L11.5 16 L11.5 4 Z"/>
+        <text x="14" y="14" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#253544">vicroads</text>
+      </g>
+    </svg>
+  </div>
+  <div class="verified-footer-date" id="verifiedDate">Thu 04 Jun 2026 9:24am</div>
+</div>
+
+<script>
+/* ===== POPULATE LICENCE DATA =====
+   Priority order:
+   1. URL query parameters (passed by the QR code)
+   2. localStorage (if served from same origin as the main app)
+   3. Hardcoded defaults
+*/
+(function populate() {
+  // Helper: get a value from URL params or fall back to localStorage
+  function param(key) {
+    var url = new URLSearchParams(window.location.search);
+    var fromUrl = url.get(key);
+    if (fromUrl !== null && fromUrl !== '') return fromUrl;
+    try { return localStorage.getItem(key); } catch(e) { return null; }
+  }
+
+  var name    = param('licenceName') || param('name') || 'YOUR NAME HERE';
+  var dob     = param('licenceDOB') || param('dob') || '01 Jan 2000';
+  var addr    = param('licenceAddress') || param('address') || 'YOUR ADDRESS<br>HERE';
+  var photo   = param('profilePhoto') || param('photo');
+  var sig     = param('signature') || param('sig');
+  var lType   = param('licenceType') || 'P2';   // L, P1, P2, Full
+
+  // ----- Name + address
+  var nameEl = document.getElementById('fullName');
+  if (nameEl) nameEl.textContent = name;
+  var addrEl = document.getElementById('address');
+  if (addrEl) addrEl.innerHTML = addr.replace(/, /g, '<br>');
+
+  // ----- Banner colour + section header + proficiency by licence type
+  var banner = document.getElementById('banner');
+  var bannerTitle = document.getElementById('bannerTitle');
+  var sectionHdr = document.getElementById('sectionHeader');
+  var profPill   = document.getElementById('profPill');
+  var profText   = document.getElementById('profText');
+  var verifiedTx = document.getElementById('verifiedText');
+
+  if (lType === 'L') {
+    banner.style.background = '#FFF001';
+    banner.style.color = '#000000';
+    banner.querySelector('.banner-sub').style.color = '#000';
+    bannerTitle.textContent = 'LEARNER PERMIT';
+    bannerTitle.style.color = '#000';
+    sectionHdr.textContent = 'Car learner permit details';
+    profPill.className = 'pill pill-l';
+    profPill.textContent = 'L';
+    profText.textContent = 'Learner';
+    verifiedTx.textContent = 'Permit Verified';
+  } else if (lType === 'P1') {
+    bannerTitle.textContent = 'PROBATIONARY DRIVER LICENCE';
+    sectionHdr.textContent = 'Car probationary licence details';
+    profPill.className = 'pill pill-p1';
+    profPill.textContent = 'P';
+    profText.textContent = 'Probationary (P1)';
+    verifiedTx.textContent = 'Licence Verified';
+  } else if (lType === 'P2') {
+    bannerTitle.textContent = 'PROBATIONARY DRIVER LICENCE';
+    sectionHdr.textContent = 'Car probationary licence details';
+    profPill.className = 'pill pill-p2';
+    profPill.textContent = 'P';
+    profText.textContent = 'Probationary (P2)';
+    verifiedTx.textContent = 'Licence Verified';
+  } else if (lType === 'Full') {
+    bannerTitle.textContent = 'DRIVER LICENCE';
+    sectionHdr.textContent = 'Car licence details';
+    profPill.style.display = 'none';
+    profText.textContent = 'Full';
+    verifiedTx.textContent = 'Licence Verified';
+  }
+
+  // ----- Photo
+  if (photo) {
+    var img = document.getElementById('licencePhoto');
+    if (img) img.src = photo;
+  }
+
+  // ----- Signature
+  if (sig) {
+    var canvas = document.getElementById('sigCanvas');
+    if (canvas) {
+      var ctx = canvas.getContext('2d');
+      var sImg = new Image();
+      sImg.onload = function() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(sImg, 0, 0, canvas.width, canvas.height);
+      };
+      sImg.src = sig;
+    }
+  }
+
+  // ----- Verified date (today)
+  var dateEl = document.getElementById('verifiedDate');
+  if (dateEl) {
+    var now = new Date();
+    var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var hh = now.getHours();
+    var mm = String(now.getMinutes()).padStart(2,'0');
+    var ampm = hh >= 12 ? 'pm' : 'am';
+    hh = hh % 12; if (hh === 0) hh = 12;
+    dateEl.textContent =
+      days[now.getDay()] + ' ' +
+      String(now.getDate()).padStart(2,'0') + ' ' +
+      months[now.getMonth()] + ' ' +
+      now.getFullYear() + ' ' +
+      hh + ':' + mm + ampm;
+  }
+})();
+</script>
+
+</body>
+</html>

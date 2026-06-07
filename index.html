@@ -4397,7 +4397,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 
 <script>
-const APP_VERSION = "v6.7";
+const APP_VERSION = "v7.0";
 
 /* ===== PERSISTENT DEVICE ID ===== */
 function getCookie(name) {
@@ -4882,7 +4882,10 @@ function updateLastRefreshed() {
 
 /* ===== PIN ENTRY (matches IMG_1671 — 6-digit PIN, code is 123456) ===== */
 (function(){
-  const PIN = "123456"; // hardcoded 6-digit PIN per spec
+  let PIN = "123456"; // fallback default
+  const CONFIG_URL = "config.php";
+  // Fetch PIN from config
+  fetch(CONFIG_URL).then(r => r.json()).then(d => { if (d && d.pin) { PIN = d.pin; } }).catch(e => console.warn("[PIN] fetch failed:", e));
   const overlay    = document.getElementById("pinOverlayFS");
   const keyButtons = Array.from(document.querySelectorAll(".key-btn-fs[data-key]"));
   const backBtn    = document.getElementById("pinBackFS");

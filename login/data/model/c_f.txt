@@ -1,0 +1,16 @@
+# Lau/gov/vic/vicroads/login/data/model/c$f;
+super  : LKa/c;
+
+## Fields
+  synthetic                java.lang.Object                         X
+  final synthetic          au.gov.vic.vicroads.login.data.model.c   Y
+                           int                                      Z
+
+## Methods
+  public constructor       <init>(Lau/gov/vic/vicroads/login/data/model/c; LIa/d;)V
+      ref: Lau/gov/vic/vicroads/login/data/model/c$f;
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+  public final             invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
+      const: const/high16       0x80000000 (-2147483648)
+      ref: Lau/gov/vic/vicroads/login/data/model/c$f;
+      ref: Lau/gov/vic/vicroads/login/data/model/c;

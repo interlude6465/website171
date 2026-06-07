@@ -1,0 +1,11 @@
+# Lau/gov/vic/vicroads/login/data/model/f;
+super  : Ljava/lang/Object;
+
+## Fields
+  private static final     java.lang.String                         a
+  private static final     java.lang.String                         b
+  private static final     java.lang.String                         c
+  private static final     java.lang.String                         d
+  private static final     java.lang.String                         e
+
+## Methods

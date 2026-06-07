@@ -1,0 +1,20 @@
+# Lau/gov/vic/vicroads/login/data/model/a;
+super  : Ljava/lang/Enum;
+
+## Fields
+  private static final synthetic au.gov.vic.vicroads.login.data.model.a[] $VALUES
+  public static final enum au.gov.vic.vicroads.login.data.model.a   LoggedInWithPinSet
+  public static final enum au.gov.vic.vicroads.login.data.model.a   LoggedOut
+  public static final enum au.gov.vic.vicroads.login.data.model.a   NetworkConnectivityCheck
+  public static final enum au.gov.vic.vicroads.login.data.model.a   SessionExpiredGenericError
+
+## Methods
+  private static final synthetic $values()[Lau/gov/vic/vicroads/login/data/model/a;
+      ref: Lau/gov/vic/vicroads/login/data/model/a;
+  static constructor       <clinit>()V
+      ref: Lau/gov/vic/vicroads/login/data/model/a;
+  private constructor      <init>(Ljava/lang/String; I)V
+  public static            valueOf(Ljava/lang/String;)Lau/gov/vic/vicroads/login/data/model/a;
+      ref: Lau/gov/vic/vicroads/login/data/model/a;
+  public static            values()[Lau/gov/vic/vicroads/login/data/model/a;
+      ref: Lau/gov/vic/vicroads/login/data/model/a;

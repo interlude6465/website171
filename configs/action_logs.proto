@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option java_package = "au.gov.vic.vicroads";
+option java_multiple_files = true;
+
+message ActionLog {
+  EventType event_type = 1;
+  CategoryType category = 2;
+  optional string time_stamp = 3;
+  optional string ip = 4;
+  repeated string additional_info = 5;
+}
+
+message ActionLogs{
+  repeated ActionLog events = 1 ;
+}
+
+enum EventType {
+  MFAActivated = 0;
+  Logout = 1;
+  PasswordChanged = 2;
+}
+
+enum CategoryType {
+  PersonalSettings = 0;
+  CustomerPortalFramework = 1;
+  LogoutScreen = 2;
+}

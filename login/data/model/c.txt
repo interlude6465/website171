@@ -1,0 +1,116 @@
+# Lau/gov/vic/vicroads/login/data/model/c;
+super  : Ljava/lang/Object;
+impls  : Lau/gov/vic/vicroads/login/data/model/b;
+
+## Fields
+  public static final      int                                      c
+  private final            au.gov.vic.vicroads.login.data.model.e   a
+  private final            android.content.SharedPreferences        b
+
+## Methods
+  public constructor       <init>(Lau/gov/vic/vicroads/login/data/model/e; Landroid/content/SharedPreferences;)V
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/login/data/model/e;
+  private final            a(Ljava/lang/String;)V
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+  public final             c(Lo3/d; LIa/d;)Ljava/lang/Object;
+      str: "resume' before 'invoke"
+      const: const/high16       0x80000000 (-2147483648)
+      ref: Lau/gov/vic/vicroads/login/data/model/c$f;
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/login/data/model/e;
+      ref: Lau/gov/vic/vicroads/shared/network/d;
+      ref: Lau/gov/vic/vicroads/shared/network/e;
+      ref: Lau/gov/vic/vicroads/shared/network/h;
+      ref: Lau/gov/vic/vicroads/shared/network/j$a;
+      ref: Lau/gov/vic/vicroads/shared/network/j$b;
+      ref: Lau/gov/vic/vicroads/shared/network/j$c;
+      ref: Lau/gov/vic/vicroads/shared/network/j$d;
+      ref: Lau/gov/vic/vicroads/shared/network/j$e;
+      ref: Lau/gov/vic/vicroads/shared/network/j$f;
+      ref: Lau/gov/vic/vicroads/shared/network/j$g;
+      ref: Lau/gov/vic/vicroads/shared/network/j$h;
+      ref: Lau/gov/vic/vicroads/shared/network/j;
+  public final             d(LIa/d;)Ljava/lang/Object;
+      str: "resume' before 'invoke"
+      const: const/high16       0x80000000 (-2147483648)
+      const: const/16           0x00000100 (256)
+      ref: Lau/gov/vic/vicroads/login/data/model/c$e;
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/shared/network/j$g;
+      ref: Lau/gov/vic/vicroads/shared/network/j;
+      ref: Lau/gov/vic/vicroads/shared/network/n;
+  public final             e(LIa/d;)Ljava/lang/Object;
+      str: "resume' before 'invoke"
+      const: const/high16       0x80000000 (-2147483648)
+      ref: Lau/gov/vic/vicroads/login/data/model/c$b;
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/login/data/model/e;
+      ref: Lau/gov/vic/vicroads/shared/network/d;
+      ref: Lau/gov/vic/vicroads/shared/network/e;
+      ref: Lau/gov/vic/vicroads/shared/network/h;
+      ref: Lau/gov/vic/vicroads/shared/network/j$a;
+      ref: Lau/gov/vic/vicroads/shared/network/j$b;
+      ref: Lau/gov/vic/vicroads/shared/network/j$c;
+      ref: Lau/gov/vic/vicroads/shared/network/j$d;
+      ref: Lau/gov/vic/vicroads/shared/network/j$e;
+      ref: Lau/gov/vic/vicroads/shared/network/j$f;
+      ref: Lau/gov/vic/vicroads/shared/network/j$g;
+      ref: Lau/gov/vic/vicroads/shared/network/j$h;
+      ref: Lau/gov/vic/vicroads/shared/network/j;
+  public final             f(Ljava/lang/String; LIa/d;)Ljava/lang/Object;
+      str: "resume' before 'invoke"
+      const: const/high16       0x80000000 (-2147483648)
+      ref: Lau/gov/vic/vicroads/login/data/model/c$a;
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/login/data/model/e;
+      ref: Lau/gov/vic/vicroads/shared/network/d;
+      ref: Lau/gov/vic/vicroads/shared/network/e;
+      ref: Lau/gov/vic/vicroads/shared/network/h;
+      ref: Lau/gov/vic/vicroads/shared/network/j$a;
+      ref: Lau/gov/vic/vicroads/shared/network/j$b;
+      ref: Lau/gov/vic/vicroads/shared/network/j$c;
+      ref: Lau/gov/vic/vicroads/shared/network/j$d;
+      ref: Lau/gov/vic/vicroads/shared/network/j$e;
+      ref: Lau/gov/vic/vicroads/shared/network/j$f;
+      ref: Lau/gov/vic/vicroads/shared/network/j$g;
+      ref: Lau/gov/vic/vicroads/shared/network/j$h;
+      ref: Lau/gov/vic/vicroads/shared/network/j;
+  public final             g(LIa/d;)Ljava/lang/Object;
+      str: "resume' before 'invoke"
+      const: const/high16       0x80000000 (-2147483648)
+      ref: Lau/gov/vic/vicroads/login/data/model/c$c;
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/login/data/model/e;
+      ref: Lau/gov/vic/vicroads/shared/network/GenericError;
+      ref: Lau/gov/vic/vicroads/shared/network/d;
+      ref: Lau/gov/vic/vicroads/shared/network/e;
+      ref: Lau/gov/vic/vicroads/shared/network/g;
+      ref: Lau/gov/vic/vicroads/shared/network/h;
+      ref: Lau/gov/vic/vicroads/shared/network/j$a;
+      ref: Lau/gov/vic/vicroads/shared/network/j$b;
+      ref: Lau/gov/vic/vicroads/shared/network/j$c;
+      ref: Lau/gov/vic/vicroads/shared/network/j$d;
+      ref: Lau/gov/vic/vicroads/shared/network/j$e;
+      ref: Lau/gov/vic/vicroads/shared/network/j$f;
+      ref: Lau/gov/vic/vicroads/shared/network/j$g;
+      ref: Lau/gov/vic/vicroads/shared/network/j$h;
+      ref: Lau/gov/vic/vicroads/shared/network/j;
+  public final             h(LIa/d;)Ljava/lang/Object;
+      str: "resume' before 'invoke"
+      const: const/high16       0x80000000 (-2147483648)
+      ref: Lau/gov/vic/vicroads/login/data/model/c$d;
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/login/data/model/e;
+      ref: Lau/gov/vic/vicroads/shared/network/d;
+      ref: Lau/gov/vic/vicroads/shared/network/e;
+      ref: Lau/gov/vic/vicroads/shared/network/h;
+      ref: Lau/gov/vic/vicroads/shared/network/j$a;
+      ref: Lau/gov/vic/vicroads/shared/network/j$b;
+      ref: Lau/gov/vic/vicroads/shared/network/j$c;
+      ref: Lau/gov/vic/vicroads/shared/network/j$d;
+      ref: Lau/gov/vic/vicroads/shared/network/j$e;
+      ref: Lau/gov/vic/vicroads/shared/network/j$f;
+      ref: Lau/gov/vic/vicroads/shared/network/j$g;
+      ref: Lau/gov/vic/vicroads/shared/network/j$h;
+      ref: Lau/gov/vic/vicroads/shared/network/j;

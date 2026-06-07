@@ -1,0 +1,9 @@
+http://localhost/
+http://www.slf4j.org/codes.html#null_MDCA
+https://www.slf4j.org/codes.html#ignoredBindings
+https://www.slf4j.org/codes.html#multiple_bindings
+https://www.slf4j.org/codes.html#noProviders
+https://www.slf4j.org/codes.html#replay
+https://www.slf4j.org/codes.html#substituteLogger
+https://www.slf4j.org/codes.html#unsuccessfulInit
+https://www.slf4j.org/codes.html#version_mismatch

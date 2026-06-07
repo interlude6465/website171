@@ -1,0 +1,12 @@
+# Lau/gov/vic/vicroads/login/data/model/b;
+super  : Ljava/lang/Object;
+
+## Fields
+
+## Methods
+  public abstract          c(Lo3/d; LIa/d;)Ljava/lang/Object;
+  public abstract          d(LIa/d;)Ljava/lang/Object;
+  public abstract          e(LIa/d;)Ljava/lang/Object;
+  public abstract          f(Ljava/lang/String; LIa/d;)Ljava/lang/Object;
+  public abstract          g(LIa/d;)Ljava/lang/Object;
+  public abstract          h(LIa/d;)Ljava/lang/Object;

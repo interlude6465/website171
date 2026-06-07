@@ -1,0 +1,16 @@
+# Lau/gov/vic/vicroads/settings/data/a$a;
+super  : LKa/c;
+
+## Fields
+  synthetic                java.lang.Object                         X
+  final synthetic          au.gov.vic.vicroads.settings.data.a      Y
+                           int                                      Z
+
+## Methods
+  public constructor       <init>(Lau/gov/vic/vicroads/settings/data/a; LIa/d;)V
+      ref: Lau/gov/vic/vicroads/settings/data/a$a;
+      ref: Lau/gov/vic/vicroads/settings/data/a;
+  public final             invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
+      const: const/high16       0x80000000 (-2147483648)
+      ref: Lau/gov/vic/vicroads/settings/data/a$a;
+      ref: Lau/gov/vic/vicroads/settings/data/a;

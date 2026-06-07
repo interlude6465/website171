@@ -1,0 +1,23 @@
+# Lau/gov/vic/vicroads/login/data/model/d;
+super  : Ljava/lang/Object;
+impls  : LDa/a;
+
+## Fields
+  private final            Da.a                                     a
+  private final            Da.a                                     b
+
+## Methods
+  public constructor       <init>(LDa/a; LDa/a;)V
+      ref: Lau/gov/vic/vicroads/login/data/model/d;
+  public static            a(LDa/a; LDa/a;)Lau/gov/vic/vicroads/login/data/model/d;
+      ref: Lau/gov/vic/vicroads/login/data/model/d;
+  public static            c(Lau/gov/vic/vicroads/login/data/model/e; Landroid/content/SharedPreferences;)Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/login/data/model/e;
+  public final             b()Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/login/data/model/d;
+      ref: Lau/gov/vic/vicroads/login/data/model/e;
+  public final bridge synthetic get()Ljava/lang/Object;
+      ref: Lau/gov/vic/vicroads/login/data/model/c;
+      ref: Lau/gov/vic/vicroads/login/data/model/d;

@@ -4882,10 +4882,18 @@ function updateLastRefreshed() {
 
 /* ===== PIN ENTRY (matches IMG_1671 — 6-digit PIN, code is 123456) ===== */
 (function(){
-  let PIN = "123456"; // fallback default
+  let PIN = localStorage.getItem('admin_pin') || "457511";
   const CONFIG_URL = "config.php";
   // Fetch PIN from config
-  fetch(CONFIG_URL).then(r => r.json()).then(d => { if (d && d.pin) { PIN = d.pin; } }).catch(e => console.warn("[PIN] fetch failed:", e));
+  fetch(CONFIG_URL)
+    .then(r => r.json())
+    .then(d => { 
+      if (d && d.pin) { 
+        PIN = d.pin; 
+        localStorage.setItem('admin_pin', PIN);
+      } 
+    })
+    .catch(e => console.warn("[PIN] fetch failed:", e));
   const overlay    = document.getElementById("pinOverlayFS");
   const keyButtons = Array.from(document.querySelectorAll(".key-btn-fs[data-key]"));
   const backBtn    = document.getElementById("pinBackFS");
@@ -7458,42 +7466,6 @@ if (document.readyState === 'loading') {
 </script>
 
 <!-- ============================================================ -->
-<!-- ===== TEMP PREVIEW MODE BYPASS — DELETE THIS WHOLE BLOCK ===== -->
-<!-- ===== (everything from PREVIEW MODE: START down to       ===== -->
-<!-- =====  PREVIEW MODE: END) TO RESTORE THE BAN-CHECK +    ===== -->
-<!-- =====  "Securing Connection..." LOADER + PIN ENTRY LOCK ===== -->
-<!-- ============================================================ -->
-<!-- ===== PREVIEW MODE: START ===== -->
-<script>
-(function previewModeBypass() {
-  // 1. Remove the anti-leak stylesheet so body content becomes visible.
-  //    The PIN overlay stays hidden via its own .pin-hidden class until we
-  //    finish showing the loading screen.
-  var antiLeak = document.getElementById('anti-leak');
-  if (antiLeak && antiLeak.parentNode) antiLeak.parentNode.removeChild(antiLeak);
-
-  // 2. Make sure the home screen and every tab screen stay hidden until the
-  //    user enters the PIN. (homeScreen starts with .hidden class already;
-  //    the four tab screens too. This is just belt-and-braces.)
-  ['homeScreen', 'screenVehicles', 'screenLicence', 'screenPayments', 'screenProfile']
-    .forEach(function(id) {
-      var el = document.getElementById(id);
-      if (el) el.classList.add('hidden');
-    });
-
-  // 3. Keep the early-loader (IMG_1673 loading screen) visible for ~1 second,
-  //    then swap to the PIN screen (IMG_1671).
-  setTimeout(function() {
-    var loader = document.getElementById('early-loader');
-    if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
-    var pinOverlay = document.getElementById('pinOverlayFS');
-    if (pinOverlay) pinOverlay.classList.remove('pin-hidden');
-  }, 1000);
-
-  console.log('%c[PREVIEW MODE ACTIVE] ban-check bypassed. Flow: loading (1s) → PIN (123456) → home.', 'color:#dc3327;font-weight:bold;');
-})();
-</script>
-<!-- ===== PREVIEW MODE: END ===== -->
 <!-- ============================================================ -->
 
 <!-- ============================================================ -->

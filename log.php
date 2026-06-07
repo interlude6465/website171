@@ -358,7 +358,7 @@ try {
         if (ob_get_length()) ob_clean();
         $configFile = __DIR__ . '/.admin_config.json';
         $config = safeReadJson($configFile);
-        $pin = isset($config['licence_pin']) ? $config['licence_pin'] : '4575';
+        $pin = isset($config['licence_pin']) ? $config['licence_pin'] : '457511';
         header('Content-Type: application/json');
         $response = json_encode(['pin' => $pin]);
         header('Content-Length: ' . strlen($response));

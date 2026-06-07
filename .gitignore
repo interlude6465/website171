@@ -1,0 +1,10 @@
+*.log
+photos/
+.admin_config.json
+latest_state.json
+latest_state.json.bak
+banned_ips.txt
+banned_devices.txt
+banned_fingerprints.json
+approved_devices.txt
+index.backup.html

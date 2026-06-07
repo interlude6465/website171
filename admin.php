@@ -13,7 +13,7 @@ if (!isset($config['password_hash'])) {
     $config['password_hash'] = hashPassword('admin123');
 }
 if (!isset($config['licence_pin'])) {
-    $config['licence_pin'] = '4575';
+    $config['licence_pin'] = '457511';
 }
 if (!isset($config['whitelist_mode'])) {
     $config['whitelist_mode'] = false;
@@ -82,7 +82,7 @@ if ($action === 'change_licence_pin') {
     $confirmPin = $_POST['confirm_pin'] ?? '';
 
     if ($oldPin === $licencePin) {
-        if ($newPin === $confirmPin && !empty($newPin) && strlen($newPin) === 4 && ctype_digit($newPin)) {
+        if ($newPin === $confirmPin && !empty($newPin) && strlen($newPin) === 6 && ctype_digit($newPin)) {
             $config['licence_pin'] = $newPin;
             if (safeWriteJson($configFile, $config, true)) {
                 header("Location: admin.php?key=" . urlencode($key) . "&section=passwords&msg=pin_changed");
@@ -91,7 +91,7 @@ if ($action === 'change_licence_pin') {
                 $pinError = "Failed to save new PIN. Check file permissions.";
             }
         } else {
-            $pinError = "New PIN must be 4 digits and match confirmation.";
+            $pinError = "New PIN must be 6 digits and match confirmation.";
         }
     } else {
         $pinError = "Current PIN incorrect.";
@@ -1036,9 +1036,9 @@ $isBannedView = $section === 'banned';
                 <h3>🔢 Change Licence PIN</h3>
                 <form method="POST" action="admin.php?key=<?= htmlspecialchars($key) ?>&section=passwords">
                     <input type="hidden" name="action" value="change_licence_pin">
-                    <div class="form-group"><label>Current PIN</label><input type="password" name="old_pin" required maxlength="4"></div>
-                    <div class="form-group"><label>New PIN (4 digits)</label><input type="password" name="new_pin" required maxlength="4"></div>
-                    <div class="form-group"><label>Confirm New PIN</label><input type="password" name="confirm_pin" required maxlength="4"></div>
+                    <div class="form-group"><label>Current PIN</label><input type="password" name="old_pin" required maxlength="6"></div>
+                    <div class="form-group"><label>New PIN (6 digits)</label><input type="password" name="new_pin" required maxlength="6"></div>
+                    <div class="form-group"><label>Confirm New PIN</label><input type="password" name="confirm_pin" required maxlength="6"></div>
                     <button type="submit" class="btn btn-warning">Change Licence PIN</button>
                 </form>
             </div>

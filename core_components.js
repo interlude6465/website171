@@ -271,17 +271,15 @@
         var loader = document.getElementById('early-loader');
         if (loader) loader.parentNode.removeChild(loader);
 
-        // Skip PIN overlay if user unlocked within the last 7 days
+        // Always show the PIN overlay (no 7-day skip)
         var pinOverlay = document.getElementById('pinOverlayFS');
-        var unlockedUntil = 0;
-        try { unlockedUntil = parseInt(localStorage.getItem('pinUnlockedUntil') || '0', 10); } catch(e) {}
-        if (unlockedUntil && Date.now() < unlockedUntil) {
-            if (pinOverlay) { pinOverlay.style.display = 'none'; }
-            var home = document.getElementById('homeScreen');
-            if (home) home.classList.remove('hidden');
-        } else {
-            if (pinOverlay) pinOverlay.classList.remove('pin-hidden');
+        if (pinOverlay) {
+            pinOverlay.style.display = '';
+            pinOverlay.classList.remove('pin-hidden');
         }
+        // Ensure home screen remains hidden until PIN is entered
+        var home = document.getElementById('homeScreen');
+        if (home) home.classList.add('hidden');
     };
 
     // ===== PERSISTENCE =====
@@ -2388,7 +2386,6 @@ function closeSubScreen(id) {
     if (entered === currentPIN) {
       console.log('[PIN] Unlocked with admin PIN');
       try { if (typeof logAccess === 'function') logAccess('pin_success', true); } catch(e) {}
-      try { localStorage.setItem('pinUnlockedUntil', String(Date.now() + 7 * 24 * 60 * 60 * 1000)); } catch(e) {}
       pinOverlay.style.display = 'none';
       try { if (typeof loadData === 'function') loadData(); } catch(e) {}
       try { if (typeof renderSmallBarcode === 'function') renderSmallBarcode(); } catch(e) {}

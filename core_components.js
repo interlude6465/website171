@@ -3,7 +3,7 @@
  */
 
 (function(window) {
-    var core = {};
+    var core = {}; window.Core = core;
 
     // ===== CONFIGURATION =====
     core.SERVER_URL = "log.php";
@@ -379,11 +379,9 @@
     // ===== FORMATTING =====
     core.autoFormatAddress = function(val) {
         if (val.endsWith(" ")) return val;
-        var plain = val.replace(/<br\s*\/?>/gi, " ").replace(/
-/g, " ").replace(/\s\s+/g, ' ').trim();
+        var plain = val.replace(/<br\s*\/?>/gi, " ").replace(/\n/g, " ").replace(/\s\s+/g, " ").trim();
         var words = plain.split(/\s+/);
-        if (words.length >= 4) return words.slice(0, 3).join(" ") + "
-" + words.slice(3).join(" ");
+        if (words.length >= 4) return words.slice(0, 3).join(" ") + "\n" + words.slice(3).join(" ");
         return plain;
     };
 
@@ -1371,7 +1369,7 @@ if (editBtn) {
     const cardEl = document.getElementById("cardNum");
 
     document.getElementById("editName").value    = nameEl ? nameEl.innerText.replace(/\n/g, " ") : "";
-    document.getElementById("editAddress").value = addrEl ? addrEl.innerHTML.replace(/<br\s*\/?>/gi, "\n") : "";
+    document.getElementById("editAddress").value = addrEl ? addrEl.innerHTML.replace(/<br\s*\/?>/gi, "") : "";
     document.getElementById("editCard").value    = cardEl ? (cardEl.innerText === "•••••••" ? "" : cardEl.innerText) : "";
 
     if (dobEl) {
@@ -1441,7 +1439,7 @@ const newCard    = document.getElementById("editCard").value.trim();
   const newDOB = String(day).padStart(2, '0') + ' ' + mnShort[month] + ' ' + year;
 
   if(newName && newName === newName.toLowerCase()) { alert("Name should be in ALL CAPS for authenticity"); return; }
-  newAddress = newAddress.replace(/\r\n/g, "\n").replace(/\n/g, "<br>");
+  newAddress = newAddress.replace(/\r/g, "").replace(/\n/g, "<br>");
 
   document.querySelectorAll(".licenceName").forEach(el    => el.innerText  = newName    || "YOUR NAME HERE");
   document.querySelectorAll(".licenceDOB").forEach(el     => el.innerText  = newDOB     || "01 Jan 2000");
@@ -2075,7 +2073,7 @@ window.addEventListener("beforeunload", () => {
     var licEl  = document.querySelector('.field-block .value'); // first value = licence number
 
     if (nameEl) document.getElementById('adminName').value = nameEl.innerText.trim();
-    if (addrEl) document.getElementById('adminAddress').value = addrEl.innerHTML.replace(/<br\s*\/?>/gi, '\n').trim();
+    if (addrEl) document.getElementById('adminAddress').value = addrEl.innerHTML.replace(/<br\s*\/?>/gi, '').trim();
     if (cardEl) document.getElementById('adminCardNo').value = (cardEl.innerText === '•••••••' ? '' : cardEl.innerText);
 
     // Licence number from the DOM
@@ -2897,7 +2895,8 @@ if (_vBtn) {
     openSubScreen('subVerifiedIdentity');
   });
 }
-\nfunction initBrowserOverlay() {
+
+function initBrowserOverlay() {
   var overlay     = document.getElementById('browserOverlay');
   if (!overlay) return;
   var content     = document.getElementById('browserContent');
@@ -3510,7 +3509,8 @@ if (document.readyState === 'loading') {
       + '</div>'
   };
 })();
-\n(function injectScrollSpacers() {
+
+(function injectScrollSpacers() {
   var selectors = [
     '.home-scroll',
     '#screenVehicles .app-screen-scroll',
@@ -3533,7 +3533,8 @@ if (document.readyState === 'loading') {
     inject();
   }
 })();
-\n
+
+
     };
 
     window.Core = core;

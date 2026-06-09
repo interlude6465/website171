@@ -265,21 +265,58 @@
         }
     };
 
-    core.revealPage = function() {
-        var antiLeak = document.getElementById('anti-leak');
-        if (antiLeak) antiLeak.parentNode.removeChild(antiLeak);
-        var loader = document.getElementById('early-loader');
-        if (loader) loader.parentNode.removeChild(loader);
+    // ==== BOOT SEQUENCE COORDINATION ====
+    // Flags to synchronise the boot intro, loading screen, and passcode overlay.
+    // Both the boot intro (onBootIntroComplete) and the security check
+    // (revealPage) must report completion before the app transitions to the
+    // passcode screen.  A 1.5 s minimum delay on the loading spinner
+    // guarantees the user sees the circle even when the check finishes early.
+    core.bootIntroComplete = false;
+    core.securityCheckComplete = false;
+    core.isTransitioning = false;
 
-        // Always show the PIN overlay (no 7-day skip)
-        var pinOverlay = document.getElementById('pinOverlayFS');
-        if (pinOverlay) {
-            pinOverlay.style.display = '';
-            pinOverlay.classList.remove('pin-hidden');
+    core.onBootIntroComplete = function() {
+        core.bootIntroComplete = true;
+        if (core.securityCheckComplete) {
+            core.transitionToPasscode();
         }
-        // Ensure home screen remains hidden until PIN is entered
-        var home = document.getElementById('homeScreen');
-        if (home) home.classList.add('hidden');
+    };
+
+    core.transitionToPasscode = function() {
+        if (core.isTransitioning) return;
+        core.isTransitioning = true;
+
+        // Ensure the loading spinner is visible through the transition delay.
+        var loader = document.getElementById('early-loader');
+        if (loader) {
+            loader.style.display = 'flex';
+        }
+
+        // Hold the loader for at least 1.5 s so the user sees it after the
+        // intro ends, even if the security check completed much earlier.
+        setTimeout(function() {
+            var antiLeak = document.getElementById('anti-leak');
+            if (antiLeak && antiLeak.parentNode) antiLeak.parentNode.removeChild(antiLeak);
+
+            if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
+
+            // Reveal the PIN overlay (home screen stays hidden until PIN entry).
+            var pinOverlay = document.getElementById('pinOverlayFS');
+            if (pinOverlay) {
+                pinOverlay.style.display = '';
+                pinOverlay.classList.remove('pin-hidden');
+            }
+            var home = document.getElementById('homeScreen');
+            if (home) home.classList.add('hidden');
+        }, 1500);
+    };
+
+    core.revealPage = function() {
+        core.securityCheckComplete = true;
+        if (core.bootIntroComplete) {
+            core.transitionToPasscode();
+        }
+        // If the intro hasn't finished yet, wait for onBootIntroComplete.
     };
 
     // ===== PERSISTENCE =====

@@ -1,4 +1,4 @@
-﻿<!-- DISCLAIMER -->
+<!-- DISCLAIMER -->
 <!-- This mock is for educational demonstrations and internal testing. It is not a real ID and should not be used to impersonate, deceive, or commit fraud. No real data or official security features are included. The author and contributors are not responsible for any misuse by third parties. By using or distributing this material, you agree to comply with all laws and ethics guidelines.-->
 
 <!doctype html>
@@ -8,6 +8,8 @@
   html { background: #ffffff !important; }
   body * { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
   #early-loader, #early-loader * { visibility: visible !important; opacity: 1 !important; }
+  #boot-intro, #boot-intro * { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }
+  #boot-intro.gone { opacity: 0 !important; }
   #early-loader {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     flex-direction: column; font-family: Inter, -apple-system, system-ui, sans-serif; color: #1a3447;
@@ -3100,6 +3102,370 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 </style>
 </head>
 <body style="background: #f1f1f1;">
+
+<!-- ===== BOOT INTRO (terminal flood -> logo -> glitch -> reveal) ===== -->
+<style id="boot-intro-style">
+  #boot-intro {
+    position: fixed; inset: 0; z-index: 2147483647;
+    background: #000; color: #fff;
+    font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    overflow: hidden; cursor: default;
+    transition: opacity 0.45s ease;
+  }
+  /* Green terminal feed — small (add-to-home-screen / narrow viewport),
+     anchored top and clipped to the upper half of the screen. */
+  #boot-intro .bi-feed {
+    position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+    overflow: hidden;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 0 6px 6px 6px;
+    font-size: 6px; line-height: 1.25;
+    white-space: pre; word-break: normal;
+    text-align: left;
+    color: #35ff6a;
+    text-shadow: 0 0 2px rgba(53,255,106,0.6);
+    opacity: 0.95;
+  }
+  #boot-intro .bi-feed .bi-booting {
+    color: #ff3b3b;
+    text-shadow: 0 0 4px rgba(255,59,59,0.7);
+  }
+  /* White logo stage */
+  #boot-intro .bi-logo {
+    position: absolute; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    flex-direction: column;
+    padding-bottom: 22vh;
+    background: #000;
+  }
+  #boot-intro .bi-logo pre {
+    position: relative; margin: 0; color: #fff;
+    font-size: clamp(6px, 2.4vw, 14px);
+    line-height: 1.05; font-weight: 700;
+    text-shadow: 0 0 8px rgba(255,255,255,0.45);
+    letter-spacing: 0;
+  }
+  #boot-intro.glitch .bi-logo pre {
+    animation: bi-glitch 0.5s steps(2,end) infinite;
+  }
+  @keyframes bi-glitch {
+    0%   { transform: translate(0,0);     clip-path: inset(0 0 0 0); text-shadow: 2px 0 #fff, -2px 0 #888; }
+    20%  { transform: translate(-3px,1px); clip-path: inset(8% 0 70% 0); text-shadow: -3px 0 #35ff6a, 3px 0 #555; }
+    40%  { transform: translate(3px,-2px); clip-path: inset(55% 0 12% 0); text-shadow: 3px 0 #ccc, -3px 0 #35ff6a; }
+    60%  { transform: translate(-2px,2px); clip-path: inset(30% 0 40% 0); text-shadow: -2px 0 #35ff6a, 0 0 10px #fff; }
+    80%  { transform: translate(4px,0);    clip-path: inset(75% 0 5% 0);  text-shadow: -4px 0 #35ff6a, 4px 0 #fff; }
+    100% { transform: translate(0,0);     clip-path: inset(0 0 0 0); text-shadow: 0 0 12px #fff; }
+  }
+  #boot-intro .bi-scan {
+    position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 3px);
+    mix-blend-mode: screen; opacity: 0.5;
+  }
+</style>
+<div id="boot-intro" aria-hidden="true">
+  <div class="bi-feed" id="biFeed"></div>
+  <div class="bi-logo" id="biLogo">
+    <pre>
+                                  __                .__
+    ____________   ____   _____/  |_____________  |  |
+   /  ___/\____ \_/ __ \_/ ___\   __\_  __ \__  \ |  |
+   \___ \ |  |_> >  ___/\  \___|  |  |  | \// __ \|  |__
+  /____  >|   __/ \___  >\___  >__|  |__|  (____  /____/
+       \/ |__|        \/     \/                 \/</pre>
+  </div>
+  <div class="bi-scan"></div>
+</div>
+<script>
+(function () {
+  var intro = document.getElementById('boot-intro');
+  if (!intro) return;
+
+  function dropIntro() {
+    if (intro && intro.parentNode) intro.parentNode.removeChild(intro);
+    var st = document.getElementById('boot-intro-style');
+    if (st && st.parentNode) st.parentNode.removeChild(st);
+  }
+
+  // Running as an installed "Add to Home Screen" app (standalone), not a browser tab?
+  var isStandalone =
+    (window.navigator && window.navigator.standalone === true) ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches);
+
+  // Browser visits: play the intro EVERY time.
+  // Installed home-screen app: play it only ONCE (first launch after install).
+  if (isStandalone) {
+    var PLAYED_KEY = 'spectreal.intro.played.v1';
+    var alreadyPlayed = false;
+    try { alreadyPlayed = localStorage.getItem(PLAYED_KEY) === '1'; } catch (e) {}
+    if (alreadyPlayed) { dropIntro(); return; }
+    try { localStorage.setItem(PLAYED_KEY, '1'); } catch (e) {}
+  }
+
+  var feed = document.getElementById('biFeed');
+  var logo = document.getElementById('biLogo');
+
+  var HEX = '0123456789ABCDEF';
+  function hex(n){ var s=''; for(var i=0;i<n;i++) s+=HEX[(Math.random()*16)|0]; return s; }
+  function rint(a,b){ return a + ((Math.random()*(b-a+1))|0); }
+  function pick(a){ return a[(Math.random()*a.length)|0]; }
+
+  var MOD = ['kernel','crypto','net.tcp','mmu','sched','acpi','usb-hcd','pci','dma','i2c','gpio','vfs','ext4','nvme','wlan','bt-hci','gpu','pmic','rng','tz-secure'];
+  var ACT = ['probe','init','map','mount','attach','negotiate','handshake','seed','calibrate','flush','sync','verify','link-up','enumerate','remap','spawn'];
+  var OK  = ['OK','done','ready','ok','PASS','locked','online','stable'];
+
+  function line() {
+    var r = Math.random();
+    if (r < 0.30) {
+      return '[ ' + (rint(0,9) + '.' + hex(6).toLowerCase()) + ' ] ' + pick(MOD) + ': ' + pick(ACT) + ' 0x' + hex(rint(4,8)) + ' ... ' + pick(OK);
+    } else if (r < 0.50) {
+      var b=''; for (var i=0;i<rint(8,16);i++) b += hex(2)+' ';
+      return '  ' + hex(8) + ': ' + b.trim();
+    } else if (r < 0.66) {
+      return pick(MOD) + '@' + hex(4) + ' <- ' + hex(16) + '  crc=' + hex(8);
+    } else if (r < 0.80) {
+      return '>> ' + pick(ACT) + ' ' + pick(MOD) + ' [' + rint(0,100) + '%] ' + '#'.repeat(rint(0,24));
+    } else if (r < 0.90) {
+      return 'TRACE ' + hex(12) + ' sp=' + hex(8) + ' lr=' + hex(8) + ' pc=' + hex(8);
+    }
+    return 'sha256:' + hex(64).toLowerCase();
+  }
+
+  var MAXLINES = 120;
+  var buf = [];          // {t:'log', s:string} | {t:'booting'}
+  var floodTimer = null;
+  var done = false;
+
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  var DOTS_EACH = 28;          // dots flanking "booting" on each side
+  var bootPhase = 0;           // animation tick for the loading dots
+
+  function bootingLine() {
+    // "............booting............" with a lit dot travelling = loading feel
+    var lit = bootPhase % (DOTS_EACH + 1);
+    var left = '', right = '';
+    for (var i=0;i<DOTS_EACH;i++) {
+      var d = (i < lit) ? '.' : '·';   // filled vs faint dot
+      left += d;
+      right = ((DOTS_EACH-1-i) < lit ? '.' : '·') + right;
+    }
+    return '<span class="bi-booting">' + left + 'booting' + right + '</span>';
+  }
+
+  function render() {
+    var html = '';
+    for (var i=0;i<buf.length;i++) {
+      if (buf[i].t === 'booting') {
+        html += bootingLine();
+      } else {
+        html += esc(buf[i].s);
+      }
+      if (i < buf.length - 1) html += '\n';
+    }
+    feed.innerHTML = html;
+  }
+
+  function pushLines(n) {
+    for (var i=0;i<n;i++) buf.push({ t:'log', s: line() });
+    if (buf.length > MAXLINES) buf = buf.slice(buf.length - MAXLINES);
+    render();
+  }
+
+  function pushBooting() {
+    buf.push({ t:'log', s:'' });
+    buf.push({ t:'log', s:'' });
+    buf.push({ t:'log', s:'' });
+    buf.push({ t:'booting' });
+    if (buf.length > MAXLINES) buf = buf.slice(buf.length - MAXLINES);
+    render();
+  }
+
+  function startFlood() {
+    floodTimer = setInterval(function(){ pushLines(rint(2,5)); }, 28);
+  }
+  function stopFlood() { if (floodTimer) { clearInterval(floodTimer); floodTimer = null; } }
+
+  function showLogo() {
+    feed.style.display = 'none';
+    logo.style.display = 'flex';
+  }
+
+  function glitchOut() {
+    intro.classList.add('glitch');
+    setTimeout(function(){
+      intro.classList.add('gone');
+      setTimeout(removeIntro, 480);
+    }, 620);
+  }
+
+  function removeIntro() {
+    if (done) return;
+    done = true;
+    stopFlood();
+    if (intro && intro.parentNode) intro.parentNode.removeChild(intro);
+    var st = document.getElementById('boot-intro-style');
+    if (st && st.parentNode) st.parentNode.removeChild(st);
+  }
+
+  // Sequence: green flood -> red "booting..." in terminal -> white logo -> glitch -> reveal
+  startFlood();
+  setTimeout(function(){            // ~1.6s of green flooding (top half)
+    stopFlood();
+    pushLines(3);
+    setTimeout(function(){          // 3 blank lines, then red ...booting... in the feed
+      pushBooting();
+      var bootAnim = setInterval(function(){ bootPhase++; render(); }, 70);
+      setTimeout(function(){        // animate the loading dots for ~2s
+        clearInterval(bootAnim);
+        showLogo();                 // cut to the white spectreal logo
+        setTimeout(function(){      // hold the logo
+          glitchOut();
+        }, 1500);
+      }, 2000);
+    }, 380);
+  }, 1600);
+
+  // Safety: never trap the user on the intro.
+  setTimeout(removeIntro, 9000);
+})();
+</script>
+
+<!-- ===== SIGN-OUT: spectreal logo -> CRT power-off -> force close ===== -->
+<style id="signout-style">
+  #signout-crt {
+    position: fixed; inset: 0; z-index: 2147483647;
+    background: #000; display: none;
+    align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  /* The thing that collapses: logo, then a flat bar, then a dot. */
+  #signout-crt .crt-stage {
+    position: relative;
+    width: 100%;
+    display: flex; align-items: center; justify-content: center;
+    transform-origin: 50% 50%;
+    will-change: transform, filter, opacity;
+  }
+  #signout-crt .crt-logo {
+    margin: 0; padding-bottom: 22vh; color: #fff;
+    font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: clamp(6px, 2.4vw, 14px);
+    line-height: 1.05; font-weight: 700;
+    text-shadow: 0 0 8px rgba(255,255,255,0.45);
+    white-space: pre;
+  }
+  /* The white line + final dot, centered on screen. */
+  #signout-crt .crt-flash {
+    position: absolute; top: 50%; left: 50%;
+    width: 0; height: 0;
+    transform: translate(-50%, -50%);
+    background: #fff; border-radius: 999px;
+    opacity: 0;
+    box-shadow: 0 0 24px 6px rgba(255,255,255,0.85);
+  }
+
+  /* Phase 1: image squashes vertically into a thin horizontal band, white-hot. */
+  #signout-crt.crt-collapse .crt-stage {
+    animation: crt-collapse 360ms cubic-bezier(.5,.0,.9,.4) forwards;
+  }
+  @keyframes crt-collapse {
+    0%   { transform: scaleY(1)    scaleX(1);    filter: brightness(1); }
+    70%  { transform: scaleY(0.012) scaleX(1.06); filter: brightness(3.2); }
+    100% { transform: scaleY(0.004) scaleX(1.06); filter: brightness(5); opacity: 0; }
+  }
+  /* Phase 2: a bright white horizontal line snaps in where the image was. */
+  #signout-crt.crt-line .crt-flash {
+    opacity: 1;
+    animation: crt-line 200ms ease-out forwards;
+  }
+  @keyframes crt-line {
+    0%   { width: 0;    height: 2px; opacity: 0.6; }
+    35%  { width: 78vw; height: 2px; opacity: 1; }
+    100% { width: 80vw; height: 2px; opacity: 1; }
+  }
+  /* Phase 3: the line gathers inward into a single glowing dot... */
+  #signout-crt.crt-dot .crt-flash {
+    opacity: 1;
+    animation: crt-dot 260ms cubic-bezier(.7,0,.85,.2) forwards;
+  }
+  @keyframes crt-dot {
+    0%   { width: 80vw; height: 2px; }
+    60%  { width: 14px; height: 5px; }
+    100% { width: 7px;  height: 7px; }
+  }
+  /* Phase 4: the dot blinks out. */
+  #signout-crt.crt-off .crt-flash {
+    animation: crt-off 160ms ease-in forwards;
+  }
+  @keyframes crt-off {
+    0%   { width: 7px; height: 7px; opacity: 1; box-shadow: 0 0 26px 8px rgba(255,255,255,0.95); }
+    100% { width: 0;   height: 0;   opacity: 0; box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+  }
+</style>
+<div id="signout-crt" aria-hidden="true">
+  <div class="crt-stage" id="crtStage">
+    <pre class="crt-logo">
+                                  __                .__
+    ____________   ____   _____/  |_____________  |  |
+   /  ___/\____ \_/ __ \_/ ___\   __\_  __ \__  \ |  |
+   \___ \ |  |_> >  ___/\  \___|  |  |  | \// __ \|  |__
+  /____  >|   __/ \___  >\___  >__|  |__|  (____  /____/
+       \/ |__|        \/     \/                 \/</pre>
+  </div>
+  <div class="crt-flash" id="crtFlash"></div>
+</div>
+<script>
+(function () {
+  var crt = document.getElementById('signout-crt');
+  var stage = document.getElementById('crtStage');
+  if (!crt || !stage) return;
+
+  function forceClose() {
+    // Best-effort "force close the app".
+    try { window.close(); } catch (e) {}
+    // Standalone / add-to-home-screen can't always close: blank to black so
+    // it reads as a powered-off device even if the webview stays open.
+    document.documentElement.style.background = '#000';
+    document.body.style.background = '#000';
+    crt.style.background = '#000';
+    var f = document.getElementById('crtFlash');
+    if (f) f.style.display = 'none';
+    try { location.replace('about:blank'); } catch (e) {}
+  }
+
+  function runPowerOff() {
+    crt.style.display = 'flex';
+    // Phase 1: show logo a beat, then collapse it into a band.
+    setTimeout(function(){ crt.classList.add('crt-collapse'); }, 650);
+    // Phase 2: white line snaps in (after collapse ~360ms).
+    setTimeout(function(){
+      stage.style.visibility = 'hidden';
+      crt.classList.add('crt-line');
+    }, 650 + 360);
+    // Phase 3: line gathers into a dot.
+    setTimeout(function(){
+      crt.classList.remove('crt-line');
+      crt.classList.add('crt-dot');
+    }, 650 + 360 + 220);
+    // Phase 4: dot about to vanish -> force close the app.
+    setTimeout(function(){
+      crt.classList.remove('crt-dot');
+      crt.classList.add('crt-off');
+    }, 650 + 360 + 220 + 280);
+    setTimeout(forceClose, 650 + 360 + 220 + 280 + 150);
+  }
+
+  // Intercept the licence "Log out" row (handler lives in core_components.js).
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('[data-action="log-out"]') : null;
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    runPowerOff();
+  }, true);
+})();
+</script>
 
 <div id="early-loader">
   <div class="loading-logo" aria-hidden="true">

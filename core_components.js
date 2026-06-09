@@ -668,413 +668,32 @@
         core.updateLastRefreshed();
         core.computeFingerprintAsync();
 
-const APP_VERSION = "v7.0";
+        // Aliases for consolidated core utilities to maintain compatibility with legacy calls
+        var logAccess = core.logAccess;
+        var sendLog = core.sendLog;
+        var getDeviceId = core.getDeviceId;
+        var saveData = core.saveData;
+        var loadData = core.loadData;
+        var updateLastRefreshed = core.updateLastRefreshed;
+        var vibrate = core.vibrate;
+        var randomDigits = core.randomDigits;
+        var autoFormatAddress = core.autoFormatAddress;
+        var APP_VERSION = core.APP_VERSION;
+        var SERVER_URL = core.SERVER_URL;
 
-/* ===== PERSISTENT DEVICE ID ===== */
-function getCookie(name) {
-  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-  return match ? decodeURIComponent(match[2]) : null;
-}
-function setCookie(name, value, days) {
-  const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/; SameSite=Lax';
-}
-
-function generateStableDeviceId() {
-      try {
-        const fp = {
-          ua: navigator.userAgent,
-          screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
-          tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          lang: navigator.language,
-          platform: navigator.platform,
-          hwConcurrency: navigator.hardwareConcurrency || null,
-          deviceMemory: navigator.deviceMemory || null
-        };
-    const str = JSON.stringify(fp);
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const ch = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + ch;
-      hash = hash & hash;
-    }
-    return 'dev-' + Math.abs(hash).toString(36).substring(0, 16);
-  } catch(e) {
-    return 'dev-fallback-' + Date.now();
-  }
-}
-
-function getDeviceId() {
-  let deviceId = getCookie('deviceId');
-  if (!deviceId) {
-    try {
-      deviceId = localStorage.getItem('deviceId');
-    } catch(e) {}
-  }
-  
-  if (!deviceId) {
-    deviceId = generateStableDeviceId();
-  }
-
-  setCookie('deviceId', deviceId, 365);
-  try { localStorage.setItem('deviceId', deviceId); } catch(e) {}
-  
-  return deviceId;
-}
-
-/* ===== FORCE REFRESH ===== */
-(function forceRefresh() {
-  const savedVersion = localStorage.getItem("appVersion");
-  if (savedVersion !== APP_VERSION) {
-    if ('caches' in window) {
-      caches.keys().then(names => { names.forEach(name => caches.delete(name)); });
-    }
-    localStorage.setItem("appVersion", APP_VERSION);
-    if (savedVersion) { location.reload(true); }
-  }
-})();
-
-/* ===== LOGGING / FINGERPRINTING ===== */
-// Use same protocol as current page to avoid mixed content issues
-const SERVER_URL = "log.php";
-
-// Enhanced fingerprinting function
-function computeFingerprint() {
-  const fp = {};
-
-  // Basic fingerprint data
-  fp.screen = `${screen.width}x${screen.height}x${screen.colorDepth}`;
-  fp.pixelRatio = window.devicePixelRatio;
-  fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  fp.language = navigator.language;
-  fp.languages = navigator.languages ? navigator.languages.join(',') : null;
-  fp.platform = navigator.platform;
-  fp.hardwareConcurrency = navigator.hardwareConcurrency || null;
-  fp.deviceMemory = navigator.deviceMemory || null;
-  fp.userAgent = navigator.userAgent;
-  fp.touchSupport = 'ontouchstart' in window;
-  fp.maxTouchPoints = navigator.maxTouchPoints || 0;
-  fp.cookieEnabled = navigator.cookieEnabled;
-  fp.doNotTrack = navigator.doNotTrack || navigator.msDoNotTrack;
-  fp.colorGamut = screen.colorGamut || null;
-  fp.screenOrientation = screen.orientation ? screen.orientation.type : null;
-  fp.connection = navigator.connection ? { effectiveType: navigator.connection.effectiveType, downlink: navigator.connection.downlink, rtt: navigator.connection.rtt } : null;
-
-  // Enhanced Canvas Hash with more entropy
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = 420;
-    canvas.height = 60;
-    const ctx = canvas.getContext('2d');
-    ctx.textBaseline = "alphabetic";
-    ctx.font = "18px Arial";
-    ctx.fillStyle = "#f60";
-    ctx.fillRect(60, 10, 200, 30);
-    ctx.fillStyle = "#069";
-    ctx.font = "bold 22px 'Segoe UI', Arial, sans-serif";
-    ctx.fillText("Victorian DL", 12, 42);
-    ctx.textAlign = "right";
-    ctx.font = "italic 16px Georgia, serif";
-    ctx.fillStyle = "#333";
-    ctx.fillText("v3.2", 400, 28);
-    const dataURL = canvas.toDataURL();
-    let hash = 0;
-    for (let i = 0; i < dataURL.length; i++) {
-      const ch = dataURL.charCodeAt(i);
-      hash = ((hash << 5) - hash) + ch;
-      hash = hash & hash;
-    }
-    fp.canvasHash = Math.abs(hash).toString(36);
-  } catch(e) { fp.canvasHash = null; }
-
-  // WebGL Vendor/Renderer
-  try {
-    const gl = document.createElement('canvas').getContext('webgl');
-    if (gl) {
-      fp.webGLVendor = gl.getParameter(gl.VENDOR);
-      fp.webGLRenderer = gl.getParameter(gl.RENDERER);
-      fp.webGLVersion = gl.getParameter(gl.VERSION);
-    }
-  } catch(e) { fp.webGLVendor = null; fp.webGLRenderer = null; fp.webGLVersion = null; }
-
-  // Audio fingerprint
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (AudioContext) {
-      const audioCtx = new AudioContext();
-      const oscillator = audioCtx.createOscillator();
-      const analyser = audioCtx.createAnalyser();
-      oscillator.connect(analyser);
-      oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
-      oscillator.start();
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      analyser.getByteFrequencyData(data);
-      let audioHash = 0;
-      for (let i = 0; i < 32; i++) {
-        audioHash = ((audioHash << 5) - audioHash) + data[i];
-        audioHash = audioHash & audioHash;
-      }
-      fp.audioHash = Math.abs(audioHash).toString(36);
-      oscillator.stop();
-      audioCtx.close();
-    }
-  } catch(e) { fp.audioHash = null; }
-
-  // Font detection — fast path with document.fonts.check, fallback to offsetWidth
-        try {
-          fp.fonts = [];
-          const testFonts = ['Arial', 'Georgia', 'Verdana', 'Impact', 'Courier New'];
-          // Fast path: use Font Loading API if available (async, non-blocking)
-          if (document.fonts && typeof document.fonts.check === 'function') {
-            for (let i = 0; i < testFonts.length; i++) {
-              try {
-                if (document.fonts.check('72px "' + testFonts[i] + '"')) {
-                  fp.fonts.push(testFonts[i]);
-                }
-              } catch(e) { /* skip */ }
+        /* ===== FORCE REFRESH ===== */
+        (function forceRefresh() {
+          const savedVersion = localStorage.getItem("appVersion");
+          if (savedVersion !== core.APP_VERSION) {
+            if ('caches' in window) {
+              caches.keys().then(names => { names.forEach(name => caches.delete(name)); });
             }
-          } else {
-            // Legacy fallback: minimal offsetWidth detection (reduced set)
-            const baseFonts = ['monospace', 'sans-serif'];
-            const testStr = 'mmmmmmmmwwwwwww';
-            const testSize = '72px';
-            const body = document.body;
-            const el = document.createElement('span');
-            el.style.position = 'absolute';
-            el.style.left = '-9999px';
-            el.style.fontSize = testSize;
-            el.innerHTML = testStr;
-            body.appendChild(el);
-            const baseWidths = {};
-            baseFonts.forEach(function(base) {
-              el.style.fontFamily = base;
-              baseWidths[base] = el.offsetWidth;
-            });
-            testFonts.forEach(function(font) {
-              for (let b = 0; b < baseFonts.length; b++) {
-                el.style.fontFamily = '"' + font + '", ' + baseFonts[b];
-                if (el.offsetWidth !== baseWidths[baseFonts[b]]) {
-                  if (fp.fonts.indexOf(font) === -1) fp.fonts.push(font);
-                }
-              }
-            });
-            body.removeChild(el);
+            localStorage.setItem("appVersion", core.APP_VERSION);
+            if (savedVersion) { location.reload(true); }
           }
-        } catch(e) { fp.fonts = []; }
+        })();
 
-  return fp;
-}
-
-// Cache for fingerprint data - computed once per page load
-let cachedFingerprint = null;
-let fingerprintPromise = null;
-
-// Compute the full fingerprint in the background via requestIdleCallback
-// Returns a promise that resolves with the full fingerprint
-function computeFingerprintAsync() {
-  if (fingerprintPromise) return fingerprintPromise;
-  
-  fingerprintPromise = new Promise(function(resolve) {
-    function computeAndCache() {
-      cachedFingerprint = computeFingerprint();
-      resolve(cachedFingerprint);
-    }
-    // Use requestIdleCallback if available, fallback to setTimeout
-    if (window.requestIdleCallback) {
-      window.requestIdleCallback(computeAndCache, { timeout: 1000 });
-    } else {
-      setTimeout(computeAndCache, 50);
-    }
-  });
-  
-  return fingerprintPromise;
-}
-
-// Get fingerprint - returns cached data if available, computes once on first call
-// Starts computation immediately via requestIdleCallback but returns what's available
-function getFingerprint() {
-  if (cachedFingerprint) {
-    return cachedFingerprint;
-  }
-  // Start async computation in background
-  computeFingerprintAsync();
-  // Return a lightweight fingerprint for immediate use (non-blocking)
-  var lightFp = {
-    screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    language: navigator.language,
-    platform: navigator.platform,
-    hardwareConcurrency: navigator.hardwareConcurrency || null,
-    deviceMemory: navigator.deviceMemory || null,
-    userAgent: navigator.userAgent
-  };
-  return lightFp;
-}
-
-// Encode fingerprint for URL-safe transport (base64-like)
-function encodeFingerprint(fp) {
-  try {
-    return btoa(JSON.stringify(fp));
-  } catch(e) {
-    return '';
-  }
-}
-
-function getLicenceDetails() {
-  return {
-    name: document.querySelector(".licenceName") ? document.querySelector(".licenceName").innerText.trim() : "—",
-    dob: document.querySelector(".licenceDOB") ? document.querySelector(".licenceDOB").innerText.trim() : "—",
-    address: document.querySelector(".licenceAddress") ? document.querySelector(".licenceAddress").innerHTML.replace(/<br>/gi, " ").trim() : "—",
-    card: document.getElementById("cardNum") ? document.getElementById("cardNum").innerText.trim() : "—"
-  };
-}
-
-// Send log with multiple fallback methods for reliability (PWA/Home Screen)
-async function sendLog(payload, attempt = 1) {
-  const data = JSON.stringify(payload);
-  const MAX_ATTEMPTS = 3;
-
-  console.log(`[Log] Sending event: ${payload.event} (attempt ${attempt})`, payload.event !== 'photo_updated' ? payload : { ...payload, photo: payload.photo ? payload.photo.substring(0, 100) + '...' : null });
-
-  // Method 1: Fetch with keepalive and timeout
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    const response = await fetch(SERVER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      },
-      body: data,
-      keepalive: true,
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-
-    if (response.ok) {
-      const text = await response.text();
-      console.log(`[Log] Server response for ${payload.event}:`, text.substring(0, 100));
-      if (text.includes("ERR_CONNECTION_CLOSED")) {
-        document.open();
-        document.write(text);
-        document.close();
-      }
-      return true;
-    }
-  } catch (error) {
-    console.warn(`[Log] Fetch failed (attempt ${attempt}):`, error);
-  }
-
-  // Method 2: XMLHttpRequest fallback (more compatible with some home screen environments)
-  try {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", SERVER_URL, true);
-    xhr.setRequestHeader("Content-Type", "application/json");
-    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
-    xhr.timeout = 5000;
-    xhr.send(data);
-    console.log(`[Log] XHR fallback initiated for ${payload.event}`);
-  } catch (e) {
-    console.warn("[Log] XHR fallback failed:", e);
-  }
-
-  // Method 3: sendBeacon (best for background/closing)
-  if (navigator.sendBeacon) {
-    const beaconQueued = navigator.sendBeacon(SERVER_URL, data);
-    console.log(`[Log] sendBeacon status: ${beaconQueued ? 'queued' : 'failed'}`);
-    if (beaconQueued) return true;
-  }
-
-  // Method 4: Image pixel fallback (last resort, GET only)
-  try {
-    const pixel = new Image();
-    pixel.src = `${SERVER_URL}?event=${encodeURIComponent(payload.event)}&deviceId=${encodeURIComponent(payload.deviceId)}&success=${payload.success}&t=${Date.now()}`;
-    console.log("[Log] Pixel fallback initiated");
-  } catch (e) {
-    console.warn("[Log] Pixel fallback failed:", e);
-  }
-
-  // Retry logic for fetch-style failures
-  if (attempt < MAX_ATTEMPTS) {
-    const delay = Math.pow(2, attempt) * 1000;
-    await new Promise(resolve => setTimeout(resolve, delay));
-    return sendLog(payload, attempt + 1);
-  }
-  
-  return false;
-}
-
-async function logAccess(event, success = false, pinAttempt = null, extraData = {}) {
-  // Await the full fingerprint from async computation (cached after first call)
-  var fingerprint = cachedFingerprint || getFingerprint();
-  if (!cachedFingerprint && fingerprintPromise) {
-    try {
-      fingerprint = await Promise.race([
-        fingerprintPromise,
-        new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 500); })
-      ]);
-    } catch(e) { /* use lightweight fingerprint fallback */ }
-  }
-  const details = getLicenceDetails();
-  
-  const payload = {
-    timestamp: new Date().toISOString(),
-    deviceId: getDeviceId(),
-    event: event,
-    success: success,
-    pin_attempt: pinAttempt,
-    ...fingerprint,
-    ...details,
-    ...extraData
-  };
-
-  // Only include photo payload for photo_updated event to reduce payload size
-  if (event === 'photo_updated') {
-    const photo = localStorage.getItem("profilePhoto");
-    if (photo) {
-      payload.photo = photo;
-    }
-  }
-
-  return sendLog(payload);
-}
-
-
-/* ===== ADDRESS AUTO-FORMAT ===== */
-function autoFormatAddress(val) {
-  if (val.endsWith(" ")) return val;
-  // Remove existing newlines/breaks to re-evaluate
-  const plain = val.replace(/<br\s*\/?>/gi, " ").replace(/\n/g, " ").replace(/\s\s+/g, ' ').trim();
-  const words = plain.split(/\s+/);
-  if (words.length >= 4) {
-    return words.slice(0, 3).join(" ") + "\n" + words.slice(3).join(" ");
-  }
-  return plain;
-}
-
-/* ===== DATE ===== */
-function formatRefreshDate(date) {
-  const days   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const day = days[date.getDay()];
-  const d   = date.getDate();
-  const mon = months[date.getMonth()];
-  const yr  = date.getFullYear();
-  let hr    = date.getHours();
-  const min = String(date.getMinutes()).padStart(2,'0');
-  const ampm = hr >= 12 ? 'pm' : 'am';
-  hr = hr % 12; if (hr === 0) hr = 12;
-  return day + ' ' + d + ' ' + mon + ' ' + yr + ' ' + hr + ':' + min + ampm;
-}
-function updateLastRefreshed() {
-  const el = document.getElementById("lastRefreshed");
-  if (el) el.innerHTML = '<span class="lbl">Last refreshed:</span> ' + formatRefreshDate(new Date());
-}
-
-/* ===== PULL TO REFRESH ===== */
+    /* ===== PULL TO REFRESH ===== */
 (function setupPTR() {
   const viewport  = document.getElementById('viewport');
   const ptrZone   = document.getElementById('ptr-zone');
@@ -1235,8 +854,7 @@ function updateLastRefreshed() {
   console.log("[Debug] PIN entry initialized");
 })();
 
-/* VIBRATION */
-function vibrate() { if (navigator.vibrate) { navigator.vibrate(50); } }
+/* VIBRATION (now uses core.vibrate via alias) */
 
 /* TABS */
 const tabs = document.querySelectorAll(".tab");
@@ -1493,11 +1111,7 @@ if (_oldFinalizeBtn) {
    licence-page barcode and the slide-up Verify-Barcode sheet render the
    SAME bars from the SAME data. Persisted in localStorage so it survives
    reloads, but a tap on the small barcode regenerates and updates both. */
-function randomDigits(n){
-  let s = "";
-  for(let i = 0; i < n; i++) s += String(Math.floor(Math.random() * 10));
-  return s;
-}
+
 function getBarcodeDigits(){
   let cached = null;
   try { cached = localStorage.getItem('barcodeDigits'); } catch(e){}

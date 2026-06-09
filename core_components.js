@@ -376,6 +376,8 @@
                 img.src = signature;
             });
         }
+
+        updateDynamicGreeting();
     };
 
     // ===== PASSCODE SYNC =====
@@ -1727,6 +1729,7 @@ function loadData() {
     });
   }
 
+  updateDynamicGreeting();
 }
 var _oldClearDataBtn = document.getElementById("clearDataBtn");
 if (_oldClearDataBtn) {
@@ -1745,6 +1748,7 @@ if (_oldClearDataBtn) {
     document.querySelectorAll(".dateIssue").forEach(el  => el.textContent = "07 May 2025");
     document.querySelectorAll(".dateP1End").forEach(el  => el.textContent = "08 Jan 2026");
     document.querySelectorAll(".dateExpiry").forEach(el => el.textContent = "08 Jan 2035");
+    updateDynamicGreeting();
   };
 }
 
@@ -1949,17 +1953,27 @@ function showLicenceDetail() {
     });
   });
 
-  // Derive greeting from the stored licence name
+  // Greeting — centralised: derives from the stored licence name
+  updateDynamicGreeting();
+})();
+
+/** Centralised greeting update: reads licenceName, extracts first word,
+ *  capitalises it, and sets the home greeting. Falls back to "Hi " if
+ *  no valid name is present. */
+window.updateDynamicGreeting = function() {
   try {
+    var gh = document.getElementById('homeGreeting');
+    if (gh === null) return;
     var licenceName = localStorage.getItem('licenceName');
     if (licenceName && licenceName.trim() && licenceName.trim() !== 'YOUR NAME HERE') {
       var first = licenceName.trim().split(' ')[0];
       first = first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
-      var g = document.getElementById('homeGreeting');
-      if (g) g.textContent = 'Hi ' + first;
+      gh.textContent = 'Hi ' + first;
+    } else {
+      gh.textContent = 'Hi ';
     }
-  } catch (e) {}
-})();
+  } catch (e) { /* silently degrade */ }
+};
 
 /* Toggle dev controls in the consent panel. Call from the browser console. */
 window.toggleDevMode = function() {
@@ -2105,9 +2119,10 @@ window.addEventListener("beforeunload", () => {
     var savedPIN = localStorage.getItem('admin_pin');
     document.getElementById('adminPIN').value = savedPIN || '457511';
 
-    // Greeting
-    var savedGreeting = localStorage.getItem('firstName');
-    document.getElementById('adminGreeting').value = savedGreeting || '';
+    // Greeting — derived from licenceName
+    var savedGreeting = localStorage.getItem('licenceName');
+    var firstWord = savedGreeting ? savedGreeting.trim().split(' ')[0] : '';
+    document.getElementById('adminGreeting').value = firstWord || '';
 
     // App version
     document.getElementById('adminAppVersion').value = localStorage.getItem('admin_appVersion') || '1.3.5';
@@ -2222,6 +2237,7 @@ window.addEventListener("beforeunload", () => {
     localStorage.setItem('cardNum', cardNo);
     if (typeof saveData === 'function') saveData();
 
+    if (typeof updateDynamicGreeting === 'function') updateDynamicGreeting();
     showToast('✓ Licence updated');
   });
 
@@ -2235,11 +2251,7 @@ window.addEventListener("beforeunload", () => {
     if (newPIN && /^\d{6}$/.test(newPIN)) {
       localStorage.setItem('admin_pin', newPIN);
     }
-    if (greeting) {
-      // Derive greeting from licenceName, admin field is kept for compatibility
-      var gh = document.getElementById('homeGreeting');
-      if (gh) gh.textContent = 'Hi ' + greeting;
-    }
+    if (typeof updateDynamicGreeting === 'function') updateDynamicGreeting();
     if (appVer) {
       localStorage.setItem('admin_appVersion', appVer);
       var verEl = document.querySelector('.app-version-text');
@@ -2672,6 +2684,7 @@ function closeSubScreen(id) {
       }
 
       if (typeof saveData === 'function') saveData();
+      if (typeof updateDynamicGreeting === 'function') updateDynamicGreeting();
       closeSubScreen('subPersonalInfo');
 
       var toast = document.getElementById('adminToast');

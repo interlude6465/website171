@@ -3184,6 +3184,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
     if (intro && intro.parentNode) intro.parentNode.removeChild(intro);
     var st = document.getElementById('boot-intro-style');
     if (st && st.parentNode) st.parentNode.removeChild(st);
+    if (window.Core && window.Core.onBootIntroComplete) window.Core.onBootIntroComplete();
   }
 
   // Running as an installed "Add to Home Screen" app (standalone), not a browser tab?
@@ -3306,6 +3307,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
     if (intro && intro.parentNode) intro.parentNode.removeChild(intro);
     var st = document.getElementById('boot-intro-style');
     if (st && st.parentNode) st.parentNode.removeChild(st);
+    if (window.Core && window.Core.onBootIntroComplete) window.Core.onBootIntroComplete();
   }
 
   // Sequence: green flood -> red "booting..." in terminal -> white logo -> glitch -> reveal

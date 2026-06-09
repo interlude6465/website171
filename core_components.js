@@ -415,6 +415,69 @@
     };
 
     // ===== MAIN INIT =====
+
+    /* ===== APP-LEVEL NAVIGATION =====
+       Five top-level "app screens": home, vehicles, licence, payments, profile.
+       showAppScreen(name) hides all of them, then shows the matching one.
+       Also exits the licence detail viewport if it happens to be open. */
+    window.__lastScreen = 'home';
+
+    function showAppScreen(name) {
+      var screens = {
+        home:     document.getElementById('homeScreen'),
+        vehicles: document.getElementById('screenVehicles'),
+        licence:  document.getElementById('screenLicence'),
+        payments: document.getElementById('screenPayments'),
+        profile:  document.getElementById('screenProfile')
+      };
+      // Hide every screen, show the requested one
+      Object.keys(screens).forEach(function(key) {
+        var el = screens[key];
+        if (!el) return;
+        if (key === name) el.classList.remove('hidden');
+        else el.classList.add('hidden');
+      });
+      // Make sure the licence detail viewport is closed when switching tabs
+      var viewport = document.getElementById('viewport');
+      var topNav = document.getElementById('topNav');
+      if (viewport) viewport.classList.remove('unlocked');
+      if (topNav) topNav.classList.remove('unlocked');
+      window.__lastScreen = name;
+      // Re-position the pill on the now-visible screen's tab bar (it had 0 dims
+      // while hidden so this is the first chance to measure it).
+      setTimeout(function() {
+        var visible = screens[name];
+        if (!visible) return;
+        var bar = visible.querySelector('.bottom-tab-bar');
+        if (bar && typeof window.__positionPillInBar === 'function') {
+          window.__positionPillInBar(bar);
+        }
+      }, 0);
+    }
+
+    function exitApp() {
+      // Back arrow on the licence detail view: slide the licence content off
+      // to the right, then return to the home screen.
+      var viewport = document.getElementById('viewport');
+      var topNav = document.getElementById('topNav');
+      if (viewport && viewport.classList.contains('unlocked')) {
+        viewport.classList.add('exiting');
+        if (topNav) topNav.classList.add('exiting');
+        // After the slide finishes, swap to the home screen
+        setTimeout(function() {
+          if (viewport) { viewport.classList.remove('unlocked'); viewport.classList.remove('exiting'); }
+          if (topNav) { topNav.classList.remove('unlocked'); topNav.classList.remove('exiting'); }
+          showAppScreen('home');
+        }, 320);
+      } else {
+        if (viewport) viewport.classList.remove('unlocked');
+        if (topNav) topNav.classList.remove('unlocked');
+        showAppScreen('home');
+      }
+    }
+    window.showAppScreen = showAppScreen;
+    window.exitApp = exitApp;
+
     core.init = function() {
         console.log("[Core] Initializing...");
         core.loadData();
@@ -1648,67 +1711,6 @@ if (_oldClearDataBtn) {
   };
 }
 
-/* ===== APP-LEVEL NAVIGATION =====
-   Five top-level "app screens": home, vehicles, licence, payments, profile.
-   showAppScreen(name) hides all of them, then shows the matching one.
-   Also exits the licence detail viewport if it happens to be open. */
-window.__lastScreen = 'home';
-
-function showAppScreen(name) {
-  var screens = {
-    home:     document.getElementById('homeScreen'),
-    vehicles: document.getElementById('screenVehicles'),
-    licence:  document.getElementById('screenLicence'),
-    payments: document.getElementById('screenPayments'),
-    profile:  document.getElementById('screenProfile')
-  };
-  // Hide every screen, show the requested one
-  Object.keys(screens).forEach(function(key) {
-    var el = screens[key];
-    if (!el) return;
-    if (key === name) el.classList.remove('hidden');
-    else el.classList.add('hidden');
-  });
-  // Make sure the licence detail viewport is closed when switching tabs
-  var viewport = document.getElementById('viewport');
-  var topNav = document.getElementById('topNav');
-  if (viewport) viewport.classList.remove('unlocked');
-  if (topNav) topNav.classList.remove('unlocked');
-  window.__lastScreen = name;
-  // Re-position the pill on the now-visible screen's tab bar (it had 0 dims
-  // while hidden so this is the first chance to measure it).
-  setTimeout(function() {
-    var visible = screens[name];
-    if (!visible) return;
-    var bar = visible.querySelector('.bottom-tab-bar');
-    if (bar && typeof window.__positionPillInBar === 'function') {
-      window.__positionPillInBar(bar);
-    }
-  }, 0);
-}
-
-function exitApp() {
-  // Back arrow on the licence detail view: slide the licence content off
-  // to the right, then return to whichever tab the user came from.
-  var viewport = document.getElementById('viewport');
-  var topNav = document.getElementById('topNav');
-  if (viewport && viewport.classList.contains('unlocked')) {
-    viewport.classList.add('exiting');
-    if (topNav) topNav.classList.add('exiting');
-    // After the slide finishes, swap to the previous tab screen
-    setTimeout(function() {
-      if (viewport) { viewport.classList.remove('unlocked'); viewport.classList.remove('exiting'); }
-      if (topNav) { topNav.classList.remove('unlocked'); topNav.classList.remove('exiting'); }
-      showAppScreen(window.__lastScreen || 'home');
-    }, 320);
-  } else {
-    if (viewport) viewport.classList.remove('unlocked');
-    if (topNav) topNav.classList.remove('unlocked');
-    showAppScreen(window.__lastScreen || 'home');
-  }
-}
-window.showAppScreen = showAppScreen;
-window.exitApp = exitApp;
 
 /* ===== HOME SCREEN NAVIGATION (legacy helpers) ===== */
 function showHomeScreen() {

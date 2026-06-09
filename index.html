@@ -78,6 +78,22 @@
   /* Hologram coat-of-arms — single opacity driven by device tilt.
      APK shader (hologram_fragment.glsl):  float roll = abs(u_roll)/10.0 + 0.2;
      We use DeviceOrientationEvent.beta (screen-to-sky=0° → screen-to-ground=90°+)
+  /* MVR Animation Tokens (from ANIMATIONS_INVENTORY.md) */
+  --mvr-ease-standard:    cubic-bezier(0.4, 0, 0.2, 1);
+  --mvr-ease-decelerate:  cubic-bezier(0,   0, 0.2, 1);
+  --mvr-ease-accelerate:  cubic-bezier(0.4, 0, 1,   1);
+  --mvr-ease-emphasized:        cubic-bezier(0.2, 0, 0,   1);
+  --mvr-ease-emphasized-decel:  cubic-bezier(0.1, 0, 0.45, 1);
+  --mvr-ease-standard-decel:    cubic-bezier(0,   0, 0.65, 1);
+  --mvr-ease-fragment-soft:     cubic-bezier(0.05, 0, 0.25, 1);
+
+  --mvr-dur-tiny:    75ms;
+  --mvr-dur-short:   150ms;
+  --mvr-dur-medium:  200ms;
+  --mvr-dur-tab:     250ms;
+  --mvr-dur-fragment: 300ms;
+  --mvr-dur-long:    320ms;
+  --mvr-dur-extra:   350ms;
      mapped to the same 0.2→1.0+ range.  0° flat → barely visible; 8°+ tilt → full. */
   --holo-opacity: 0.2;
 }
@@ -1466,7 +1482,7 @@ body.dev-mode .dev-only {
 /* Viewport reveal — cheap translate + fade instead of scale, so iOS doesn't
    have to repaint the mix-blend-mode coat-of-arms subtree every frame. */
 #viewport.unlocked {
-  animation: mvr-licence-detail-enter 300ms cubic-bezier(0.05, 0, 0.25, 1);
+  animation: mvr-licence-detail-enter var(--mvr-dur-fragment) var(--mvr-ease-fragment-soft);
 }
 @keyframes mvr-licence-detail-enter {
   from {
@@ -1483,7 +1499,7 @@ body.dev-mode .dev-only {
    tab screen is revealed underneath. */
 #viewport.unlocked.exiting,
 #topNav.unlocked.exiting {
-  animation: mvr-licence-detail-exit 320ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: mvr-licence-detail-exit var(--mvr-dur-long) var(--mvr-ease-standard) forwards;
 }
 @keyframes mvr-licence-detail-exit {
   from {
@@ -1537,7 +1553,7 @@ body.dev-mode .dev-only {
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial;
   /* Tab screen Crossfade — APK Compose Crossfade between tab targets.
      Material short_3 = 150ms with fast_out_slow_in. */
-  animation: mvr-tab-screen-fade-in 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  animation: mvr-tab-screen-fade-in var(--mvr-dur-medium) var(--mvr-ease-standard);
 }
 .app-screen.hidden { display: none; animation: none; }
 @keyframes mvr-tab-screen-fade-in {

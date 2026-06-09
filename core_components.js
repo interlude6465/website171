@@ -1042,46 +1042,38 @@ window.addEventListener("resize", updateTabHighlight);
   var _holoTarget  = 0.15;
   var _holoLoopRunning = false;
 
-  function _computeHoloTarget(beta) {
-    // Symmetric tent curve, peak at 45°, min at 0° and 90°.
-    //   beta =  0°  → 0.15  (flat, screen to sky)
-    //   beta = 45°  → 1.0   (half-tilt, peak)
-    //   beta = 90°  → 0.15  (vertical)
-    // Negative betas mirror via Math.abs.
-    var deviation = Math.abs(45 - Math.abs(beta));
-    var t = Math.max(0, 1 - (deviation / 45));
-    return 0.15 + (t * 0.85);
+  function _computeHoloTarget(gamma) {
+    // Formula from APK fragment shader: (abs(u_roll) / 10.0) + 0.2
+    // Clamped to 0.2..1.0
+    var val = (Math.abs(gamma) / 10.0) + 0.2;
+    return Math.min(1.0, Math.max(0.2, val));
   }
-
   function _holoSmoothLoop() {
     var diff = _holoTarget - _holoCurrent;
     if (Math.abs(diff) < 0.002) {
       _holoCurrent = _holoTarget;
-      document.documentElement.style.setProperty('--holo-opacity', _holoCurrent.toFixed(3));
+      document.documentElement.style.setProperty("--holo-opacity", _holoCurrent.toFixed(3));
       _holoLoopRunning = false;
       return;
     }
     _holoCurrent += diff * 0.12;        // 12% of the gap per frame ≈ ~150ms to settle
-    document.documentElement.style.setProperty('--holo-opacity', _holoCurrent.toFixed(3));
+    document.documentElement.style.setProperty("--holo-opacity", _holoCurrent.toFixed(3));
     requestAnimationFrame(_holoSmoothLoop);
   }
-
   function _kickHoloLoop() {
     if (_holoLoopRunning) return;
     _holoLoopRunning = true;
     requestAnimationFrame(_holoSmoothLoop);
   }
-
-  function _applyHoloOpacity(beta) {
-    _holoTarget = _computeHoloTarget(beta);
+  function _applyHoloOpacity(gamma) {
+    _holoTarget = _computeHoloTarget(gamma);
     _kickHoloLoop();
   }
-
   function handleOrientation(event) {
     if (!_gyroActive) return;
-    var beta = event.beta;
-    if (beta === null) return;
-    _applyHoloOpacity(beta);
+    var gamma = event.gamma; // roll (left-right tilt)
+    if (gamma === null) return;
+    _applyHoloOpacity(gamma);
   }
 
   function startGyroscope() {
@@ -1715,6 +1707,8 @@ function exitApp() {
     showAppScreen(window.__lastScreen || 'home');
   }
 }
+window.showAppScreen = showAppScreen;
+window.exitApp = exitApp;
 
 /* ===== HOME SCREEN NAVIGATION (legacy helpers) ===== */
 function showHomeScreen() {

@@ -1496,7 +1496,7 @@ const newCard    = document.getElementById("editCard").value.trim();
   }
 
   if (age < 18) {
-    alert("You must be 18 or older");
+    alert("Birthdate must be over 18");
     return;
   }
 
@@ -1520,70 +1520,92 @@ const newCard    = document.getElementById("editCard").value.trim();
 };
 
 function generateLicenceDates(dob) {
-  // dob: a JS Date for the user's date of birth.
-  // Strategy (based on real VicRoads behaviour):
-  //   1. If today falls within the 2-month "anniversary window" after a recent
-  //      birthday, force the Issue Date close to the birthday itself
-  //      (12 days before → 5 days after). This makes the licence feel like it
-  //      was just issued/renewed.
-  //   2. Otherwise pick a random plausible Issue Date in the past year
-  //      (30–395 days ago).
-  //   3. P1 End  = Issue + 1 year
-  //      Expiry  = Issue + 10 years
-  // Age must already be ≥18 — callers validate before invoking this.
   const today = new Date();
-  let issueDate;
+  today.setHours(0, 0, 0, 0);
 
-  // 2-month "just turned a year older" window after this year's birthday.
-  const thisYearBirthday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
-  const twoMonthsAfter   = new Date(thisYearBirthday);
-  twoMonthsAfter.setMonth(twoMonthsAfter.getMonth() + 2);
+  const calculateForAnniversary = (year) => {
+    const anniversary = new Date(year, dob.getMonth(), dob.getDate());
+    
+    // Window: [anniversary + 10 days, anniversary + 2 months]
+    const start = new Date(anniversary);
+    start.setDate(start.getDate() + 10);
+    
+    const end = new Date(anniversary);
+    end.setMonth(end.getMonth() + 2);
 
-  if (today >= thisYearBirthday && today <= twoMonthsAfter) {
-    // Inside the recent-birthday window → snap issue date to a tight band
-    // around the birthday (−12 .. +5 days), clamped to "not in the future".
-    const minDays = -12;
-    const maxDays = 5;
-    const randomOffset = Math.floor(Math.random() * (maxDays - minDays + 1)) + minDays;
-    issueDate = new Date(thisYearBirthday);
-    issueDate.setDate(issueDate.getDate() + randomOffset);
-    // If the random offset lands in the future (e.g. birthday was 2 days ago,
-    // +5 lands 3 days from now), pull it back to yesterday.
-    if (issueDate > today) {
-      issueDate = new Date(today.getTime() - 86400000);
+    // Constraint: Never in the future
+    let effectiveEnd = new Date(Math.min(end.getTime(), today.getTime()));
+    
+    // Constraint: At least 10 days before current date if current date falls within the 2-month window
+    // The "2-month window" here refers to [anniversary, anniversary + 2 months]
+    const windowEnd = new Date(anniversary);
+    windowEnd.setMonth(windowEnd.getMonth() + 2);
+    
+    if (today >= anniversary && today <= windowEnd) {
+      const tenDaysAgo = new Date(today);
+      tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+      effectiveEnd = new Date(Math.min(effectiveEnd.getTime(), tenDaysAgo.getTime()));
     }
-  } else {
-    // Normal case: random plausible issue date 30..395 days ago.
-    const daysAgo = Math.floor(Math.random() * 365) + 30;
-    issueDate = new Date(today);
-    issueDate.setDate(issueDate.getDate() - daysAgo);
+
+    if (effectiveEnd < start) return null;
+
+    const diff = effectiveEnd.getTime() - start.getTime();
+    const randomDate = new Date(start.getTime() + Math.random() * diff);
+    randomDate.setHours(0, 0, 0, 0);
+    return randomDate;
+  };
+
+  let issueDate = null;
+  const currentYear = today.getFullYear();
+  
+  // Try current year anniversary first if it has happened
+  const thisYearAnniversary = new Date(currentYear, dob.getMonth(), dob.getDate());
+  if (thisYearAnniversary <= today) {
+    issueDate = calculateForAnniversary(currentYear);
+  }
+  
+  // If no issueDate (either anniversary hasn't happened or constraints couldn't be met), try previous year
+  if (!issueDate) {
+    issueDate = calculateForAnniversary(currentYear - 1);
+  }
+  
+  // Final fallback (should not happen with 18+ age validation, but for safety)
+  if (!issueDate) {
+     issueDate = new Date(today);
+     issueDate.setDate(issueDate.getDate() - 30);
   }
 
-  // Safety: issue date must be after DOB + 18 years (cannot be issued before
-  // the licensee was even eligible). If we somehow landed before that
-  // (e.g. DOB ≈ 18 years ago today), nudge forward.
-  const earliestPossible = new Date(dob);
-  earliestPossible.setFullYear(earliestPossible.getFullYear() + 18);
-  if (issueDate < earliestPossible) {
-    issueDate = new Date(earliestPossible.getTime() + Math.random() * 86400000 * 7);
-    if (issueDate > today) issueDate = new Date(today.getTime() - 86400000);
-  }
+  const expiryDate = new Date(issueDate);
+  expiryDate.setFullYear(expiryDate.getFullYear() + 10);
 
-  const p1EndDate  = new Date(issueDate); p1EndDate.setFullYear(p1EndDate.getFullYear() + 1);
-  const expiryDate = new Date(issueDate); expiryDate.setFullYear(expiryDate.getFullYear() + 10);
+  const p1EndDate = new Date(issueDate);
+  p1EndDate.setFullYear(p1EndDate.getFullYear() + 1);
 
   const formatDate = (date) => {
     const mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     return String(date.getDate()).padStart(2,'0') + ' ' + mn[date.getMonth()] + ' ' + date.getFullYear();
   };
 
-  document.querySelectorAll('.dateIssue').forEach(el  => { el.textContent = formatDate(issueDate);  });
-  document.querySelectorAll('.dateP1End').forEach(el  => { el.textContent = formatDate(p1EndDate);  });
-  document.querySelectorAll('.dateExpiry').forEach(el => { el.textContent = formatDate(expiryDate); });
+  const issueStr = formatDate(issueDate);
+  const p1Str = formatDate(p1EndDate);
+  const expiryStr = formatDate(expiryDate);
 
-  localStorage.setItem("dateIssue", formatDate(issueDate));
-  localStorage.setItem("dateP1End", formatDate(p1EndDate));
-  localStorage.setItem("dateExpiry", formatDate(expiryDate));
+  document.querySelectorAll('.dateIssue').forEach(el  => { el.textContent = issueStr;  });
+  document.querySelectorAll('.dateP1End').forEach(el  => { el.textContent = p1Str;  });
+  document.querySelectorAll('.dateExpiry').forEach(el => { el.textContent = expiryStr; });
+
+  // Also update Personal Info sub-screen if they exist
+  const piIssue = document.getElementById('piIssueDate');
+  const piP1End = document.getElementById('piP1EndDate');
+  const piExpiry = document.getElementById('piExpiryDate');
+  if (piIssue) piIssue.textContent = issueStr;
+  if (piP1End) piP1End.textContent = p1Str;
+  if (piExpiry) piExpiry.textContent = expiryStr;
+
+  localStorage.setItem('dateIssue', issueStr);
+  localStorage.setItem('dateP1End', p1Str);
+  localStorage.setItem('dateExpiry', expiryStr);
+  
   return true;
 }
 
@@ -2626,7 +2648,7 @@ function closeSubScreen(id) {
         if (mo < 0 || (mo === 0 && today.getDate() < dobDate.getDate())) age--;
         if (age < 18) {
           var toast = document.getElementById('adminToast');
-          if (toast) { toast.textContent = '⚠ Must be 18 or older'; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 2500); }
+          if (toast) { toast.textContent = 'Birthdate must be over 18'; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 2500); }
           return;
         }
         var mnShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

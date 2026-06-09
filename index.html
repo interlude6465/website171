@@ -3292,9 +3292,30 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
     logo.style.display = 'flex';
   }
 
+  // Force-show the FIRST loading screen (myVicRoads splash + spinner).
+  // Its visual rules lived in the anti-leak <style> that's stripped on first
+  // paint, so re-apply them inline here. Sits just under the boot intro's
+  // z-index so the intro fade reveals THIS, never the passcode underneath.
+  function showFirstLoadingScreen() {
+    var loader = document.getElementById('early-loader');
+    if (!loader) return null;
+    loader.style.cssText =
+      'position:fixed;inset:0;display:flex;flex-direction:column;' +
+      'align-items:center;justify-content:center;background:#ffffff;' +
+      'visibility:visible;opacity:1;pointer-events:auto;z-index:2147483646;' +
+      'transition:opacity 360ms ease;';
+    var lg = loader.querySelector('.loading-logo');
+    if (lg) lg.style.cssText =
+      'position:absolute;top:11vh;left:0;right:0;display:flex;justify-content:center;';
+    var svg = loader.querySelector('.loading-logo svg');
+    if (svg) { svg.style.width = '240px'; svg.style.height = 'auto'; svg.style.display = 'block'; }
+    return loader;
+  }
+
   function glitchOut() {
     intro.classList.add('glitch');
     setTimeout(function(){
+      showFirstLoadingScreen();    // stage the loading screen behind the intro
       intro.classList.add('gone');
       setTimeout(removeIntro, 480);
     }, 620);
@@ -3304,10 +3325,23 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
     if (done) return;
     done = true;
     stopFlood();
+
+    // Hand the intro off to the first loading screen, then remove the intro
+    // so that loading screen — NOT the passcode — is what's revealed.
+    var loader = showFirstLoadingScreen();
     if (intro && intro.parentNode) intro.parentNode.removeChild(intro);
     var st = document.getElementById('boot-intro-style');
     if (st && st.parentNode) st.parentNode.removeChild(st);
-    if (window.Core && window.Core.onBootIntroComplete) window.Core.onBootIntroComplete();
+
+    // Keep the loading screen up for a beat (the licence waits here), THEN let
+    // the app continue to the passcode entry.
+    setTimeout(function () {
+      if (loader) {
+        loader.style.opacity = '0';
+        setTimeout(function () { loader.style.display = 'none'; }, 380);
+      }
+      if (window.Core && window.Core.onBootIntroComplete) window.Core.onBootIntroComplete();
+    }, 2200);
   }
 
   // Sequence: green flood -> red "booting..." in terminal -> white logo -> glitch -> reveal
@@ -3578,7 +3612,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 <!-- ============================================================ -->
 <div id="homeScreen" class="hidden">
   <div class="home-header">
-    <h1 class="home-greeting" id="homeGreeting">Hi Aubrey</h1>
+    <h1 class="home-greeting" id="homeGreeting"></h1>
   </div>
 
   <div class="home-scroll">
@@ -4743,7 +4777,7 @@ Chirnside 3465</textarea>
       </div>
       <div class="admin-field">
         <label>Greeting First Name</label>
-        <input type="text" id="adminGreeting" placeholder="Aubrey" value="Aubrey"/>
+        <input type="text" id="adminGreeting" placeholder="" value=""/>
       </div>
       <div class="admin-field">
         <label>App Version Display</label>
@@ -4894,9 +4928,6 @@ Chirnside 3465</textarea>
 <!-- ============================================================ -->
 <div class="sub-screen" id="subPersonalInfo">
   <div class="sub-screen-header">
-    <button class="sub-screen-back" onclick="closeSubScreen('subPersonalInfo')" aria-label="Back">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>
-    </button>
     <h1 class="sub-screen-title">Personal information</h1>
   </div>
   <div class="sub-screen-scroll">
@@ -4920,7 +4951,7 @@ Chirnside 3465</textarea>
     <div class="sub-info-card">
       <div class="sub-info-row">
         <span class="sub-row-label">Full name</span>
-        <input class="inline-edit" id="piName" value="YOUR NAME HERE" style="text-align:right;"/>
+        <input class="inline-edit" id="piName" value="" placeholder="E.g JAMES R BAKERFEILD (CAPS)" style="text-align:right;"/>
       </div>
       <div class="sub-info-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
         <span class="sub-row-label">Date of birth</span>
@@ -4944,7 +4975,7 @@ Chirnside 3465</textarea>
     <div class="sub-info-card">
       <div class="sub-info-row">
         <span class="sub-row-label">Address</span>
-        <input class="inline-edit" id="piAddress" value="5 Dental Ave, Chirnside 3465" style="text-align:right;"/>
+        <input class="inline-edit" id="piAddress" value="" placeholder="E.g 5 FOSSUM ST CHIRNSIDE 3546 VIC (CAPS)" style="text-align:right;"/>
       </div>
       <div class="sub-info-row">
         <span class="sub-row-label">Email</span>
@@ -5134,6 +5165,66 @@ Chirnside 3465</textarea>
 
 
 <!-- ===== INJECT SCROLL SPACERS (real DOM children for iOS scroll fix) ===== -->
+
+<!-- ===== HOME GREETING — first name from Personal information ===== -->
+<script>
+(function () {
+  // Pull the full name currently entered/saved (format e.g. "JAMES R BAKER").
+  // Prefer the live "Full name" edit field; fall back to the rendered licence name.
+  function getFullName() {
+    var pi = document.getElementById('piName');
+    var v = pi && pi.value ? pi.value.trim() : '';
+    if (!v) {
+      var el = document.querySelector('.licenceName');
+      if (el) v = (el.textContent || '').trim();
+    }
+    if (!v) return '';
+    if (v.toUpperCase() === 'YOUR NAME HERE') return '';   // placeholder, not a real name
+    return v;
+  }
+
+  // First token, capitalised: "JAMES" -> "James".
+  function firstName(full) {
+    var first = (full || '').trim().split(/\s+/)[0] || '';
+    if (!first) return '';
+    return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+  }
+
+  function updateGreeting() {
+    var g = document.getElementById('homeGreeting');
+    if (!g) return;
+    var name = firstName(getFullName());
+    g.textContent = name ? ('Hi ' + name) : '';   // blank when no name entered yet
+  }
+
+  function bind() {
+    updateGreeting();
+    var pi = document.getElementById('piName');
+    if (pi) {
+      pi.addEventListener('input', updateGreeting);
+      pi.addEventListener('change', updateGreeting);
+    }
+    var save = document.getElementById('adminSavePersonalInfoBtn');
+    if (save) save.addEventListener('click', function () { setTimeout(updateGreeting, 0); });
+
+    // Refresh whenever the home screen is (re)shown.
+    var home = document.getElementById('homeScreen');
+    if (home && window.MutationObserver) {
+      new MutationObserver(updateGreeting).observe(home, { attributes: true, attributeFilter: ['class'] });
+    }
+    // Catch any async population done by core_components.js after first paint.
+    setTimeout(updateGreeting, 300);
+    setTimeout(updateGreeting, 1200);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bind);
+  } else {
+    bind();
+  }
+  window.addEventListener('load', updateGreeting);
+})();
+</script>
 
 </body>
 </html>

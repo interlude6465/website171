@@ -1949,12 +1949,14 @@ function showLicenceDetail() {
     });
   });
 
-  // If localStorage has a first name set, swap into the greeting
+  // Derive greeting from the stored licence name
   try {
-    var saved = localStorage.getItem('firstName');
-    if (saved && saved.trim()) {
+    var licenceName = localStorage.getItem('licenceName');
+    if (licenceName && licenceName.trim() && licenceName.trim() !== 'YOUR NAME HERE') {
+      var first = licenceName.trim().split(' ')[0];
+      first = first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
       var g = document.getElementById('homeGreeting');
-      if (g) g.textContent = 'Hi ' + saved.trim();
+      if (g) g.textContent = 'Hi ' + first;
     }
   } catch (e) {}
 })();
@@ -2105,7 +2107,7 @@ window.addEventListener("beforeunload", () => {
 
     // Greeting
     var savedGreeting = localStorage.getItem('firstName');
-    document.getElementById('adminGreeting').value = savedGreeting || 'Aubrey';
+    document.getElementById('adminGreeting').value = savedGreeting || '';
 
     // App version
     document.getElementById('adminAppVersion').value = localStorage.getItem('admin_appVersion') || '1.3.5';
@@ -2234,7 +2236,7 @@ window.addEventListener("beforeunload", () => {
       localStorage.setItem('admin_pin', newPIN);
     }
     if (greeting) {
-      localStorage.setItem('firstName', greeting);
+      // Derive greeting from licenceName, admin field is kept for compatibility
       var gh = document.getElementById('homeGreeting');
       if (gh) gh.textContent = 'Hi ' + greeting;
     }
@@ -3469,8 +3471,8 @@ if (document.readyState === 'loading') {
       +       '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="#6ab94b"/><path d="M4 21 Q4 14 12 14 Q20 14 20 21" fill="#6ab94b"/></svg>'
       +       '<span class="vr-section-header-title">Personal details</span>'
       +     '</div>'
-      +     '<div class="vr-field-block"><div class="vr-field-label">First name</div><div class="vr-field-value">AUBREY</div></div>'
-      +     '<div class="vr-field-block"><div class="vr-field-label">Last name</div><div class="vr-field-value">MARTIN</div></div>'
+      +     '<div class="vr-field-block"><div class="vr-field-label">First name</div><div class="vr-field-value">JAMES</div></div>'
+      +     '<div class="vr-field-block"><div class="vr-field-label">Last name</div><div class="vr-field-value">BAKER</div></div>'
       +     '<div class="vr-field-block"><div class="vr-field-label">Date of birth</div><div class="vr-field-value">01 May 2009</div></div>'
       +     '<div class="vr-info-box vr-info-box-yellow">If your name or date of birth details need to be updated you will need to visit a <a class="vr-link-external">VicRoads Customer Service Centre ' + EXT_ICON + '</a>.</div>'
       +     '<div class="vr-section-header">'

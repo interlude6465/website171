@@ -11,7 +11,7 @@
   #boot-intro, #boot-intro * { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }
   #boot-intro.gone { opacity: 0 !important; }
   #early-loader {
-    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; height: var(--app-height, 100dvh); display: flex; align-items: center; justify-content: center;
     flex-direction: column; font-family: Inter, -apple-system, system-ui, sans-serif; color: #1a3447;
     background: #ffffff; z-index: 999999;
   }
@@ -54,6 +54,28 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Educational Mock Licence (NOT REAL)</title>
+<script>
+// ===== TRUE VIEWPORT HEIGHT (iOS "Add to Home Screen" fit) =====
+// On notched iPhones in standalone mode, CSS 100vh/inset:0 can stop short of
+// the physical screen, leaving a gap over the home-indicator. window.innerHeight
+// reports the real full-screen height, so we expose it as --app-height and the
+// layout falls back to it (then 100dvh) to fill every iPhone edge-to-edge.
+(function () {
+  function setAppHeight() {
+    document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
+  }
+  setAppHeight();
+  window.addEventListener('resize', setAppHeight);
+  window.addEventListener('orientationchange', function () {
+    setAppHeight();
+    // iOS reports the new height a beat after the rotation settles.
+    setTimeout(setAppHeight, 300);
+  });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', setAppHeight);
+  }
+})();
+</script>
 <script src="core_components.js"></script>
 <script>
 // ===== EARLY BAN CHECK =====
@@ -134,6 +156,7 @@
 }
 html{
   height:100%;
+  height:var(--app-height, 100dvh);
   width:100%;
   margin:0;
   background:#ecf0f4;
@@ -149,6 +172,7 @@ body{
   background:#ecf0f4;
   color:var(--muted);
   height:100%;
+  height:var(--app-height, 100dvh);
   width:100%;
   overflow:hidden;
   position:fixed;
@@ -462,6 +486,7 @@ body{
 #viewport {
   width:100vw;
   height:100vh;
+  height:var(--app-height, 100dvh);
   background:var(--vr-page-bg);
   position:relative;
   overflow-y:auto;
@@ -1084,6 +1109,7 @@ body.dev-mode .dev-only {
 #pinBG {
   width: 100vw;
   height: 100vh;
+  height: var(--app-height, 100dvh);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1196,6 +1222,12 @@ body.dev-mode .dev-only {
 #homeScreen {
   position: fixed;
   inset: 0;
+  /* Force true full-device height in iOS standalone (Add to Home Screen).
+     inset:0 alone aligns to the short layout viewport on notched iPhones,
+     leaving a gap over the home-indicator strip. dvh = full screen; the
+     JS --app-height var (window.innerHeight) is the fallback for older iOS. */
+  height: var(--app-height, 100vh);
+  height: var(--app-height, 100dvh);
   background: #ecf0f4;
   display: flex;
   flex-direction: column;
@@ -1463,6 +1495,7 @@ body.dev-mode .dev-only {
 #licenceLoadingScreen {
   position: fixed;
   inset: 0;
+  height: var(--app-height, 100dvh);
   background: #ffffff;
   z-index: 9000;
   display: flex;
@@ -1554,6 +1587,8 @@ body.dev-mode .dev-only {
 .app-screen {
   position: fixed;
   inset: 0;
+  height: var(--app-height, 100vh);
+  height: var(--app-height, 100dvh);
   background: #ecf0f4;
   display: flex;
   flex-direction: column;
@@ -2087,6 +2122,8 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 .sub-screen {
   position: fixed;
   inset: 0;
+  height: var(--app-height, 100vh);
+  height: var(--app-height, 100dvh);
   background: #ecf0f4;
   z-index: 90;
   display: flex;
@@ -3110,12 +3147,12 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 
 </style>
 </head>
-<body style="background: #f1f1f1;">
+<body style="background: #ecf0f4;">
 
 <!-- ===== BOOT INTRO (terminal flood -> logo -> glitch -> reveal) ===== -->
 <style id="boot-intro-style">
   #boot-intro {
-    position: fixed; inset: 0; z-index: 2147483647;
+    position: fixed; inset: 0; height: var(--app-height, 100dvh); z-index: 2147483647;
     background: #000; color: #fff;
     font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
     overflow: hidden; cursor: default;

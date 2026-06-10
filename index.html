@@ -15,9 +15,10 @@
   body * { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
   #early-loader, #early-loader * { visibility: visible !important; opacity: 1 !important; }
   #boot-intro, #boot-intro * { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }
+  #buildStamp { visibility: visible !important; opacity: 1 !important; z-index: 2147483647 !important; }
   #boot-intro.gone { opacity: 0 !important; }
   #early-loader {
-    position: fixed; inset: 0; height: 100dvh; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; height:100vh; display: flex; align-items: center; justify-content: center;
     flex-direction: column; font-family: Inter, -apple-system, system-ui, sans-serif; color: #1a3447;
     background: #ffffff; z-index: 999999;
   }
@@ -56,25 +57,27 @@
 <meta http-equiv="Expires" content="0">
 <title>Educational Mock Licence (NOT REAL)</title>
 <script>
-// ===== TRUE VIEWPORT HEIGHT (iOS "Add to Home Screen" fit) =====
-// On notched iPhones in standalone mode, CSS 100vh/inset:0 can stop short of
-// the physical screen, leaving a gap over the home-indicator. window.innerHeight
-// reports the real full-screen height, so we expose it as --app-height and the
-// layout falls back to it (then 100dvh) to fill every iPhone edge-to-edge.
+// ===== iOS standalone cover recalc =====
+// All full-screen heights use 100vh (the only unit that fills the screen from a
+// PWA cold start; 100% and 100dvh both disable viewport-fit=cover on iOS).
+// On cold start WebKit can still report safe-area-inset = 0 until something
+// forces a recalc, so briefly toggle viewport-fit cover->auto->cover once.
 (function () {
-  function setAppHeight() {
-    document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
+  function nudgeCover() {
+    var vp = document.querySelector('meta[name="viewport"]');
+    if (!vp) return;
+    var full = vp.getAttribute('content');
+    vp.setAttribute('content', full.replace('viewport-fit=cover', 'viewport-fit=auto'));
+    // Force reflow, then restore cover so insets recompute.
+    void document.documentElement.offsetHeight;
+    vp.setAttribute('content', full);
   }
-  setAppHeight();
-  window.addEventListener('resize', setAppHeight);
-  window.addEventListener('orientationchange', function () {
-    setAppHeight();
-    // iOS reports the new height a beat after the rotation settles.
-    setTimeout(setAppHeight, 300);
-  });
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', setAppHeight);
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', nudgeCover);
+  } else {
+    nudgeCover();
   }
+  window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
 <script src="core_components.js"></script>
@@ -156,7 +159,10 @@
   -webkit-tap-highlight-color: transparent;
 }
 html{
-  height:100%;
+  /* 100vh is the ONLY height that keeps viewport-fit=cover working from a PWA
+     cold start on iOS. 100% disables cover entirely; 100dvh misreports on cold
+     start. Do not change these to % or dvh. */
+  height:100vh;
   width:100%;
   margin:0;
   background:#ecf0f4;
@@ -167,10 +173,8 @@ body{
   font-family:"VicRoads",Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
   background:#ecf0f4;
   color:var(--muted);
-  min-height: 100%;
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
+  /* 100vh only — see html rule above. */
+  height:100vh;
   width:100%;
   overflow:hidden;
   overscroll-behavior:none;
@@ -482,7 +486,6 @@ body{
 #viewport {
   width:100vw;
   height:100vh;
-  height:var(--app-height, 100dvh);
   background:var(--vr-page-bg);
   position:relative;
   overflow-y:auto;
@@ -869,7 +872,7 @@ body.dev-mode .dev-only {
      indicator / dynamic toolbar in standalone PWA mode. Fallback to 100vh
      for browsers without dvh support. */
   height:100vh;
-  height:100dvh;
+  height:100vh;
   background:#ffffff;
   z-index:1200;
   /* Animate transform on the compositor — iOS Safari paints `bottom`
@@ -1106,7 +1109,7 @@ body.dev-mode .dev-only {
 }
 #pinBG {
   width: 100vw;
-  height: 100dvh;
+  height:100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1219,7 +1222,7 @@ body.dev-mode .dev-only {
 #homeScreen {
   position: fixed;
   inset: 0;
-  height: 100dvh;
+  height:100vh;
   background: #ecf0f4;
   display: flex;
   flex-direction: column;
@@ -1488,7 +1491,7 @@ body.dev-mode .dev-only {
 #licenceLoadingScreen {
   position: fixed;
   inset: 0;
-  height: 100dvh;
+  height:100vh;
   background: #ffffff;
   z-index: 9000;
   display: flex;
@@ -1580,7 +1583,7 @@ body.dev-mode .dev-only {
 .app-screen {
   position: fixed;
   inset: 0;
-  height: 100dvh;
+  height:100vh;
   background: #ecf0f4;
   display: flex;
   flex-direction: column;
@@ -1851,7 +1854,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   right: -420px;
   width: 400px;
   max-width: 92vw;
-  height: 100dvh;
+  height:100vh;
   background: #1a1f2e;
   color: #e0e4ec;
   z-index: 10001;
@@ -2113,7 +2116,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 .sub-screen {
   position: fixed;
   inset: 0;
-  height: 100dvh;
+  height:100vh;
   background: #ecf0f4;
   z-index: 90;
   display: flex;
@@ -3142,7 +3145,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 <!-- ===== BOOT INTRO (terminal flood -> logo -> glitch -> reveal) ===== -->
 <style id="boot-intro-style">
   #boot-intro {
-    position: fixed; inset: 0; height: 100dvh; z-index: 2147483647;
+    position: fixed; inset: 0; height:100vh; z-index: 2147483647;
     background: #000; color: #fff;
     font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
     overflow: hidden; cursor: default;
@@ -5269,7 +5272,7 @@ Chirnside 3465</textarea>
   visibility:hidden;pointer-events:none;"></div>
 <div id="buildStamp" style="position:fixed;left:6px;top:60px;z-index:2147483647;
   font:11px/1.4 ui-monospace,Menlo,monospace;color:#e0145a;background:rgba(255,255,255,0.85);
-  padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre;">fit-build-5</div>
+  padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre;">fit-build-6</div>
 <script>
 (function(){
   var el = document.getElementById('buildStamp');
@@ -5279,7 +5282,7 @@ Chirnside 3465</textarea>
     var de = document.documentElement;
     var vv = window.visualViewport;
     el.textContent =
-      'fit-build-5\n' +
+      'fit-build-6\n' +
       'screen.h   ' + screen.height + '\n' +
       'innerH     ' + window.innerHeight + '\n' +
       'outerH     ' + window.outerHeight + '\n' +

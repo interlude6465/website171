@@ -5,7 +5,7 @@
 <html lang="en">
 <head>
 <style id="anti-leak">
-  html { background: #ffffff !important; }
+  html { background: #ecf0f4 !important; }
   body * { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
   #early-loader, #early-loader * { visibility: visible !important; opacity: 1 !important; }
   #boot-intro, #boot-intro * { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }
@@ -135,6 +135,8 @@
 html{
   height:100%;
   width:100%;
+  margin:0;
+  background:#ecf0f4;
   overflow:hidden;
   position:fixed;
   top:0;
@@ -143,8 +145,8 @@ html{
 }
 body{
   margin:0;
-  font-family:'VicRoads',Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
-  background:var(--vr-page-bg);
+  font-family:"VicRoads",Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  background:#ecf0f4;
   color:var(--muted);
   height:100%;
   width:100%;
@@ -1205,7 +1207,7 @@ body.dev-mode .dev-only {
 
 .home-header {
   padding: 16px 22px 14px;
-  padding-top: calc(16px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
   flex-shrink: 0;
 }
 .home-greeting {
@@ -1337,10 +1339,14 @@ body.dev-mode .dev-only {
   display: flex;
   background: #ecf0f4;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
-  padding: 6px 0 14px;
+  padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
   align-items: stretch;
   flex-shrink: 0;
-  position: relative;          /* anchor for the sliding pill */
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
 }
 /* Single sliding pill indicator — positioned/animated by JS in
    updateBottomTabPill(). Glides between tabs with eased motion. */
@@ -2095,7 +2101,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 
 .sub-screen-header {
   padding: 16px 20px 12px;
-  padding-top: calc(16px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
   display: flex;
   align-items: center;
   gap: 14px;

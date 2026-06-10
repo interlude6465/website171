@@ -11,7 +11,7 @@
   #boot-intro, #boot-intro * { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }
   #boot-intro.gone { opacity: 0 !important; }
   #early-loader {
-    position: fixed; inset: 0; height: var(--app-height, 100dvh); display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; height: 100dvh; display: flex; align-items: center; justify-content: center;
     flex-direction: column; font-family: Inter, -apple-system, system-ui, sans-serif; color: #1a3447;
     background: #ffffff; z-index: 999999;
   }
@@ -156,28 +156,22 @@
 }
 html{
   height:100%;
-  height:var(--app-height, 100dvh);
   width:100%;
   margin:0;
   background:#ecf0f4;
   overflow:hidden;
-  position:fixed;
-  top:0;
-  left:0;
-  overscroll-behavior:none;
 }
 body{
   margin:0;
   font-family:"VicRoads",Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
   background:#ecf0f4;
   color:var(--muted);
-  height:100%;
-  height:var(--app-height, 100dvh);
+  min-height: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
   width:100%;
   overflow:hidden;
-  position:fixed;
-  top:0;
-  left:0;
   overscroll-behavior:none;
   -webkit-overflow-scrolling: touch;
   -webkit-user-select: none;
@@ -492,9 +486,11 @@ body{
   position:relative;
   overflow-y:auto;
   overflow-x:hidden;
+  padding-top: calc(48px + env(safe-area-inset-top));
   padding-bottom: calc(60px + env(safe-area-inset-bottom));
   display: none;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 #viewport.unlocked {
   display: block;
@@ -1079,7 +1075,7 @@ body.dev-mode .dev-only {
   font-size: 13px;
   color: var(--vr-label);
   text-align: center;
-  margin-top: calc(48px + env(safe-area-inset-top));
+  margin-top: 0;
   margin-bottom: 0;
   padding: 12px 0 10px 0;
   background-color: var(--vr-page-bg);
@@ -1109,8 +1105,7 @@ body.dev-mode .dev-only {
 }
 #pinBG {
   width: 100vw;
-  height: 100vh;
-  height: var(--app-height, 100dvh);
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1223,12 +1218,7 @@ body.dev-mode .dev-only {
 #homeScreen {
   position: fixed;
   inset: 0;
-  /* Force true full-device height in iOS standalone (Add to Home Screen).
-     inset:0 alone aligns to the short layout viewport on notched iPhones,
-     leaving a gap over the home-indicator strip. dvh = full screen; the
-     JS --app-height var (window.innerHeight) is the fallback for older iOS. */
-  height: var(--app-height, 100vh);
-  height: var(--app-height, 100dvh);
+  height: 100dvh;
   background: #ecf0f4;
   display: flex;
   flex-direction: column;
@@ -1372,10 +1362,11 @@ body.dev-mode .dev-only {
   display: flex;
   background: #ecf0f4;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
-  padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+  padding: 6px 0 env(safe-area-inset-bottom);
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
   align-items: stretch;
   flex-shrink: 0;
-  position: absolute;
+  position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
@@ -1496,7 +1487,7 @@ body.dev-mode .dev-only {
 #licenceLoadingScreen {
   position: fixed;
   inset: 0;
-  height: var(--app-height, 100dvh);
+  height: 100dvh;
   background: #ffffff;
   z-index: 9000;
   display: flex;
@@ -1588,8 +1579,7 @@ body.dev-mode .dev-only {
 .app-screen {
   position: fixed;
   inset: 0;
-  height: var(--app-height, 100vh);
-  height: var(--app-height, 100dvh);
+  height: 100dvh;
   background: #ecf0f4;
   display: flex;
   flex-direction: column;
@@ -1860,7 +1850,6 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   right: -420px;
   width: 400px;
   max-width: 92vw;
-  height: 100vh;
   height: 100dvh;
   background: #1a1f2e;
   color: #e0e4ec;
@@ -2123,8 +2112,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 .sub-screen {
   position: fixed;
   inset: 0;
-  height: var(--app-height, 100vh);
-  height: var(--app-height, 100dvh);
+  height: 100dvh;
   background: #ecf0f4;
   z-index: 90;
   display: flex;
@@ -3153,7 +3141,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 <!-- ===== BOOT INTRO (terminal flood -> logo -> glitch -> reveal) ===== -->
 <style id="boot-intro-style">
   #boot-intro {
-    position: fixed; inset: 0; height: var(--app-height, 100dvh); z-index: 2147483647;
+    position: fixed; inset: 0; height: 100dvh; z-index: 2147483647;
     background: #000; color: #fff;
     font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
     overflow: hidden; cursor: default;

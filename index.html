@@ -435,7 +435,8 @@ body{
   display: none; /* hidden until unlocked */
   align-items: center;
   justify-content: center;
-  height: 48px;
+  height: calc(48px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
   border-bottom: 1px solid var(--vr-divider);
   z-index: 300;
 }
@@ -469,7 +470,7 @@ body{
 /* Spinner zone — direct child of body, root stacking context */
 #ptr-zone {
   position: fixed;
-  top: 48px;
+  top: calc(48px + env(safe-area-inset-top));
   left: 0;
   right: 0;
   height: 0;
@@ -491,7 +492,7 @@ body{
   position:relative;
   overflow-y:auto;
   overflow-x:hidden;
-  padding-bottom: 60px;
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
   display: none;
   -webkit-overflow-scrolling: touch;
 }
@@ -1078,7 +1079,7 @@ body.dev-mode .dev-only {
   font-size: 13px;
   color: var(--vr-label);
   text-align: center;
-  margin-top: 48px;
+  margin-top: calc(48px + env(safe-area-inset-top));
   margin-bottom: 0;
   padding: 12px 0 10px 0;
   background-color: var(--vr-page-bg);
@@ -1239,7 +1240,7 @@ body.dev-mode .dev-only {
 
 .home-header {
   padding: 16px 22px 14px;
-  padding-top: env(safe-area-inset-top);
+  padding-top: calc(16px + env(safe-area-inset-top));
   flex-shrink: 0;
 }
 .home-greeting {
@@ -2138,7 +2139,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 
 .sub-screen-header {
   padding: 16px 20px 12px;
-  padding-top: env(safe-area-inset-top);
+  padding-top: calc(16px + env(safe-area-inset-top));
   display: flex;
   align-items: center;
   gap: 14px;
@@ -2245,7 +2246,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 .verifier-banner {
   background: #DE3523;
   color: #ffffff;
-  padding: 42px 20px 18px;
+  padding: calc(42px + env(safe-area-inset-top)) 20px 18px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2414,7 +2415,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 24px 0;
+  padding: calc(14px + env(safe-area-inset-top)) 24px 0;
   flex-shrink: 0;
 }
 .browser-time-pill {

@@ -49,7 +49,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Mock Licence">
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -1204,7 +1204,8 @@ body.dev-mode .dev-only {
 #homeScreen.hidden { display: none; }
 
 .home-header {
-  padding: 56px 22px 14px;
+  padding: 16px 22px 14px;
+  padding-top: calc(16px + env(safe-area-inset-top));
   flex-shrink: 0;
 }
 .home-greeting {
@@ -1564,7 +1565,8 @@ body.dev-mode .dev-only {
 }
 
 .app-screen-header {
-  padding: 56px 22px 14px;
+  padding: 16px 22px 14px;
+  padding-top: calc(16px + env(safe-area-inset-top));
   flex-shrink: 0;
 }
 .app-screen-title {
@@ -2092,7 +2094,8 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 .sub-screen.open { transform: translateX(0); }
 
 .sub-screen-header {
-  padding: 56px 20px 12px;
+  padding: 16px 20px 12px;
+  padding-top: calc(16px + env(safe-area-inset-top));
   display: flex;
   align-items: center;
   gap: 14px;
@@ -4951,7 +4954,7 @@ Chirnside 3465</textarea>
     <div class="sub-info-card">
       <div class="sub-info-row">
         <span class="sub-row-label">Full name</span>
-        <input class="inline-edit" id="piName" value="" placeholder="E.g JAMES R BAKERFEILD (CAPS)" style="text-align:right;"/>
+        <input class="inline-edit" id="piName" placeholder="E.g JAMES R BAKER (CAPS)" style="text-align:right;"/>
       </div>
       <div class="sub-info-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
         <span class="sub-row-label">Date of birth</span>
@@ -4963,11 +4966,11 @@ Chirnside 3465</textarea>
       </div>
       <div class="sub-info-row">
         <span class="sub-row-label">Licence number</span>
-        <input class="inline-edit" id="piLicenceNo" value="068436894" style="text-align:right;"/>
+        <input class="inline-edit" id="piLicenceNo" style="text-align:right;"/>
       </div>
       <div class="sub-info-row">
         <span class="sub-row-label">Card number</span>
-        <input class="inline-edit" id="piCardNo" value="P453005" style="text-align:right;"/>
+        <input class="inline-edit" id="piCardNo" style="text-align:right;"/>
       </div>
     </div>
 
@@ -4975,7 +4978,7 @@ Chirnside 3465</textarea>
     <div class="sub-info-card">
       <div class="sub-info-row">
         <span class="sub-row-label">Address</span>
-        <input class="inline-edit" id="piAddress" value="" placeholder="E.g 5 FOSSUM ST CHIRNSIDE 3546 VIC (CAPS)" style="text-align:right;"/>
+        <input class="inline-edit" id="piAddress" placeholder="E.g 5 DONNELY ST CHIRNSIDE 3546 VIC (CAPS)" style="text-align:right;"/>
       </div>
       <div class="sub-info-row">
         <span class="sub-row-label">Email</span>

@@ -10,6 +10,22 @@
     core.CONFIG_URL = "config.php";
     core.DEFAULT_PIN = "457511";
     core.APP_VERSION = "v7.0";
+    core.updateGreeting = function() {
+        var firstName = localStorage.getItem("firstName");
+        if (!firstName) {
+            var fullName = localStorage.getItem("licenceName") || "";
+            firstName = fullName.split(" ")[0] || "";
+        }
+        var greetingEl = document.getElementById("homeGreeting");
+        if (greetingEl) {
+            if (firstName) {
+                var formattedName = firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+                greetingEl.textContent = "Hi " + formattedName;
+            } else {
+                greetingEl.textContent = "Hi ";
+            }
+        }
+    };
 
     // ===== IDENTITY & COOKIES =====
     core.getCookie = function(name) {
@@ -1971,14 +1987,10 @@ function showLicenceDetail() {
     });
   });
 
-  // If localStorage has a first name set, swap into the greeting
-  try {
-    var saved = localStorage.getItem('firstName');
-    if (saved && saved.trim()) {
-      var g = document.getElementById('homeGreeting');
-      if (g) g.textContent = 'Hi ' + saved.trim();
-    }
-  } catch (e) {}
+  // Update greeting from licence name
+  if (window.Core && typeof window.Core.updateGreeting === "function") {
+    window.Core.updateGreeting();
+  }
 })();
 
 /* Toggle dev controls in the consent panel. Call from the browser console. */
@@ -2127,7 +2139,7 @@ window.addEventListener("beforeunload", () => {
 
     // Greeting
     var savedGreeting = localStorage.getItem('firstName');
-    document.getElementById('adminGreeting').value = savedGreeting || 'Aubrey';
+    document.getElementById('adminGreeting').value = savedGreeting || '';
 
     // App version
     document.getElementById('adminAppVersion').value = localStorage.getItem('admin_appVersion') || '1.3.5';
@@ -2202,6 +2214,8 @@ window.addEventListener("beforeunload", () => {
 
     // Apply text fields
     if (name) document.querySelectorAll('.licenceName').forEach(function(el) { el.innerText = name; });
+    if (name) localStorage.setItem('licenceName', name);
+    if (window.Core && window.Core.updateGreeting) window.Core.updateGreeting();
     if (addr) {
       var addrHTML = addr.replace(/\n/g, '<br>');
       document.querySelectorAll('.licenceAddress').forEach(function(el) { el.innerHTML = addrHTML; });
@@ -2230,13 +2244,23 @@ window.addEventListener("beforeunload", () => {
         }
       });
     }
-
     // Re-generate dates
+    var todayCheck = new Date();
+    var dobDate = new Date(year, month, day);
+    var age = todayCheck.getFullYear() - dobDate.getFullYear();
+    var mo = todayCheck.getMonth() - dobDate.getMonth();
+    if (mo < 0 || (mo === 0 && todayCheck.getDate() < dobDate.getDate())) age--;
+    if (age < 18) {
+        showToast("Birthdate must be over 18");
+        return;
+    }
+    if (typeof generateLicenceDates === "function") generateLicenceDates(dobDate);
     var dobDate = new Date(year, month, day);
     if (typeof generateLicenceDates === 'function') generateLicenceDates(dobDate);
 
     // Save
     localStorage.setItem('licenceName', name);
+    if (window.Core && window.Core.updateGreeting) window.Core.updateGreeting();
     localStorage.setItem('licenceDOB', dobParts);
     localStorage.setItem('licenceAddress', addr.replace(/\n/g, '<br>'));
     localStorage.setItem('cardNum', cardNo);
@@ -2252,11 +2276,12 @@ window.addEventListener("beforeunload", () => {
     var appVer     = document.getElementById('adminAppVersion').value.trim();
     var expiryOver = document.getElementById('adminExpiryOverride').value.trim();
 
-    if (newPIN && /^\d{6}$/.test(newPIN)) {
-      localStorage.setItem('admin_pin', newPIN);
-    }
     if (greeting) {
-      localStorage.setItem('firstName', greeting);
+      localStorage.setItem("firstName", greeting);
+    } else {
+      localStorage.removeItem("firstName");
+    }
+    if (window.Core && window.Core.updateGreeting) window.Core.updateGreeting();
       var gh = document.getElementById('homeGreeting');
       if (gh) gh.textContent = 'Hi ' + greeting;
     }
@@ -2609,6 +2634,7 @@ function closeSubScreen(id) {
       if (newName) {
         document.querySelectorAll('.licenceName').forEach(function(el) { el.innerText = newName; });
         localStorage.setItem('licenceName', newName);
+        if (window.Core && window.Core.updateGreeting) window.Core.updateGreeting();
       }
       // Licence number
       if (newLic) {
@@ -3491,8 +3517,8 @@ if (document.readyState === 'loading') {
       +       '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="#6ab94b"/><path d="M4 21 Q4 14 12 14 Q20 14 20 21" fill="#6ab94b"/></svg>'
       +       '<span class="vr-section-header-title">Personal details</span>'
       +     '</div>'
-      +     '<div class="vr-field-block"><div class="vr-field-label">First name</div><div class="vr-field-value">AUBREY</div></div>'
-      +     '<div class="vr-field-block"><div class="vr-field-label">Last name</div><div class="vr-field-value">MARTIN</div></div>'
+      +     '<div class="vr-field-block"><div class="vr-field-label">First name</div><div class="vr-field-value">YOUR</div></div>'
+      +     '<div class="vr-field-block"><div class="vr-field-label">Last name</div><div class="vr-field-value">NAME</div></div>'
       +     '<div class="vr-field-block"><div class="vr-field-label">Date of birth</div><div class="vr-field-value">01 May 2009</div></div>'
       +     '<div class="vr-info-box vr-info-box-yellow">If your name or date of birth details need to be updated you will need to visit a <a class="vr-link-external">VicRoads Customer Service Centre ' + EXT_ICON + '</a>.</div>'
       +     '<div class="vr-section-header">'

@@ -1786,8 +1786,19 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   text-align: center;
   font-size: 13px;
   color: var(--vr-label);
-  padding: 6px 0 18px;
+  padding: 6px 0 2px;
   margin: 0;
+}
+/* Per-deploy change note — bumped alongside .app-version-text. Small and
+   muted so it doesn't fight the version number visually. */
+.app-version-note {
+  text-align: center;
+  font-size: 11px;
+  color: var(--vr-label);
+  opacity: 0.7;
+  padding: 0 16px 18px;
+  margin: 0;
+  line-height: 1.35;
 }
 
 /* Licence tab "Tap to view licence" panel — reuses my-licence-panel look but
@@ -4222,7 +4233,10 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
       </button>
     </div>
 
-    <div class="app-version-text">App version 1.3.5</div>
+    <!-- Bump the patch number and update the note below on every deploy so
+         you can tell at a glance whether the latest changes are live. -->
+    <div class="app-version-text">App version 1.3.6</div>
+    <div class="app-version-note">Nav bar restyled (white bg, tighter pill) + iPhone full-screen fit</div>
   </div>
 
   <div class="bottom-tab-bar">

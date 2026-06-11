@@ -15,7 +15,6 @@
   body * { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
   #early-loader, #early-loader * { visibility: visible !important; opacity: 1 !important; }
   #boot-intro, #boot-intro * { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }
-  #buildStamp { visibility: visible !important; opacity: 1 !important; z-index: 2147483647 !important; }
   #boot-intro.gone { opacity: 0 !important; }
   #early-loader {
     position: fixed; inset: 0; height:100vh; display: flex; align-items: center; justify-content: center;
@@ -1364,7 +1363,11 @@ body.dev-mode .dev-only {
 /* Bottom tab bar */
 .bottom-tab-bar {
   display: flex;
-  background: #ecf0f4;
+  /* Reference uses a flat white bar (matches sample/IMG_1801..1805). The page
+     bg behind it is the same blue-grey #ecf0f4, but the bar itself is white
+     so the home-indicator zone reads clean instead of letting the page tint
+     bleed into the safe-area padding. */
+  background: #ffffff;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   padding: 6px 0 env(safe-area-inset-bottom);
   padding-bottom: max(6px, env(safe-area-inset-bottom));
@@ -1382,7 +1385,8 @@ body.dev-mode .dev-only {
   position: absolute;
   top: 13px;                   /* re-centred on the icon (was 8px) */
   height: 38px;                /* flatter, snug pill to match official (was 48px) */
-  background: rgba(217, 224, 232, 0.85);
+  /* Solid light-grey (matches sample IMG_1801..1805 pill against the white bar) */
+  background: #e9ecef;
   border-radius: 999px;
   pointer-events: none;
   opacity: 0;                  /* hidden until JS positions it */
@@ -5262,42 +5266,6 @@ Chirnside 3465</textarea>
     bind();
   }
   window.addEventListener('load', updateGreeting);
-})();
-</script>
-
-<!-- TEMP DIAGNOSTIC HUD — measures the real viewport. Remove later. -->
-<div id="diagProbe" style="position:fixed;left:0;top:0;width:0;height:0;
-  padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);
-  padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);
-  visibility:hidden;pointer-events:none;"></div>
-<div id="buildStamp" style="position:fixed;left:6px;top:60px;z-index:2147483647;
-  font:11px/1.4 ui-monospace,Menlo,monospace;color:#e0145a;background:rgba(255,255,255,0.85);
-  padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre;">fit-build-6</div>
-<script>
-(function(){
-  var el = document.getElementById('buildStamp');
-  var probe = document.getElementById('diagProbe');
-  function read(){
-    var cs = getComputedStyle(probe);
-    var de = document.documentElement;
-    var vv = window.visualViewport;
-    el.textContent =
-      'fit-build-6\n' +
-      'screen.h   ' + screen.height + '\n' +
-      'innerH     ' + window.innerHeight + '\n' +
-      'outerH     ' + window.outerHeight + '\n' +
-      'docElem.h  ' + de.clientHeight + '\n' +
-      'visualVP.h ' + (vv ? Math.round(vv.height) : 'n/a') + '\n' +
-      'dpr        ' + window.devicePixelRatio + '\n' +
-      'safe-top   ' + cs.paddingTop + '\n' +
-      'safe-bot   ' + cs.paddingBottom + '\n' +
-      'standalone ' + (window.navigator.standalone === true) + '\n' +
-      'dispMode   ' + (window.matchMedia('(display-mode: standalone)').matches ? 'standalone' : 'browser');
-  }
-  read();
-  window.addEventListener('resize', read);
-  window.addEventListener('orientationchange', function(){ setTimeout(read, 350); });
-  if (window.visualViewport) window.visualViewport.addEventListener('resize', read);
 })();
 </script>
 

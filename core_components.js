@@ -1932,9 +1932,10 @@ function showLicenceDetail() {
     var barRect = bar.getBoundingClientRect();
     var iconRect = iconWrap.getBoundingClientRect();
     if (!iconRect.width) return;
-    // Stadium pill — extend 16px past each side of the icon for the APK-style
-    // wide rounded-rect look (matches IMG_1732 reference).
-    var PILL_PAD = 16;
+    // Stadium pill — extend past each side of the icon. Tightened to 12px to
+    // match the snug-around-icon pill in sample/IMG_1801..1805 (was 16px which
+    // produced a visibly wider pill than the reference).
+    var PILL_PAD = 12;
     pill.style.left = (iconRect.left - barRect.left - PILL_PAD) + 'px';
     pill.style.width = (iconRect.width + PILL_PAD * 2) + 'px';
     pill.classList.add('ready');

@@ -1932,10 +1932,11 @@ function showLicenceDetail() {
     var barRect = bar.getBoundingClientRect();
     var iconRect = iconWrap.getBoundingClientRect();
     if (!iconRect.width) return;
-    // Stadium pill — extend past each side of the icon. Tightened to 12px to
-    // match the snug-around-icon pill in sample/IMG_1801..1805 (was 16px which
-    // produced a visibly wider pill than the reference).
-    var PILL_PAD = 12;
+    // Stadium pill — extend past each side of the icon. 8px to match the
+    // snug-around-icon pill in sample/IMG_1816 (was 12 which still read
+    // slightly wider than the reference; reference pill is ~64px against the
+    // 48px icon wrap).
+    var PILL_PAD = 8;
     pill.style.left = (iconRect.left - barRect.left - PILL_PAD) + 'px';
     pill.style.width = (iconRect.width + PILL_PAD * 2) + 'px';
     pill.classList.add('ready');

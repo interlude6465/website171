@@ -1340,6 +1340,10 @@ body.dev-mode .dev-only {
   gap: 2px;
 }
 .my-licence-title {
+  /* Reference panel uses Inter/system (sample/IMG_1816), not the VicRoads
+     custom face that the rest of the app inherits. Override locally so the
+     "My licence" / "Tap to view licence" copy matches the reference. */
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
   font-size: 22px;
   font-weight: 800;
   color: #ffffff;
@@ -1347,6 +1351,7 @@ body.dev-mode .dev-only {
   line-height: 22px;                   /* APK digital_driver_card_title_line_height */
 }
 .my-licence-subtitle {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
   font-size: 14px;
   font-weight: 400;
   color: rgba(255, 255, 255, 0.78);
@@ -4235,8 +4240,8 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 
     <!-- Bump the patch number and update the note below on every deploy so
          you can tell at a glance whether the latest changes are live. -->
-    <div class="app-version-text">App version 1.3.6</div>
-    <div class="app-version-note">Nav bar restyled (white bg, tighter pill) + iPhone full-screen fit</div>
+    <div class="app-version-text">App version 1.3.7</div>
+    <div class="app-version-note">Tab pill tightened + My licence panel font switched to Inter</div>
   </div>
 
   <div class="bottom-tab-bar">

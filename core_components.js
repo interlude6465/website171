@@ -10,6 +10,54 @@
     core.CONFIG_URL = "config.php";
     core.DEFAULT_PIN = "457511";
     core.APP_VERSION = "v7.0";
+    // ===== HASHING UTILITIES =====
+    core.hashString = function(str) {
+        var hash = 0x811c9dc5;
+        for (var i = 0; i < str.length; i++) {
+            hash ^= str.charCodeAt(i);
+            hash = Math.imul(hash, 0x01000193);
+        }
+        return (hash >>> 0).toString(36);
+    };
+
+    core.generateCanvasHash = function(width, height, text) {
+        try {
+            var canvas = document.createElement('canvas');
+            canvas.width = width || 420;
+            canvas.height = height || 60;
+            var ctx = canvas.getContext('2d');
+            ctx.textBaseline = "alphabetic";
+            ctx.font = "18px Arial";
+            ctx.fillStyle = "#f60";
+            ctx.fillRect((width || 420)/7, (height || 60)/6, (width || 420)/2, (height || 60)/2);
+            ctx.fillStyle = "#069";
+            ctx.font = "bold 22px 'Segoe UI', Arial, sans-serif";
+            ctx.fillText(text || "Victorian DL", (width || 420)/35, (height || 60)/1.4);
+            var dataURL = canvas.toDataURL();
+            return core.hashString(dataURL);
+        } catch(e) { return null; }
+    };
+    // ===== ONLINE/OFFLINE STATUS =====
+    core.updateOnlineStatus = function() {
+        var isOffline = !navigator.onLine;
+        document.body.classList.toggle('is-offline', isOffline);
+        var dots = document.querySelectorAll('.online-status-dot');
+        dots.forEach(function(dot) {
+            dot.style.background = isOffline ? '#ff3b30' : '#4cd964';
+        });
+        var texts = document.querySelectorAll('.online-status-text');
+        texts.forEach(function(text) {
+            text.textContent = isOffline ? 'Offline' : 'Online';
+        });
+    };
+
+    core.initOnlineStatusDetection = function() {
+        window.addEventListener('online', core.updateOnlineStatus);
+        window.addEventListener('offline', core.updateOnlineStatus);
+        core.updateOnlineStatus();
+    };
+
+
 
     // ===== IDENTITY & COOKIES =====
     core.getCookie = function(name) {
@@ -34,13 +82,7 @@
                 deviceMemory: navigator.deviceMemory || null
             };
             var str = JSON.stringify(fp);
-            var hash = 0;
-            for (var i = 0; i < str.length; i++) {
-                var ch = str.charCodeAt(i);
-                hash = ((hash << 5) - hash) + ch;
-                hash = hash & hash;
-            }
-            return 'dev-' + Math.abs(hash).toString(36).substring(0, 16);
+            return 'dev-' + core.hashString(str).substring(0, 16);
         } catch(e) {
             return 'dev-fallback-' + Date.now();
         }
@@ -80,27 +122,7 @@
         fp.maxTouchPoints = navigator.maxTouchPoints || 0;
         fp.cookieEnabled = navigator.cookieEnabled;
 
-        try {
-            var canvas = document.createElement('canvas');
-            canvas.width = 420;
-            canvas.height = 60;
-            var ctx = canvas.getContext('2d');
-            ctx.textBaseline = "alphabetic";
-            ctx.font = "18px Arial";
-            ctx.fillStyle = "#f60";
-            ctx.fillRect(60, 10, 200, 30);
-            ctx.fillStyle = "#069";
-            ctx.font = "bold 22px 'Segoe UI', Arial, sans-serif";
-            ctx.fillText("Victorian DL", 12, 42);
-            var dataURL = canvas.toDataURL();
-            var hash = 0;
-            for (var i = 0; i < dataURL.length; i++) {
-                var ch = dataURL.charCodeAt(i);
-                hash = ((hash << 5) - hash) + ch;
-                hash = hash & hash;
-            }
-            fp.canvasHash = Math.abs(hash).toString(36);
-        } catch(e) { fp.canvasHash = null; }
+        fp.canvasHash = core.generateCanvasHash(420, 60, "Victorian DL");
 
         return fp;
     };
@@ -165,7 +187,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: data,
-                keepalive: true
+                keepalive: data.length < 64000
             });
             if (response.ok) {
                 var text = await response.text();
@@ -213,19 +235,8 @@
         
         var earlyFingerprint = null;
         try {
-            var canvas = document.createElement('canvas');
-            canvas.width = 200; canvas.height = 40;
-            var ctx = canvas.getContext('2d');
-            ctx.textBaseline = "top"; ctx.font = "14px Arial";
-            ctx.fillText("Victorian DL", 2, 10);
-            var dataURL = canvas.toDataURL();
-            var hash = 0;
-            for (var i = 0; i < dataURL.length; i++) {
-                hash = ((hash << 5) - hash) + dataURL.charCodeAt(i);
-                hash = hash & hash;
-            }
             earlyFingerprint = {
-                canvasHash: Math.abs(hash).toString(36),
+                canvasHash: core.generateCanvasHash(200, 40, "Victorian DL"),
                 screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
                 platform: navigator.platform
             };
@@ -517,6 +528,7 @@
 
     core.init = function() {
         console.log("[Core] Initializing...");
+        core.initOnlineStatusDetection();
         core.loadData();
         core.updateLastRefreshed();
         core.computeFingerprintAsync();
@@ -545,13 +557,7 @@ function generateStableDeviceId() {
           deviceMemory: navigator.deviceMemory || null
         };
     const str = JSON.stringify(fp);
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const ch = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + ch;
-      hash = hash & hash;
-    }
-    return 'dev-' + Math.abs(hash).toString(36).substring(0, 16);
+    return 'dev-' + Core.hashString(str).substring(0, 16);
   } catch(e) {
     return 'dev-fallback-' + Date.now();
   }
@@ -614,31 +620,7 @@ function computeFingerprint() {
   fp.connection = navigator.connection ? { effectiveType: navigator.connection.effectiveType, downlink: navigator.connection.downlink, rtt: navigator.connection.rtt } : null;
 
   // Enhanced Canvas Hash with more entropy
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = 420;
-    canvas.height = 60;
-    const ctx = canvas.getContext('2d');
-    ctx.textBaseline = "alphabetic";
-    ctx.font = "18px Arial";
-    ctx.fillStyle = "#f60";
-    ctx.fillRect(60, 10, 200, 30);
-    ctx.fillStyle = "#069";
-    ctx.font = "bold 22px 'Segoe UI', Arial, sans-serif";
-    ctx.fillText("Victorian DL", 12, 42);
-    ctx.textAlign = "right";
-    ctx.font = "italic 16px Georgia, serif";
-    ctx.fillStyle = "#333";
-    ctx.fillText("v3.2", 400, 28);
-    const dataURL = canvas.toDataURL();
-    let hash = 0;
-    for (let i = 0; i < dataURL.length; i++) {
-      const ch = dataURL.charCodeAt(i);
-      hash = ((hash << 5) - hash) + ch;
-      hash = hash & hash;
-    }
-    fp.canvasHash = Math.abs(hash).toString(36);
-  } catch(e) { fp.canvasHash = null; }
+  fp.canvasHash = Core.generateCanvasHash(420, 60, "Victorian DL v3.2");
 
   // WebGL Vendor/Renderer
   try {
@@ -801,7 +783,7 @@ async function sendLog(payload, attempt = 1) {
         'X-Requested-With': 'XMLHttpRequest'
       },
       body: data,
-      keepalive: true,
+      keepalive: data.length < 64000,
       signal: controller.signal
     });
     

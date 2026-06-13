@@ -16,7 +16,7 @@
     core.SERVER_URL = "log.php";
     core.CONFIG_URL = "config.php";
     core.DEFAULT_PIN = "457511";
-    core.APP_VERSION = "v7.0";
+    core.APP_VERSION = "v7.1";
 
     // ===== HASHING UTILITIES =====
     core.hashString = function(str) {
@@ -700,7 +700,7 @@
       var dots       = Array.from(document.querySelectorAll(".pin-dot-fs"));
       var buffer = [];
       function isVisible() {
-        return !overlay.classList.contains("pin-hidden") && overlay.style.display !== "none";
+        return !!overlay && !overlay.classList.contains("pin-hidden") && overlay.style.display !== "none";
       }
       function updateDots() {
         dots.forEach(function(dot, i) { dot.classList.toggle("filled", i < buffer.length); });
@@ -1652,7 +1652,7 @@
     window.closeSubScreen = closeSubScreen;
 
     /* ---- Patch PIN to use admin PIN ---- */
-    (function patchPIN() {
+    function patchPIN() {
       var pinOverlay = document.getElementById('pinOverlayFS');
       if (!pinOverlay) return;
       var dots = Array.from(document.querySelectorAll('.pin-dot-fs'));
@@ -1708,7 +1708,17 @@
         if (e.key === 'Backspace') backspace();
       });
       console.log('[PIN] Admin-configurable PIN patched. Current PIN: ' + getCurrentPIN());
-    })();
+    }
+    // core_components.js is loaded in <head>, so the keypad buttons do not exist
+    // yet when this runs. Defer wiring until the DOM is parsed, otherwise the
+    // number keys get no click handlers and tapping does nothing on touch
+    // devices (a physical keyboard still works via the window keydown listener,
+    // which is why desktop could unlock but phones could not).
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', patchPIN);
+    } else {
+      patchPIN();
+    }
 
     /* ---- Wire sub-screens ---- */
     (function wireSubScreens() {

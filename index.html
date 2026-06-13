@@ -2235,6 +2235,16 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 }
 
 /* Inline editable field for personal info */
+/* iOS standalone-PWA fix: the global `user-select:none` /
+   `-webkit-touch-callout:none` on `body *` can block the keyboard caret in
+   form fields when launched from the home screen. Force text entry back on. */
+input, textarea, select, [contenteditable="true"] {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+  pointer-events: auto !important;
+}
+
 .inline-edit {
   -webkit-user-select: text;
   user-select: text;

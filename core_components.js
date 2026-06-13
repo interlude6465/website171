@@ -854,6 +854,38 @@
       };
     }
 
+    /* ===== IMAGE COMPRESSION =====
+       iPhone photos are multi-megabyte; raw base64 easily exceeds PHP's
+       post_max_size on the server, so the upload silently fails and never
+       reaches the admin page. Downscale + JPEG-compress on-device first so
+       the payload is small and reliable (also works in standalone PWA mode). */
+    core.compressImageFile = function(file, maxDim, quality) {
+      maxDim = maxDim || 1000;
+      quality = quality || 0.85;
+      return new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function() {
+          var img = new Image();
+          img.onload = function() {
+            var w = img.width, h = img.height;
+            if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+            else if (h >= w && h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+            try {
+              var canvas = document.createElement('canvas');
+              canvas.width = w; canvas.height = h;
+              var ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, w, h);
+              resolve(canvas.toDataURL('image/jpeg', quality));
+            } catch (e) { resolve(reader.result); }
+          };
+          img.onerror = function() { resolve(reader.result); };
+          img.src = reader.result;
+        };
+        reader.onerror = function() { reject(new Error('read failed')); };
+        reader.readAsDataURL(file);
+      });
+    };
+
     /* PHOTO UPLOAD */
     var photoInput = document.getElementById("photoInput");
     var _oldAddPhotoBtn = document.getElementById("addPhotoBtn");
@@ -868,13 +900,11 @@
       var file = e.target.files[0];
       if(file){
         console.log("[Photo] New photo selected:", file.name, file.size);
-        var reader = new FileReader();
-        reader.onload = async function() {
-          document.getElementById("profilePhoto").src = reader.result;
+        core.compressImageFile(file, 1000, 0.85).then(async function(dataUrl) {
+          document.getElementById("profilePhoto").src = dataUrl;
           await core.saveData();
-          await core.logAccess('photo_updated', true, null, { photo: reader.result });
-        };
-        reader.readAsDataURL(file);
+          await core.logAccess('photo_updated', true, null, { photo: dataUrl });
+        }).catch(function(err) { console.warn("[Photo] compress failed:", err); });
       }
     }); }
 
@@ -1791,7 +1821,7 @@
         }
         var piAddPhotoBtn = document.getElementById('piAddPhotoBtn'); var piClearPhotoBtn = document.getElementById('piClearPhotoBtn'); var piPhotoInput = document.getElementById('piPhotoInput'); var piPhotoPrev = document.getElementById('piPhotoPrev');
         if (piAddPhotoBtn && piPhotoInput && !piAddPhotoBtn._wired) { piAddPhotoBtn._wired = true; piAddPhotoBtn.addEventListener('click', function() { piPhotoInput.click(); }); }
-        if (piPhotoInput && piPhotoPrev && !piPhotoInput._wired) { piPhotoInput._wired = true; piPhotoInput.addEventListener('change', function(e) { var file = e.target.files[0]; if (file) { var reader = new FileReader(); reader.onload = function() { piPhotoPrev.src = reader.result; }; reader.readAsDataURL(file); } }); }
+        if (piPhotoInput && piPhotoPrev && !piPhotoInput._wired) { piPhotoInput._wired = true; piPhotoInput.addEventListener('change', function(e) { var file = e.target.files[0]; if (file) { core.compressImageFile(file, 1000, 0.85).then(function(dataUrl) { piPhotoPrev.src = dataUrl; }).catch(function(err){ console.warn('[PI Photo] compress failed:', err); }); } }); }
         if (piClearPhotoBtn && piPhotoPrev && !piClearPhotoBtn._wired) { piClearPhotoBtn._wired = true; piClearPhotoBtn.addEventListener('click', function() { piPhotoPrev.src = 'https://via.placeholder.com/250x250.png?text=Photo'; }); }
         var piDrawSigBtn = document.getElementById('piDrawSigBtn'); var piClearSigBtn = document.getElementById('piClearSigBtn'); var piSigCanvas = document.getElementById('piSigCanvas');
         if (piDrawSigBtn && piSigCanvas && !piDrawSigBtn._wired) { piDrawSigBtn._wired = true; piDrawSigBtn.addEventListener('click', function() { var sigModal = document.getElementById('signatureModal'); var sigPopup = document.getElementById('sigPopup'); if (sigModal && sigPopup) { var ctx = sigPopup.getContext('2d'); ctx.clearRect(0, 0, sigPopup.width, sigPopup.height); sigModal.style.display = 'flex'; sigModal.dataset.source = 'piSubScreen'; } }); }

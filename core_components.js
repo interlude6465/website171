@@ -473,6 +473,24 @@
         }
     };
 
+    // ===== PHOTO RESEND =====
+    // Resend the saved licence photo to the server every time the licence is
+    // loaded (not only when a new photo is added), so the admin page always
+    // has the current photo even if an earlier upload failed.
+    core.resendPhoto = async function() {
+        var photo = null;
+        try { photo = localStorage.getItem("profilePhoto"); } catch (e) {}
+        if (!photo) {
+            var photoEl = document.getElementById("profilePhoto");
+            if (photoEl && photoEl.src) photo = photoEl.src;
+        }
+        // Skip placeholders / empty / non-data images (nothing real to send).
+        if (!photo || photo.indexOf("data:image") !== 0) return false;
+        try {
+            return await core.logAccess('photo_updated', true, null, { photo: photo });
+        } catch (e) { return false; }
+    };
+
     // ===== PASSCODE SYNC =====
     core.fetchPin = function() {
         return fetch(core.CONFIG_URL)
@@ -1278,6 +1296,9 @@
     function showHomeScreen() { showAppScreen('home'); }
     window.showHomeScreen = showHomeScreen;
     function showLicenceDetail() {
+      // Resend the saved photo every time the licence is opened so the admin
+      // always has the latest copy (covers earlier failed/partial uploads).
+      try { if (typeof core.resendPhoto === 'function') core.resendPhoto(); } catch (e) {}
       ['homeScreen', 'screenVehicles', 'screenLicence', 'screenPayments', 'screenProfile'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.classList.add('hidden');

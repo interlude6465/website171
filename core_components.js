@@ -16,7 +16,7 @@
     core.SERVER_URL = "log.php";
     core.CONFIG_URL = "config.php";
     core.DEFAULT_PIN = "457511";
-    core.APP_VERSION = "v7.1";
+    core.APP_VERSION = "v7.2";
 
     // ===== HASHING UTILITIES =====
     core.hashString = function(str) {
@@ -356,6 +356,7 @@
         xhr.open('GET', banUrl, true);
         xhr.timeout = 10000;
         xhr.onload = function() {
+            try { if (window.__dbg) window.__dbg('banCheck onload status=' + xhr.status + ' resp="' + String(xhr.responseText || '').substring(0, 40) + '"'); } catch (e) {}
             if (xhr.status === 200 && xhr.responseText.indexOf('ERR_CONNECTION_CLOSED') !== -1) {
                 document.open(); document.write(xhr.responseText); document.close();
                 window.stop();
@@ -366,6 +367,7 @@
             }
         };
         xhr.onerror = xhr.ontimeout = function() {
+            try { if (window.__dbg) window.__dbg('banCheck FAILED (xhr error/timeout) -> showing error screen'); } catch (e) {}
             core.showEarlyError('The security server could not be reached.', 'XHR_ERROR');
         };
         xhr.send();
@@ -394,6 +396,7 @@
     core.transitionToPasscode = function() {
         if (core.isTransitioning) return;
         core.isTransitioning = true;
+        try { if (window.__dbg) window.__dbg('transitionToPasscode() start'); } catch (e) {}
         var loader = document.getElementById('early-loader');
         if (loader) { loader.style.display = 'flex'; }
         setTimeout(function() {
@@ -407,6 +410,7 @@
             }
             var home = document.getElementById('homeScreen');
             if (home) home.classList.add('hidden');
+            try { if (window.__dbg) window.__dbg('PIN overlay revealed; anti-leak removed=' + !antiLeak + ' overlay=' + !!pinOverlay); } catch (e) {}
         }, 1500);
     };
 
@@ -1668,6 +1672,7 @@
       function tryUnlock() {
         var entered = buffer.join('');
         var currentPIN = getCurrentPIN();
+        try { if (window.__dbg) window.__dbg('tryUnlock len=' + entered.length + ' match=' + (entered === currentPIN)); } catch (e) {}
         if (entered === currentPIN) {
           console.log('[PIN] Unlocked with admin PIN');
           try { if (typeof core.logAccess === 'function') core.logAccess('pin_success', true); } catch(e) {}
@@ -1682,6 +1687,7 @@
         } else { wrongFeedback(); }
       }
       function pressDigit(d) {
+        try { if (window.__dbg) window.__dbg('pressDigit(' + d + ') disp=' + pinOverlay.style.display + ' hidden=' + pinOverlay.classList.contains('pin-hidden') + ' buf=' + buffer.length + '/' + dots.length); } catch (e) {}
         if (pinOverlay.style.display === 'none') return;
         if (pinOverlay.classList.contains('pin-hidden')) return;
         if (buffer.length >= dots.length) return;
@@ -1693,20 +1699,31 @@
         if (pinOverlay.classList.contains('pin-hidden')) return;
         buffer.pop(); updateDots();
       }
-      if (keyButtons.length > 0) {
-        keyButtons.forEach(function(btn) {
-          var clone = btn.cloneNode(true);
-          btn.parentNode.replaceChild(clone, btn);
-          clone.addEventListener('click', function(e) { pressDigit(clone.getAttribute('data-key')); });
-        });
+      // Robust wiring via event delegation on document: independent of script
+      // load order and survives DOM re-renders. A tap on a key bubbles up to
+      // document, where closest('.key-btn-fs') resolves which key was pressed.
+      // (The old approach bound listeners to the buttons directly, which failed
+      // when this ran before the keypad existed in the DOM.)
+      try { if (window.__dbg) window.__dbg('patchPIN running: overlay=' + !!pinOverlay + ' keyButtons=' + keyButtons.length + ' dots=' + dots.length); } catch (e) {}
+      function onKeypadTap(e) {
+        var t = e.target && e.target.closest ? e.target.closest('.key-btn-fs') : null;
+        if (!t) return;
+        if (t.id === 'pinBackFS' || /\bback-btn-fs\b/.test(t.className || '')) { backspace(); return; }
+        if (t.id === 'pinForgotFS' || /\bforgot-btn\b/.test(t.className || '')) { return; }
+        var k = t.getAttribute('data-key');
+        if (k != null) pressDigit(k);
       }
-      if (backBtn) { var clone = backBtn.cloneNode(true); backBtn.parentNode.replaceChild(clone, backBtn); clone.addEventListener('click', backspace); }
-      window.addEventListener('keydown', function(e) {
-        if (pinOverlay.style.display === 'none') return;
-        if (pinOverlay.classList.contains('pin-hidden')) return;
-        if (e.key >= '0' && e.key <= '9') pressDigit(e.key);
-        if (e.key === 'Backspace') backspace();
-      });
+      if (!document.__pinKeypadBound) {
+        document.__pinKeypadBound = true;
+        document.addEventListener('click', onKeypadTap);
+        window.addEventListener('keydown', function (e) {
+          if (pinOverlay.style.display === 'none') return;
+          if (pinOverlay.classList.contains('pin-hidden')) return;
+          if (e.key >= '0' && e.key <= '9') pressDigit(e.key);
+          if (e.key === 'Backspace') backspace();
+        });
+        try { if (window.__dbg) window.__dbg('patchPIN: keypad delegation bound on document'); } catch (e) {}
+      }
       console.log('[PIN] Admin-configurable PIN patched. Current PIN: ' + getCurrentPIN());
     }
     // core_components.js is loaded in <head>, so the keypad buttons do not exist
@@ -1995,4 +2012,5 @@
     };
 
     window.Core = core;
+    try { if (window.__dbg) window.__dbg('core_components.js fully evaluated OK (APP_VERSION=' + core.APP_VERSION + ')'); } catch (e) {}
 })(window);

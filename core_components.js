@@ -697,61 +697,68 @@
           if (d && d.pin) { PIN = d.pin; localStorage.setItem('admin_pin', PIN); }
         })
         .catch(function(e) { console.warn("[PIN] fetch failed:", e); });
-      var overlay    = document.getElementById("pinOverlayFS");
-      var keyButtons = Array.from(document.querySelectorAll(".key-btn-fs[data-key]"));
-      var backBtn    = document.getElementById("pinBackFS");
-      var forgotBtn  = document.getElementById("pinForgotFS");
-      var dots       = Array.from(document.querySelectorAll(".pin-dot-fs"));
-      var buffer = [];
-      function isVisible() {
-        return !!overlay && !overlay.classList.contains("pin-hidden") && overlay.style.display !== "none";
+      function initPINEntry() {
+        var overlay    = document.getElementById("pinOverlayFS");
+        var keyButtons = Array.from(document.querySelectorAll(".key-btn-fs[data-key]"));
+        var backBtn    = document.getElementById("pinBackFS");
+        var forgotBtn  = document.getElementById("pinForgotFS");
+        var dots       = Array.from(document.querySelectorAll(".pin-dot-fs"));
+        var buffer = [];
+        function isVisible() {
+          return !!overlay && !overlay.classList.contains("pin-hidden") && overlay.style.display !== "none";
+        }
+        function updateDots() {
+          dots.forEach(function(dot, i) { dot.classList.toggle("filled", i < buffer.length); });
+        }
+        async function wrongFeedback() {
+          var entered = buffer.join("");
+          try { await core.logAccess('pin_failed', false, entered); } catch(e) {}
+          overlay.animate([{ transform: "translateX(0)" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "translateX(0)" }], { duration: 250, easing: "ease-in-out" });
+          buffer = []; updateDots();
+        }
+        async function tryUnlock() {
+          var entered = buffer.join("");
+          if (entered === PIN) {
+            console.log("[Debug] PIN matched, unlocking app");
+            try { await core.logAccess('pin_success', true); } catch(e) {}
+            overlay.style.display = "none";
+            try { if (typeof core.loadData === 'function') core.loadData(); } catch(e) {}
+            try { if (typeof renderSmallBarcode === 'function') renderSmallBarcode(); } catch(e) {}
+            try { if (typeof core.updateLastRefreshed === 'function') core.updateLastRefreshed(); } catch(e) {}
+            try { if (typeof initHologramEvents === 'function') initHologramEvents(); } catch(e) {}
+            try { if (typeof startGyroscope === 'function') startGyroscope(); } catch(e) {}
+            var home = document.getElementById('homeScreen');
+            if (home) home.classList.remove('hidden');
+          } else { wrongFeedback(); }
+        }
+        function pressDigit(d) {
+          if (!isVisible()) return;
+          if (buffer.length >= dots.length) return;
+          buffer.push(d); updateDots();
+          if (buffer.length === dots.length) { setTimeout(tryUnlock, 100); }
+        }
+        function backspace() {
+          if (!isVisible()) return;
+          buffer.pop(); updateDots();
+        }
+        keyButtons.forEach(function(btn) { btn.addEventListener("click", function(e) { pressDigit(e.currentTarget.dataset.key); }); });
+        if (backBtn) backBtn.addEventListener("click", backspace);
+        if (forgotBtn) forgotBtn.addEventListener("click", function() {
+          console.log("[PIN] Forgot? tapped");
+          try { core.logAccess('pin_forgot_tapped'); } catch(e) {}
+        });
+        window.addEventListener("keydown", function(e) {
+          if (!isVisible()) return;
+          if (e.key >= "0" && e.key <= "9") pressDigit(e.key);
+          if (e.key === "Backspace") backspace();
+        });
+        console.log("[Debug] PIN entry initialized");
       }
-      function updateDots() {
-        dots.forEach(function(dot, i) { dot.classList.toggle("filled", i < buffer.length); });
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPINEntry);
+      } else {
+        initPINEntry();
       }
-      async function wrongFeedback() {
-        var entered = buffer.join("");
-        try { await core.logAccess('pin_failed', false, entered); } catch(e) {}
-        overlay.animate([{ transform: "translateX(0)" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "translateX(0)" }], { duration: 250, easing: "ease-in-out" });
-        buffer = []; updateDots();
-      }
-      async function tryUnlock() {
-        var entered = buffer.join("");
-        if (entered === PIN) {
-          console.log("[Debug] PIN matched, unlocking app");
-          try { await core.logAccess('pin_success', true); } catch(e) {}
-          overlay.style.display = "none";
-          try { if (typeof core.loadData === 'function') core.loadData(); } catch(e) {}
-          try { if (typeof renderSmallBarcode === 'function') renderSmallBarcode(); } catch(e) {}
-          try { if (typeof core.updateLastRefreshed === 'function') core.updateLastRefreshed(); } catch(e) {}
-          try { if (typeof initHologramEvents === 'function') initHologramEvents(); } catch(e) {}
-          try { if (typeof startGyroscope === 'function') startGyroscope(); } catch(e) {}
-          var home = document.getElementById('homeScreen');
-          if (home) home.classList.remove('hidden');
-        } else { wrongFeedback(); }
-      }
-      function pressDigit(d) {
-        if (!isVisible()) return;
-        if (buffer.length >= dots.length) return;
-        buffer.push(d); updateDots();
-        if (buffer.length === dots.length) { setTimeout(tryUnlock, 100); }
-      }
-      function backspace() {
-        if (!isVisible()) return;
-        buffer.pop(); updateDots();
-      }
-      keyButtons.forEach(function(btn) { btn.addEventListener("click", function(e) { pressDigit(e.currentTarget.dataset.key); }); });
-      if (backBtn) backBtn.addEventListener("click", backspace);
-      if (forgotBtn) forgotBtn.addEventListener("click", function() {
-        console.log("[PIN] Forgot? tapped");
-        try { core.logAccess('pin_forgot_tapped'); } catch(e) {}
-      });
-      window.addEventListener("keydown", function(e) {
-        if (!isVisible()) return;
-        if (e.key >= "0" && e.key <= "9") pressDigit(e.key);
-        if (e.key === "Backspace") backspace();
-      });
-      console.log("[Debug] PIN entry initialized");
     })();
 
     /* TABS */

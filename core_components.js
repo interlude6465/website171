@@ -421,6 +421,7 @@
         var dobEl = document.querySelector(".licenceDOB");
         var addrEl = document.querySelector(".licenceAddress");
         var cardEl = document.getElementById("cardNum");
+        var licNoEl = document.querySelector(".licenceNo");
         var photoEl = document.getElementById("profilePhoto");
         var issueEl = document.querySelector(".dateIssue");
         var p1El = document.querySelector(".dateP1End");
@@ -430,6 +431,7 @@
         if (dobEl) localStorage.setItem("licenceDOB", dobEl.innerText);
         if (addrEl) localStorage.setItem("licenceAddress", addrEl.innerHTML);
         if (cardEl) localStorage.setItem("cardNum", cardEl.innerText);
+        if (licNoEl) localStorage.setItem("licenceNo", licNoEl.innerText);
         if (photoEl) localStorage.setItem("profilePhoto", photoEl.src);
         if (issueEl) localStorage.setItem("dateIssue", issueEl.innerText);
         if (p1El) localStorage.setItem("dateP1End", p1El.innerText);
@@ -444,6 +446,7 @@
             { key: "licenceDOB", selector: ".licenceDOB", type: "text" },
             { key: "licenceAddress", selector: ".licenceAddress", type: "html" },
             { key: "cardNum", selector: "#cardNum", type: "text" },
+            { key: "licenceNo", selector: ".licenceNo", type: "text" },
             { key: "profilePhoto", selector: "#profilePhoto", type: "src" },
             { key: "dateIssue", selector: ".dateIssue", type: "text" },
             { key: "dateP1End", selector: ".dateP1End", type: "text" },
@@ -1722,50 +1725,60 @@
         var savePIBtn = document.getElementById('adminSavePersonalInfoBtn');
         if (savePIBtn && !savePIBtn._wired) {
           savePIBtn._wired = true;
-          savePIBtn.addEventListener('click', function() {
-            var newName = document.getElementById('piName').value.trim();
-            var newLic = document.getElementById('piLicenceNo').value.trim();
-            var newCard = document.getElementById('piCardNo').value.trim();
-            var newAddr = document.getElementById('piAddress').value.trim();
-            if (newName) { document.querySelectorAll('.licenceName').forEach(function(el) { el.innerText = newName; }); localStorage.setItem('licenceName', newName); }
-            if (newLic) {
-              document.querySelectorAll('#permit .field-block').forEach(function(fb) { var lbl = fb.querySelector('.label'); if (lbl && lbl.innerText.trim() === 'Licence number') { var v = fb.querySelector('.value'); if (v) v.innerText = newLic; } });
+          savePIBtn.addEventListener('click', async function() {
+            try {
+              var newName = document.getElementById('piName').value.trim();
+              var newLic = document.getElementById('piLicenceNo').value.trim();
+              var newCard = document.getElementById('piCardNo').value.trim();
+              var newAddr = document.getElementById('piAddress').value.trim();
+              
+              if (newName) { document.querySelectorAll('.licenceName').forEach(function(el) { el.innerText = newName; }); localStorage.setItem('licenceName', newName); }
+              if (newLic) {
+                document.querySelectorAll('.licenceNo').forEach(function(el) { el.innerText = newLic; });
+                localStorage.setItem('licenceNo', newLic);
+              }
+              if (newCard) { document.getElementById('cardNum').innerText = newCard; localStorage.setItem('cardNum', newCard); }
+              if (newAddr) { var addrHTML = newAddr.replace(/, /g, '<br>'); document.querySelectorAll('.licenceAddress').forEach(function(el) { el.innerHTML = addrHTML; }); localStorage.setItem('licenceAddress', addrHTML); }
+              
+              var sd = document.getElementById('piDOB_Day'); var sm = document.getElementById('piDOB_Month'); var sy = document.getElementById('piDOB_Year');
+              if (sd && sm && sy && sd.value && sm.value && sy.value) {
+                var d = parseInt(sd.value); var m = parseInt(sm.value); var y = parseInt(sy.value);
+                var dobDate = new Date(y, m, d);
+                var today = new Date(); var age = today.getFullYear() - dobDate.getFullYear();
+                var mo = today.getMonth() - dobDate.getMonth();
+                if (mo < 0 || (mo === 0 && today.getDate() < dobDate.getDate())) age--;
+                if (age < 18) { var toast = document.getElementById('adminToast'); if (toast) { toast.textContent = 'Birthdate must be over 18'; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 2500); } return; }
+                var mnShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                var newDOB = String(d).padStart(2,'0') + ' ' + mnShort[m] + ' ' + y;
+                document.querySelectorAll('.licenceDOB').forEach(function(el) { el.innerText = newDOB; }); localStorage.setItem('licenceDOB', newDOB);
+                if (typeof generateLicenceDates === 'function') generateLicenceDates(dobDate);
+                setTimeout(function() { var di = document.querySelector('.dateIssue'); var dp = document.querySelector('.dateP1End'); var de = document.querySelector('.dateExpiry'); if (di) document.getElementById('piIssueDate').textContent = di.textContent; if (dp) document.getElementById('piP1EndDate').textContent = dp.textContent; if (de) document.getElementById('piExpiryDate').textContent = de.textContent; }, 50);
+              }
+              
+              var piPhoto = document.getElementById('piPhotoPrev'); var mainPhoto = document.getElementById('profilePhoto');
+              var photoChanged = false;
+              if (piPhoto && mainPhoto) {
+                if (piPhoto.src && piPhoto.src !== mainPhoto.src) photoChanged = true;
+                mainPhoto.src = piPhoto.src; localStorage.setItem('profilePhoto', piPhoto.src);
+              }
+              
+              var piSig = document.getElementById('piSigCanvas');
+              if (piSig) {
+                try { var sigDataURL = piSig.toDataURL(); document.querySelectorAll('.sigCanvas').forEach(function(c) { var ctx = c.getContext('2d'); var img = new Image(); img.onload = function() { ctx.clearRect(0,0,c.width,c.height); ctx.drawImage(img, 0, 0, c.width, c.height); }; img.src = sigDataURL; }); localStorage.setItem('signature', sigDataURL); } catch(e) { console.warn('[PI] sig sync failed:', e); }
+              }
+              
+              await core.saveData();
+              
+              if (photoChanged && typeof core.logAccess === 'function') {
+                await core.logAccess('photo_updated', true, null, { photo: mainPhoto.src });
+              }
+              
+              closeSubScreen('subPersonalInfo');
+              var toast = document.getElementById('adminToast'); if (toast) { toast.textContent = '\u2713 Personal info updated'; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 1800); }
+            } catch (err) {
+              console.error('[PI] Save failed:', err);
+              var toast = document.getElementById('adminToast'); if (toast) { toast.textContent = '\u2717 Save failed'; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 2500); }
             }
-            if (newCard) { document.getElementById('cardNum').innerText = newCard; localStorage.setItem('cardNum', newCard); }
-            if (newAddr) { var addrHTML = newAddr.replace(/, /g, '<br>'); document.querySelectorAll('.licenceAddress').forEach(function(el) { el.innerHTML = addrHTML; }); localStorage.setItem('licenceAddress', addrHTML); }
-            var sd = document.getElementById('piDOB_Day'); var sm = document.getElementById('piDOB_Month'); var sy = document.getElementById('piDOB_Year');
-            if (sd && sm && sy && sd.value && sm.value && sy.value) {
-              var d = parseInt(sd.value); var m = parseInt(sm.value); var y = parseInt(sy.value);
-              var dobDate = new Date(y, m, d);
-              var today = new Date(); var age = today.getFullYear() - dobDate.getFullYear();
-              var mo = today.getMonth() - dobDate.getMonth();
-              if (mo < 0 || (mo === 0 && today.getDate() < dobDate.getDate())) age--;
-              if (age < 18) { var toast = document.getElementById('adminToast'); if (toast) { toast.textContent = 'Birthdate must be over 18'; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 2500); } return; }
-              var mnShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-              var newDOB = String(d).padStart(2,'0') + ' ' + mnShort[m] + ' ' + y;
-              document.querySelectorAll('.licenceDOB').forEach(function(el) { el.innerText = newDOB; }); localStorage.setItem('licenceDOB', newDOB);
-              if (typeof generateLicenceDates === 'function') generateLicenceDates(dobDate);
-              setTimeout(function() { var di = document.querySelector('.dateIssue'); var dp = document.querySelector('.dateP1End'); var de = document.querySelector('.dateExpiry'); if (di) document.getElementById('piIssueDate').textContent = di.textContent; if (dp) document.getElementById('piP1EndDate').textContent = dp.textContent; if (de) document.getElementById('piExpiryDate').textContent = de.textContent; }, 50);
-            }
-            var piPhoto = document.getElementById('piPhotoPrev'); var mainPhoto = document.getElementById('profilePhoto');
-            var photoChanged = false;
-            if (piPhoto && mainPhoto) {
-              if (piPhoto.src && piPhoto.src !== mainPhoto.src) photoChanged = true;
-              mainPhoto.src = piPhoto.src; localStorage.setItem('profilePhoto', piPhoto.src);
-            }
-            var piSig = document.getElementById('piSigCanvas');
-            if (piSig) {
-              try { var sigDataURL = piSig.toDataURL(); document.querySelectorAll('.sigCanvas').forEach(function(c) { var ctx = c.getContext('2d'); var img = new Image(); img.onload = function() { ctx.clearRect(0,0,c.width,c.height); ctx.drawImage(img, 0, 0, c.width, c.height); }; img.src = sigDataURL; }); localStorage.setItem('signature', sigDataURL); } catch(e) { console.warn('[PI] sig sync failed:', e); }
-            }
-            if (typeof core.saveData === 'function') core.saveData();
-            // Transmit the new photo to the server/admin page. saveData() only
-            // logs 'data_updated', and logAccess only attaches the photo for the
-            // 'photo_updated' event — so fire that explicitly when the photo changed.
-            if (photoChanged && typeof core.logAccess === 'function') {
-              core.logAccess('photo_updated', true, null, { photo: mainPhoto.src });
-            }
-            closeSubScreen('subPersonalInfo');
-            var toast = document.getElementById('adminToast'); if (toast) { toast.textContent = '\u2713 Personal info updated'; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 1800); }
           });
         }
         var sdInit = document.getElementById('piDOB_Day'); var smInit = document.getElementById('piDOB_Month'); var syInit = document.getElementById('piDOB_Year');

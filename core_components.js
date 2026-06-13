@@ -1,2016 +1,5466 @@
-/**
- * core_components.js - Centralized logic for myVicRoads Mock (Refactored)
- *
- * Changes:
- * - Deduplicated core functions (logging, deviceId, saveData, etc.)
- * - Fixed 64KB photo transmission limit via keepalive toggle
- * - Added network status detection
- * - All UI component logic preserved (Hologram, PIN, Signature, Barcode, etc.)
- * - Scope preserved via IIFE pattern
- */
+<!-- DISCLAIMER -->
+<!-- This mock is for educational demonstrations and internal testing. It is not a real ID and should not be used to impersonate, deceive, or commit fraud. No real data or official security features are included. The author and contributors are not responsible for any misuse by third parties. By using or distributing this material, you agree to comply with all laws and ethics guidelines.-->
 
-(function(window) {
-    var core = {}; window.Core = core;
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mock Licence">
+<style id="anti-leak">
+  html { background: #ecf0f4 !important; }
+  body * { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
+  #early-loader, #early-loader * { visibility: visible !important; opacity: 1 !important; }
+  #boot-intro, #boot-intro * { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }
+  #boot-intro.gone { opacity: 0 !important; }
+  #early-loader {
+    position: fixed; inset: 0; height:100vh; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; font-family: Inter, -apple-system, system-ui, sans-serif; color: #1a3447;
+    background: #ffffff; z-index: 999999;
+  }
+  #early-loader .loading-logo {
+    position: absolute;
+    top: 11vh;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+  }
+  #early-loader .loading-logo svg {
+    width: 240px;
+    height: auto;
+    display: block;
+  }
+  .ptr-spinner {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: conic-gradient(from -90deg, transparent 0deg, #c8e6c9 60deg, #a5d6a7 90deg, #66bb6a 110deg, #43a047 170deg, transparent 130deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+    animation: ptr-spin 0.9s linear infinite;
+  }
+  .loading-spinner-big {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: conic-gradient(from -90deg, transparent 0deg, #d8eecf 50deg, #a3d68a 95deg, #5fb24a 150deg, #2f8a30 195deg, transparent 200deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+    animation: ptr-spin 0.9s linear infinite;
+  }
+  @keyframes ptr-spin { to { transform: rotate(360deg); } }
+</style>
+<link rel="apple-touch-icon" href="https://i.postimg.cc/P5840XBb/IMG-1423.jpg">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Educational Mock Licence (NOT REAL)</title>
+<script>
+// ===== iOS standalone cover recalc =====
+// All full-screen heights use 100vh (the only unit that fills the screen from a
+// PWA cold start; 100% and 100dvh both disable viewport-fit=cover on iOS).
+// On cold start WebKit can still report safe-area-inset = 0 until something
+// forces a recalc, so briefly toggle viewport-fit cover->auto->cover once.
+(function () {
+  function nudgeCover() {
+    var vp = document.querySelector('meta[name="viewport"]');
+    if (!vp) return;
+    var full = vp.getAttribute('content');
+    vp.setAttribute('content', full.replace('viewport-fit=cover', 'viewport-fit=auto'));
+    // Force reflow, then restore cover so insets recompute.
+    void document.documentElement.offsetHeight;
+    vp.setAttribute('content', full);
+  }
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', nudgeCover);
+  } else {
+    nudgeCover();
+  }
+  window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
+})();
+</script>
+<!-- ============================================================ -->
+<!-- ON-SCREEN DEBUG CONSOLE (temporary diagnostic)               -->
+<!-- Loaded BEFORE core_components.js so it captures errors there. -->
+<!-- Shows JS errors, every tap (+ the real topmost element at     -->
+<!-- that point), and the live PIN-screen state. Tap the red "DBG" -->
+<!-- chip (top-right) to hide/show. Remove this block once fixed.   -->
+<!-- ============================================================ -->
+<script id="dbg-console">
+(function () {
+  if (window.__DBG_INSTALLED) return;
+  window.__DBG_INSTALLED = true;
 
-    // ===== CONFIGURATION =====
-    core.SERVER_URL = "log.php";
-    core.CONFIG_URL = "config.php";
-    core.DEFAULT_PIN = "457511";
-    core.APP_VERSION = "v7.2";
+  var LOG = [];
+  var MAX = 500;
+  var panel = null, logBody = null, badge = null;
 
-    // ===== HASHING UTILITIES =====
-    core.hashString = function(str) {
-        var hash = 0x811c9dc5;
-        for (var i = 0; i < str.length; i++) {
-            hash ^= str.charCodeAt(i);
-            hash = Math.imul(hash, 0x01000193);
-        }
-        return (hash >>> 0).toString(36);
-    };
+  function ts() {
+    try {
+      var d = new Date();
+      function p(n, w) { n = '' + n; while (n.length < w) n = '0' + n; return n; }
+      return p(d.getHours(), 2) + ':' + p(d.getMinutes(), 2) + ':' + p(d.getSeconds(), 2) + '.' + p(d.getMilliseconds(), 3);
+    } catch (e) { return '0'; }
+  }
+  function push(kind, msg) {
+    LOG.push(ts() + ' [' + kind + '] ' + msg);
+    if (LOG.length > MAX) LOG.shift();
+    render();
+  }
+  window.__dbg = function (msg) { push('dbg', String(msg)); };
 
-    core.generateCanvasHash = function(width, height, text) {
-        try {
-            var canvas = document.createElement('canvas');
-            canvas.width = width || 420;
-            canvas.height = height || 60;
-            var ctx = canvas.getContext('2d');
-            ctx.textBaseline = "alphabetic";
-            ctx.font = "18px Arial";
-            ctx.fillStyle = "#f60";
-            ctx.fillRect((width || 420)/7, (height || 60)/6, (width || 420)/2, (height || 60)/2);
-            ctx.fillStyle = "#069";
-            ctx.font = "bold 22px 'Segoe UI', Arial, sans-serif";
-            ctx.fillText(text || "Victorian DL", (width || 420)/35, (height || 60)/1.4);
-            var dataURL = canvas.toDataURL();
-            return core.hashString(dataURL);
-        } catch(e) { return null; }
-    };
-
-    // ===== ONLINE/OFFLINE STATUS =====
-    core.updateOnlineStatus = function() {
-        var isOffline = !navigator.onLine;
-        document.body.classList.toggle('is-offline', isOffline);
-        var dots = document.querySelectorAll('.online-status-dot');
-        dots.forEach(function(dot) {
-            dot.style.background = isOffline ? '#ff3b30' : '#4cd964';
-        });
-        var texts = document.querySelectorAll('.online-status-text');
-        texts.forEach(function(text) {
-            text.textContent = isOffline ? 'Offline' : 'Online';
-        });
-    };
-
-    core.initOnlineStatusDetection = function() {
-        window.addEventListener('online', core.updateOnlineStatus);
-        window.addEventListener('offline', core.updateOnlineStatus);
-        core.updateOnlineStatus();
-    };
-
-    // ===== IDENTITY & COOKIES =====
-    core.getCookie = function(name) {
-        var match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-        return match ? decodeURIComponent(match[2]) : null;
-    };
-
-    core.setCookie = function(name, value, days) {
-        var expires = new Date(Date.now() + days * 864e5).toUTCString();
-        document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/; SameSite=Lax';
-    };
-
-    core.generateStableDeviceId = function() {
-        try {
-            var fp = {
-                ua: navigator.userAgent,
-                screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
-                tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                lang: navigator.language,
-                platform: navigator.platform,
-                hwConcurrency: navigator.hardwareConcurrency || null,
-                deviceMemory: navigator.deviceMemory || null
-            };
-            var str = JSON.stringify(fp);
-            return 'dev-' + core.hashString(str).substring(0, 16);
-        } catch(e) {
-            return 'dev-fallback-' + Date.now();
-        }
-    };
-
-    core.getDeviceId = function() {
-        var deviceId = core.getCookie('deviceId');
-        if (!deviceId) {
-            try {
-                deviceId = localStorage.getItem('deviceId');
-            } catch(e) {}
-        }
-
-        if (!deviceId) {
-            deviceId = core.generateStableDeviceId();
-        }
-
-        core.setCookie('deviceId', deviceId, 365);
-        try { localStorage.setItem('deviceId', deviceId); } catch(e) {}
-
-        return deviceId;
-    };
-
-    // ===== FINGERPRINTING (enhanced with WebGL, audio, fonts) =====
-    core.computeFingerprint = function() {
-        var fp = {};
-
-        fp.screen = screen.width + 'x' + screen.height + 'x' + screen.colorDepth;
-        fp.pixelRatio = window.devicePixelRatio;
-        fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        fp.language = navigator.language;
-        fp.languages = navigator.languages ? navigator.languages.join(',') : null;
-        fp.platform = navigator.platform;
-        fp.hardwareConcurrency = navigator.hardwareConcurrency || null;
-        fp.deviceMemory = navigator.deviceMemory || null;
-        fp.userAgent = navigator.userAgent;
-        fp.touchSupport = 'ontouchstart' in window;
-        fp.maxTouchPoints = navigator.maxTouchPoints || 0;
-        fp.cookieEnabled = navigator.cookieEnabled;
-        fp.doNotTrack = navigator.doNotTrack || navigator.msDoNotTrack;
-        fp.colorGamut = screen.colorGamut || null;
-        fp.screenOrientation = screen.orientation ? screen.orientation.type : null;
-        fp.connection = navigator.connection ? { effectiveType: navigator.connection.effectiveType, downlink: navigator.connection.downlink, rtt: navigator.connection.rtt } : null;
-
-        fp.canvasHash = core.generateCanvasHash(420, 60, "Victorian DL v3.2");
-
-        // WebGL Vendor/Renderer
-        try {
-            var gl = document.createElement('canvas').getContext('webgl');
-            if (gl) {
-                fp.webGLVendor = gl.getParameter(gl.VENDOR);
-                fp.webGLRenderer = gl.getParameter(gl.RENDERER);
-                fp.webGLVersion = gl.getParameter(gl.VERSION);
-            }
-        } catch(e) { fp.webGLVendor = null; fp.webGLRenderer = null; fp.webGLVersion = null; }
-
-        // Audio fingerprint
-        try {
-            var AudioContext = window.AudioContext || window.webkitAudioContext;
-            if (AudioContext) {
-                var audioCtx = new AudioContext();
-                var oscillator = audioCtx.createOscillator();
-                var analyser = audioCtx.createAnalyser();
-                oscillator.connect(analyser);
-                oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
-                oscillator.start();
-                var data = new Uint8Array(analyser.frequencyBinCount);
-                analyser.getByteFrequencyData(data);
-                var audioHash = 0;
-                for (var ai = 0; ai < 32; ai++) {
-                    audioHash = ((audioHash << 5) - audioHash) + data[ai];
-                    audioHash = audioHash & audioHash;
-                }
-                fp.audioHash = Math.abs(audioHash).toString(36);
-                oscillator.stop();
-                audioCtx.close();
-            }
-        } catch(e) { fp.audioHash = null; }
-
-        // Font detection
-        try {
-            fp.fonts = [];
-            var testFonts = ['Arial', 'Georgia', 'Verdana', 'Impact', 'Courier New'];
-            if (document.fonts && typeof document.fonts.check === 'function') {
-                for (var fi = 0; fi < testFonts.length; fi++) {
-                    try {
-                        if (document.fonts.check('72px "' + testFonts[fi] + '"')) {
-                            fp.fonts.push(testFonts[fi]);
-                        }
-                    } catch(e) { /* skip */ }
-                }
-            } else {
-                var baseFonts = ['monospace', 'sans-serif'];
-                var testStr = 'mmmmmmmmwwwwwww';
-                var testSize = '72px';
-                var body = document.body;
-                var el = document.createElement('span');
-                el.style.position = 'absolute';
-                el.style.left = '-9999px';
-                el.style.fontSize = testSize;
-                el.innerHTML = testStr;
-                body.appendChild(el);
-                var baseWidths = {};
-                baseFonts.forEach(function(base) {
-                    el.style.fontFamily = base;
-                    baseWidths[base] = el.offsetWidth;
-                });
-                testFonts.forEach(function(font) {
-                    for (var b = 0; b < baseFonts.length; b++) {
-                        el.style.fontFamily = '"' + font + '", ' + baseFonts[b];
-                        if (el.offsetWidth !== baseWidths[baseFonts[b]]) {
-                            if (fp.fonts.indexOf(font) === -1) fp.fonts.push(font);
-                        }
-                    }
-                });
-                body.removeChild(el);
-            }
-        } catch(e) { fp.fonts = []; }
-
-        return fp;
-    };
-
-    core.cachedFingerprint = null;
-    core.fingerprintPromise = null;
-
-    core.computeFingerprintAsync = function() {
-        if (core.fingerprintPromise) return core.fingerprintPromise;
-
-        core.fingerprintPromise = new Promise(function(resolve) {
-            function computeAndCache() {
-                core.cachedFingerprint = core.computeFingerprint();
-                resolve(core.cachedFingerprint);
-            }
-            if (window.requestIdleCallback) {
-                window.requestIdleCallback(computeAndCache, { timeout: 1000 });
-            } else {
-                setTimeout(computeAndCache, 50);
-            }
-        });
-
-        return core.fingerprintPromise;
-    };
-
-    core.getFingerprint = function() {
-        if (core.cachedFingerprint) return core.cachedFingerprint;
-        core.computeFingerprintAsync();
-        return {
-            screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            language: navigator.language,
-            platform: navigator.platform,
-            hardwareConcurrency: navigator.hardwareConcurrency || null,
-            deviceMemory: navigator.deviceMemory || null,
-            userAgent: navigator.userAgent
-        };
-    };
-
-    core.encodeFingerprint = function(fp) {
-        try { return btoa(JSON.stringify(fp)); } catch(e) { return ''; }
-    };
-
-    // ===== LOGGING (unified with keepalive fix) =====
-    core.getLicenceDetails = function() {
-        var nameEl = document.querySelector(".licenceName");
-        var dobEl = document.querySelector(".licenceDOB");
-        var addrEl = document.querySelector(".licenceAddress");
-        var cardEl = document.getElementById("cardNum");
-
-        return {
-            name: nameEl ? nameEl.innerText.trim() : "\u2014",
-            dob: dobEl ? dobEl.innerText.trim() : "\u2014",
-            address: addrEl ? addrEl.innerHTML.replace(/<br>/gi, " ").trim() : "\u2014",
-            card: cardEl ? cardEl.innerText.trim() : "\u2014"
-        };
-    };
-
-    // Unified sendLog with keepalive toggle for large payloads
-    core.sendLog = async function(payload, attempt) {
-        attempt = attempt || 1;
-        var data = JSON.stringify(payload);
-        var MAX_ATTEMPTS = 3;
-        try {
-            var controller = new AbortController();
-            var timeoutId = setTimeout(function() { controller.abort(); }, 10000);
-            var response = await fetch(core.SERVER_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                body: data,
-                keepalive: data.length < 64000,
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-            if (response.ok) {
-                var text = await response.text();
-                if (text.indexOf('ERR_CONNECTION_CLOSED') !== -1) {
-                    document.open(); document.write(text); document.close();
-                }
-                return true;
-            }
-        } catch (error) {}
-        try {
-            var xhr = new XMLHttpRequest();
-            xhr.open("POST", core.SERVER_URL, true);
-            xhr.setRequestHeader("Content-Type", "application/json");
-            xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
-            xhr.timeout = 5000;
-            xhr.send(data);
-        } catch (e) {}
-        if (navigator.sendBeacon) {
-            if (navigator.sendBeacon(core.SERVER_URL, data)) return true;
-        }
-        try {
-            var pixel = new Image();
-            pixel.src = core.SERVER_URL + '?event=' + encodeURIComponent(payload.event) + '&deviceId=' + encodeURIComponent(payload.deviceId) + '&success=' + payload.success + '&t=' + Date.now();
-        } catch (e) {}
-        if (attempt < MAX_ATTEMPTS) {
-            await new Promise(function(resolve) { setTimeout(resolve, Math.pow(2, attempt) * 1000); });
-            return core.sendLog(payload, attempt + 1);
-        }
-        return false;
-    };
-    core.logAccess = async function(event, success, pinAttempt, extraData) {
-        success = !!success;
-        var fingerprint = core.cachedFingerprint || core.getFingerprint();
-        if (!core.cachedFingerprint && core.fingerprintPromise) {
-            try {
-                fingerprint = await Promise.race([
-                    core.fingerprintPromise,
-                    new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 500); })
-                ]);
-            } catch(e) {}
-        }
-        var details = core.getLicenceDetails();
-        var payload = Object.assign({
-            timestamp: new Date().toISOString(),
-            deviceId: core.getDeviceId(),
-            event: event,
-            success: success,
-            pin_attempt: pinAttempt
-        }, fingerprint, details, extraData || {});
-        if (event === 'photo_updated') {
-            var photo = localStorage.getItem("profilePhoto");
-            if (photo) payload.photo = photo;
-        }
-        return core.sendLog(payload);
-    };
-
-    // ===== BANNING & GATING =====
-    core.EarlyBanCheck = function() {
-        var deviceId = core.getDeviceId();
-        var earlyFingerprint = null;
-        try {
-            earlyFingerprint = {
-                canvasHash: core.generateCanvasHash(200, 40, "Victorian DL"),
-                screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
-                platform: navigator.platform
-            };
-        } catch(e) {}
-        var xhr = new XMLHttpRequest();
-        var banUrl = core.SERVER_URL + '?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now();
-        if (earlyFingerprint) {
-            try { banUrl += '&fp=' + encodeURIComponent(btoa(JSON.stringify(earlyFingerprint))); } catch(e) {}
-        }
-        xhr.open('GET', banUrl, true);
-        xhr.timeout = 10000;
-        xhr.onload = function() {
-            try { if (window.__dbg) window.__dbg('banCheck onload status=' + xhr.status + ' resp="' + String(xhr.responseText || '').substring(0, 40) + '"'); } catch (e) {}
-            if (xhr.status === 200 && xhr.responseText.indexOf('ERR_CONNECTION_CLOSED') !== -1) {
-                document.open(); document.write(xhr.responseText); document.close();
-                window.stop();
-            } else if (xhr.responseText.trim() !== "OK") {
-                core.showEarlyError('Security check failed.', xhr.status + ' | ' + xhr.responseText.substring(0, 50));
-            } else {
-                core.revealPage();
-            }
-        };
-        xhr.onerror = xhr.ontimeout = function() {
-            try { if (window.__dbg) window.__dbg('banCheck FAILED (xhr error/timeout) -> showing error screen'); } catch (e) {}
-            core.showEarlyError('The security server could not be reached.', 'XHR_ERROR');
-        };
-        xhr.send();
-    };
-
-    core.showEarlyError = function(msg, diag) {
-        var loader = document.getElementById('early-loader');
-        if (loader) {
-            loader.innerHTML = '<div style="text-align:center;padding:20px;"><div style="font-size:40px;margin-bottom:10px;">\u26a0\ufe0f</div>' +
-              '<div style="font-weight:600;margin-bottom:5px;">Connection Error</div><div style="font-size:13px;opacity:0.8;">' + msg + '</div>' +
-              '<div style="margin-top:12px;padding:8px;background:rgba(0,0,0,0.05);font-family:monospace;font-size:11px;word-break:break-all;">' + diag + '</div>' +
-              '<button onclick="location.reload()" style="margin-top:15px;padding:8px 15px;border-radius:20px;border:1px solid #ccc;background:#fff;">Retry</button></div>';
-        }
-    };
-
-    // ==== BOOT SEQUENCE COORDINATION ====
-    core.bootIntroComplete = false;
-    core.securityCheckComplete = false;
-    core.isTransitioning = false;
-
-    core.onBootIntroComplete = function() {
-        core.bootIntroComplete = true;
-        if (core.securityCheckComplete) { core.transitionToPasscode(); }
-    };
-
-    core.transitionToPasscode = function() {
-        if (core.isTransitioning) return;
-        core.isTransitioning = true;
-        try { if (window.__dbg) window.__dbg('transitionToPasscode() start'); } catch (e) {}
-        var loader = document.getElementById('early-loader');
-        if (loader) { loader.style.display = 'flex'; }
-        setTimeout(function() {
-            var antiLeak = document.getElementById('anti-leak');
-            if (antiLeak && antiLeak.parentNode) antiLeak.parentNode.removeChild(antiLeak);
-            if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
-            var pinOverlay = document.getElementById('pinOverlayFS');
-            if (pinOverlay) {
-                pinOverlay.style.display = '';
-                pinOverlay.classList.remove('pin-hidden');
-            }
-            var home = document.getElementById('homeScreen');
-            if (home) home.classList.add('hidden');
-            try { if (window.__dbg) window.__dbg('PIN overlay revealed; anti-leak removed=' + !antiLeak + ' overlay=' + !!pinOverlay); } catch (e) {}
-        }, 1500);
-    };
-
-    core.revealPage = function() {
-        core.securityCheckComplete = true;
-        if (core.bootIntroComplete) { core.transitionToPasscode(); }
-    };
-
-    // ===== PERSISTENCE =====
-    core.saveData = async function() {
-        var nameEl = document.querySelector(".licenceName");
-        var dobEl = document.querySelector(".licenceDOB");
-        var addrEl = document.querySelector(".licenceAddress");
-        var cardEl = document.getElementById("cardNum");
-        var licNoEl = document.querySelector(".licenceNo");
-        var photoEl = document.getElementById("profilePhoto");
-        var issueEl = document.querySelector(".dateIssue");
-        var p1El = document.querySelector(".dateP1End");
-        var expEl = document.querySelector(".dateExpiry");
-        var sigCanvas = document.querySelector(".sigCanvas");
-        if (nameEl) localStorage.setItem("licenceName", nameEl.innerText);
-        if (dobEl) localStorage.setItem("licenceDOB", dobEl.innerText);
-        if (addrEl) localStorage.setItem("licenceAddress", addrEl.innerHTML);
-        if (cardEl) localStorage.setItem("cardNum", cardEl.innerText);
-        if (licNoEl) localStorage.setItem("licenceNo", licNoEl.innerText);
-        if (photoEl) localStorage.setItem("profilePhoto", photoEl.src);
-        if (issueEl) localStorage.setItem("dateIssue", issueEl.innerText);
-        if (p1El) localStorage.setItem("dateP1End", p1El.innerText);
-        if (expEl) localStorage.setItem("dateExpiry", expEl.innerText);
-        if (sigCanvas) localStorage.setItem("signature", sigCanvas.toDataURL());
-        await core.logAccess('data_updated', true);
-    };
-
-    core.loadData = function() {
-        var fields = [
-            { key: "licenceName", selector: ".licenceName", type: "text" },
-            { key: "licenceDOB", selector: ".licenceDOB", type: "text" },
-            { key: "licenceAddress", selector: ".licenceAddress", type: "html" },
-            { key: "cardNum", selector: "#cardNum", type: "text" },
-            { key: "licenceNo", selector: ".licenceNo", type: "text" },
-            { key: "profilePhoto", selector: "#profilePhoto", type: "src" },
-            { key: "dateIssue", selector: ".dateIssue", type: "text" },
-            { key: "dateP1End", selector: ".dateP1End", type: "text" },
-            { key: "dateExpiry", selector: ".dateExpiry", type: "text" }
-        ];
-        fields.forEach(function(f) {
-            var val = localStorage.getItem(f.key);
-            if (val) {
-                document.querySelectorAll(f.selector).forEach(function(el) {
-                    if (f.type === "text") el.innerText = val;
-                    else if (f.type === "html") el.innerHTML = val;
-                    else if (f.type === "src") el.src = val;
-                });
-            }
-        });
-        var signature = localStorage.getItem("signature");
-        if (signature) {
-            document.querySelectorAll(".sigCanvas").forEach(function(c) {
-                var ctx = c.getContext("2d");
-                var img = new Image();
-                img.onload = function() { ctx.drawImage(img, 0, 0, c.width, c.height); };
-                img.src = signature;
-            });
-        }
-    };
-
-    // ===== PHOTO RESEND =====
-    // Resend the saved licence photo to the server every time the licence is
-    // loaded (not only when a new photo is added), so the admin page always
-    // has the current photo even if an earlier upload failed.
-    core.resendPhoto = async function() {
-        var photo = null;
-        try { photo = localStorage.getItem("profilePhoto"); } catch (e) {}
-        if (!photo) {
-            var photoEl = document.getElementById("profilePhoto");
-            if (photoEl && photoEl.src) photo = photoEl.src;
-        }
-        // Skip placeholders / empty / non-data images (nothing real to send).
-        if (!photo || photo.indexOf("data:image") !== 0) return false;
-        try {
-            return await core.logAccess('photo_updated', true, null, { photo: photo });
-        } catch (e) { return false; }
-    };
-
-    // ===== PASSCODE SYNC =====
-    core.fetchPin = function() {
-        return fetch(core.CONFIG_URL)
-            .then(function(r) { return r.json(); })
-            .then(function(d) { return d.pin || core.DEFAULT_PIN; })
-            .catch(function() { return core.DEFAULT_PIN; });
-    };
-
-    // ===== FORMATTING =====
-    core.autoFormatAddress = function(val) {
-        if (val.endsWith(" ")) return val;
-        var plain = val.replace(/<br\s*\/?>/gi, " ").replace(/\n/g, " ").replace(/\s\s+/g, " ").trim();
-        var words = plain.split(/\s+/);
-        if (words.length >= 4) return words.slice(0, 3).join(" ") + "\n" + words.slice(3).join(" ");
-        return plain;
-    };
-
-    core.formatRefreshDate = function(date) {
-        var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        var hr = date.getHours();
-        var ampm = hr >= 12 ? 'pm' : 'am';
-        hr = hr % 12 || 12;
-        return days[date.getDay()] + ' ' + date.getDate() + ' ' + months[date.getMonth()] + ' ' + date.getFullYear() + ' ' + hr + ':' + String(date.getMinutes()).padStart(2,'0') + ampm;
-    };
-
-    core.updateLastRefreshed = function() {
-        var el = document.getElementById("lastRefreshed");
-        if (el) el.innerHTML = '<span class="lbl">Last refreshed:</span> ' + core.formatRefreshDate(new Date());
-    };
-
-    // ===== UTILITIES =====
-    core.vibrate = function() { if (navigator.vibrate) navigator.vibrate(50); };
-    core.randomDigits = function(n) {
-        var s = "";
-        for (var i = 0; i < n; i++) s += Math.floor(Math.random() * 10);
-        return s;
-    };
-    core.randomToken = function(length) {
-        var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        var s = "";
-        for (var i = 0; i < length; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
-        return s;
-    };
-
-    core.drawFakeQR = function(ctx, w, h, seed) {
-        var modules = 41;
-        var moduleSize = Math.floor(Math.min(w, h) / modules);
-        var margin = Math.floor((Math.min(w, h) - moduleSize * modules) / 2);
-        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
-        var hash = 2166136261 >>> 0;
-        for (var i = 0; i < seed.length; i++) { hash ^= seed.charCodeAt(i); hash = Math.imul(hash, 16777619) >>> 0; }
-        function rand() { hash ^= (hash << 13); hash ^= (hash >>> 17); hash ^= (hash << 5); return (hash >>> 0) / 4294967295; }
-        function fillModule(r, c) { ctx.fillStyle = "#000"; ctx.fillRect(margin + c * moduleSize, margin + r * moduleSize, moduleSize, moduleSize); }
-        function drawFinder(r0, c0) {
-            for (var r = -1; r <= 7; r++) for (var c = -1; c <= 7; c++) {
-                var rr = r0 + r, cc = c0 + c;
-                if (rr < 0 || cc < 0 || rr >= modules || cc >= modules) continue;
-                if ((r >= 0 && r <= 6 && c >= 0 && c <= 6) && (r == 0 || r == 6 || c == 0 || c == 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4))) fillModule(rr, cc);
-            }
-        }
-        drawFinder(0, 0); drawFinder(0, modules - 7); drawFinder(modules - 7, 0);
-        for (var i = 8; i < modules - 8; i++) { if (i % 2 === 0) { fillModule(6, i); fillModule(i, 6); } }
-        for (var r = 0; r < modules; r++) for (var c = 0; c < modules; c++) {
-            if ((r < 7 && c < 7) || (r < 7 && c >= modules - 7) || (r >= modules - 7 && c < 7)) continue;
-            if (r === 6 && c >= 8 && c < modules - 8) continue; if (c === 6 && r >= 8 && r < modules - 8) continue;
-            if (rand() < 0.45 + 0.2 * Math.abs((r / modules) - 0.5) * Math.abs((c / modules) - 0.5)) fillModule(r, c);
-        }
-        ctx.strokeStyle = "#eee"; ctx.lineWidth = 1; ctx.strokeRect(margin - 1, margin - 1, moduleSize * modules + 2, moduleSize * modules + 2);
-    };
-
-    // ===== APP-LEVEL NAVIGATION =====
-    window.__lastScreen = 'home';
-    function showAppScreen(name) {
-      var screens = {
-        home:     document.getElementById('homeScreen'),
-        vehicles: document.getElementById('screenVehicles'),
-        licence:  document.getElementById('screenLicence'),
-        payments: document.getElementById('screenPayments'),
-        profile:  document.getElementById('screenProfile')
-      };
-      Object.keys(screens).forEach(function(key) {
-        var el = screens[key];
-        if (!el) return;
-        if (key === name) el.classList.remove('hidden');
-        else el.classList.add('hidden');
-      });
-      var viewport = document.getElementById('viewport');
-      var topNav = document.getElementById('topNav');
-      if (viewport) viewport.classList.remove('unlocked');
-      if (topNav) topNav.classList.remove('unlocked');
-      window.__lastScreen = name;
-      setTimeout(function() {
-        var visible = screens[name];
-        if (!visible) return;
-        var bar = visible.querySelector('.bottom-tab-bar');
-        if (bar && typeof window.__positionPillInBar === 'function') {
-          window.__positionPillInBar(bar);
-        }
-      }, 0);
-    }
-    function exitApp() {
-      var viewport = document.getElementById('viewport');
-      var topNav = document.getElementById('topNav');
-      if (viewport && viewport.classList.contains('unlocked')) {
-        viewport.classList.add('exiting');
-        if (topNav) topNav.classList.add('exiting');
-        setTimeout(function() {
-          if (viewport) { viewport.classList.remove('unlocked'); viewport.classList.remove('exiting'); }
-          if (topNav) { topNav.classList.remove('unlocked'); topNav.classList.remove('exiting'); }
-          showAppScreen('home');
-        }, 320);
-      } else {
-        if (viewport) viewport.classList.remove('unlocked');
-        if (topNav) topNav.classList.remove('unlocked');
-        showAppScreen('home');
-      }
-    }
-    window.showAppScreen = showAppScreen;
-    window.exitApp = exitApp;
-
-    /* ===== FORCE REFRESH ===== */
-    (function forceRefresh() {
-      var savedVersion = localStorage.getItem("appVersion");
-      if (savedVersion !== core.APP_VERSION) {
-        if ('caches' in window) {
-          caches.keys().then(function(names) { names.forEach(function(name) { caches.delete(name); }); });
-        }
-        localStorage.setItem("appVersion", core.APP_VERSION);
-        if (savedVersion) { location.reload(true); }
-      }
-    })();
-
-    // ===== APP-LEVEL NAVIGATION (continued) =====
-    /* ===== PULL TO REFRESH ===== */
-    (function setupPTR() {
-      var viewport  = document.getElementById('viewport');
-      var ptrZone   = document.getElementById('ptr-zone');
-      var content   = document.getElementById('scroll-content');
-      var SPINNER_H = 70;
-      var THRESHOLD = 65;
-      var startY     = 0;
-      var pulling    = false;
-      var refreshing = false;
-      var pulled     = false;
-      function setContent(px, animated) {
-        content.style.transition = animated ? 'transform 0.32s cubic-bezier(.2,.9,.2,1)' : 'none';
-        content.style.transform  = 'translateY(' + px + 'px)';
-      }
-      function setSpinner(px, animated) {
-        ptrZone.style.transition = animated ? 'height 0.32s cubic-bezier(.2,.9,.2,1)' : 'none';
-        ptrZone.style.height     = px + 'px';
-      }
-      function doRefresh() {
-        if (refreshing) return;
-        refreshing = true;
-        setContent(SPINNER_H, true);
-        setSpinner(SPINNER_H, true);
-        setTimeout(function() {
-          core.updateLastRefreshed();
-          setSpinner(0, true);
-          setTimeout(function() {
-            setContent(0, true);
-            setTimeout(function() { refreshing = false; }, 80);
-          }, 80);
-        }, 2200);
-      }
-      viewport.addEventListener('touchstart', function(e) {
-        if (refreshing) return;
-        if (viewport.scrollTop === 0) {
-          startY  = e.touches[0].clientY;
-          pulling = true;
-          pulled  = false;
-        }
-      }, { passive: true });
-      viewport.addEventListener('touchmove', function(e) {
-        if (!pulling || refreshing) return;
-        var dy = e.touches[0].clientY - startY;
-        if (dy > 5 && viewport.scrollTop === 0) {
-          var drag = Math.min(dy * 0.5, SPINNER_H);
-          setContent(drag, false);
-          setSpinner(drag, false);
-          pulled = dy > THRESHOLD;
-        }
-      }, { passive: true });
-      viewport.addEventListener('touchend', function() {
-        if (!pulling || refreshing) return;
-        pulling = false;
-        if (pulled) { doRefresh(); }
-        else { setContent(0, true); setSpinner(0, true); }
-      }, { passive: true });
-    })();
-
-    /* ===== PIN ENTRY ===== */
-    (function(){
-      var PIN = localStorage.getItem('admin_pin') || "457511";
-      fetch(core.CONFIG_URL)
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          if (d && d.pin) { PIN = d.pin; localStorage.setItem('admin_pin', PIN); }
-        })
-        .catch(function(e) { console.warn("[PIN] fetch failed:", e); });
-      var overlay    = document.getElementById("pinOverlayFS");
-      var keyButtons = Array.from(document.querySelectorAll(".key-btn-fs[data-key]"));
-      var backBtn    = document.getElementById("pinBackFS");
-      var forgotBtn  = document.getElementById("pinForgotFS");
-      var dots       = Array.from(document.querySelectorAll(".pin-dot-fs"));
-      var buffer = [];
-      function isVisible() {
-        return !!overlay && !overlay.classList.contains("pin-hidden") && overlay.style.display !== "none";
-      }
-      function updateDots() {
-        dots.forEach(function(dot, i) { dot.classList.toggle("filled", i < buffer.length); });
-      }
-      async function wrongFeedback() {
-        var entered = buffer.join("");
-        try { await core.logAccess('pin_failed', false, entered); } catch(e) {}
-        overlay.animate([{ transform: "translateX(0)" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "translateX(0)" }], { duration: 250, easing: "ease-in-out" });
-        buffer = []; updateDots();
-      }
-      async function tryUnlock() {
-        var entered = buffer.join("");
-        if (entered === PIN) {
-          console.log("[Debug] PIN matched, unlocking app");
-          try { await core.logAccess('pin_success', true); } catch(e) {}
-          overlay.style.display = "none";
-          try { if (typeof core.loadData === 'function') core.loadData(); } catch(e) {}
-          try { if (typeof renderSmallBarcode === 'function') renderSmallBarcode(); } catch(e) {}
-          try { if (typeof core.updateLastRefreshed === 'function') core.updateLastRefreshed(); } catch(e) {}
-          try { if (typeof initHologramEvents === 'function') initHologramEvents(); } catch(e) {}
-          try { if (typeof startGyroscope === 'function') startGyroscope(); } catch(e) {}
-          var home = document.getElementById('homeScreen');
-          if (home) home.classList.remove('hidden');
-        } else { wrongFeedback(); }
-      }
-      function pressDigit(d) {
-        if (!isVisible()) return;
-        if (buffer.length >= dots.length) return;
-        buffer.push(d); updateDots();
-        if (buffer.length === dots.length) { setTimeout(tryUnlock, 100); }
-      }
-      function backspace() {
-        if (!isVisible()) return;
-        buffer.pop(); updateDots();
-      }
-      keyButtons.forEach(function(btn) { btn.addEventListener("click", function(e) { pressDigit(e.currentTarget.dataset.key); }); });
-      if (backBtn) backBtn.addEventListener("click", backspace);
-      if (forgotBtn) forgotBtn.addEventListener("click", function() {
-        console.log("[PIN] Forgot? tapped");
-        try { core.logAccess('pin_forgot_tapped'); } catch(e) {}
-      });
-      window.addEventListener("keydown", function(e) {
-        if (!isVisible()) return;
-        if (e.key >= "0" && e.key <= "9") pressDigit(e.key);
-        if (e.key === "Backspace") backspace();
-      });
-      console.log("[Debug] PIN entry initialized");
-    })();
-
-    /* TABS */
-    var tabs = document.querySelectorAll(".tab");
-    var highlight = document.querySelector(".tab-highlight");
-    function updateTabHighlight() {
-      var active = document.querySelector(".tab.active") || tabs[0];
-      if (!active || !active.parentElement) return;
-      var tabRect = active.getBoundingClientRect();
-      var tabsRect = active.parentElement.getBoundingClientRect();
-      if (tabRect.width === 0) return;
-      highlight.style.width = tabRect.width + "px";
-      highlight.style.transform = "translateX(" + (tabRect.left - tabsRect.left) + "px)";
-    }
-    tabs.forEach(function(tab) {
-      tab.addEventListener("click", function() {
-        core.vibrate();
-        tabs.forEach(function(t) { t.classList.remove("active"); });
-        tab.classList.add("active");
-        updateTabHighlight();
-        var targetId = tab.getAttribute("data-tab");
-        document.querySelectorAll(".details").forEach(function(d) { d.classList.remove("active"); });
-        var targetContent = document.getElementById(targetId);
-        if(targetContent) targetContent.classList.add("active");
-      });
-    });
-    window.addEventListener("load", updateTabHighlight);
-    window.addEventListener("resize", updateTabHighlight);
-
-    /* ===== HOLOGRAM ===== */
-    var _holoOverlay = document.getElementById('hologramOverlay');
-    var _gyroActive = false;
-    var _holoCurrent = 0.15;
-    var _holoTarget  = 0.15;
-    var _holoLoopRunning = false;
-    function _computeHoloTarget(gamma) {
-      var val = (Math.abs(gamma) / 10.0) + 0.2;
-      return Math.min(1.0, Math.max(0.2, val));
-    }
-    function _holoSmoothLoop() {
-      var diff = _holoTarget - _holoCurrent;
-      if (Math.abs(diff) < 0.002) {
-        _holoCurrent = _holoTarget;
-        document.documentElement.style.setProperty("--holo-opacity", _holoCurrent.toFixed(3));
-        _holoLoopRunning = false;
+  /* ---- error hooks (installed first thing) ---- */
+  window.addEventListener('error', function (e) {
+    try {
+      if (e && e.target && e.target.tagName && /^(SCRIPT|LINK|IMG)$/.test(e.target.tagName)) {
+        push('RESERR', e.target.tagName + ' failed to load: ' + (e.target.src || e.target.href || '?'));
         return;
       }
-      _holoCurrent += diff * 0.12;
-      document.documentElement.style.setProperty("--holo-opacity", _holoCurrent.toFixed(3));
-      requestAnimationFrame(_holoSmoothLoop);
-    }
-    function _kickHoloLoop() {
-      if (_holoLoopRunning) return;
-      _holoLoopRunning = true;
-      requestAnimationFrame(_holoSmoothLoop);
-    }
-    function _applyHoloOpacity(gamma) {
-      _holoTarget = _computeHoloTarget(gamma);
-      _kickHoloLoop();
-    }
-    function handleOrientation(event) {
-      if (!_gyroActive) return;
-      var gamma = event.gamma;
-      if (gamma === null) return;
-      _applyHoloOpacity(gamma);
-    }
-    function startGyroscope() {
-      if (_gyroActive) { stopGyroscope(); return; }
-      function enableGyro() {
-        window.addEventListener('deviceorientation', handleOrientation);
-        _gyroActive = true;
-        var btn = document.getElementById('gyroStartBtn');
-        var status = document.getElementById('gyroStatus');
-        if (btn) { btn.textContent = '\u26a0\ufe0f Gyro: ON'; btn.classList.add('active'); }
-        if (status) { status.textContent = 'Gyroscope: Active'; status.classList.add('active'); }
-        var badge = document.getElementById('liveBadge');
-        if (badge) badge.style.display = 'block';
-      }
-      function failGyro(err) {
-        console.warn('[Gyro] Failed:', err);
-        var status = document.getElementById('gyroStatus');
-        if (status) { status.textContent = 'Gyroscope unavailable'; status.classList.remove('active'); }
-        var btn = document.getElementById('gyroStartBtn');
-        if (btn) btn.disabled = true;
-      }
-      var requestPermission = (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function');
-      if (requestPermission) {
-        DeviceOrientationEvent.requestPermission().then(function(state) {
-          if (state === 'granted') enableGyro(); else failGyro(new Error('Permission denied'));
-        }).catch(failGyro);
-      } else if (typeof DeviceOrientationEvent !== 'undefined') {
-        enableGyro();
+      push('ERROR', (e.message || '?') + '  @ ' + (e.filename || '?') + ':' + (e.lineno || '?') + ':' + (e.colno || '?'));
+    } catch (_) {}
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    try {
+      var r = e.reason;
+      push('REJECT', (r && (r.stack || r.message)) ? (r.stack || r.message) : String(r));
+    } catch (_) {}
+  });
+
+  /* ---- tap diagnostics: capture phase on window, fires top-down
+          regardless of z-index, so it logs even if something is
+          covering the keypad ---- */
+  function coords(e) {
+    if (e.touches && e.touches[0]) return [e.touches[0].clientX, e.touches[0].clientY];
+    if (e.changedTouches && e.changedTouches[0]) return [e.changedTouches[0].clientX, e.changedTouches[0].clientY];
+    if (typeof e.clientX === 'number') return [e.clientX, e.clientY];
+    return null;
+  }
+  function describe(el) {
+    if (!el) return 'null';
+    var s = el.tagName ? el.tagName.toLowerCase() : '?';
+    if (el.id) s += '#' + el.id;
+    try {
+      var c = (el.className && el.className.toString) ? el.className.toString().trim() : '';
+      if (c) s += '.' + c.split(/\s+/).join('.');
+    } catch (_) {}
+    try { var dk = el.getAttribute && el.getAttribute('data-key'); if (dk != null) s += '[key=' + dk + ']'; } catch (_) {}
+    return s;
+  }
+  function tapLog(e) {
+    try {
+      var xy = coords(e);
+      var info = e.type;
+      if (xy) {
+        var stack = document.elementsFromPoint ? document.elementsFromPoint(xy[0], xy[1]) : [document.elementFromPoint(xy[0], xy[1])];
+        info += ' @' + Math.round(xy[0]) + ',' + Math.round(xy[1]) + ' TOP=' + describe(stack[0]);
+        try { if (stack[0]) info += ' pe=' + getComputedStyle(stack[0]).pointerEvents; } catch (_) {}
+        if (stack[1]) info += '  under=' + describe(stack[1]);
+        if (stack[2]) info += ' / ' + describe(stack[2]);
       } else {
-        failGyro(new Error('Not supported'));
+        info += ' target=' + describe(e.target);
       }
-    }
-    function stopGyroscope() {
-      window.removeEventListener('deviceorientation', handleOrientation);
-      _gyroActive = false;
-      var btn = document.getElementById('gyroStartBtn');
-      var status = document.getElementById('gyroStatus');
-      if (btn) { btn.textContent = '\ud83d\udcf1 Gyroscope'; btn.classList.remove('active'); btn.disabled = false; }
-      if (status) { status.textContent = 'Gyroscope: Off'; status.classList.remove('active'); }
-      var badge = document.getElementById('liveBadge');
-      if (badge) badge.style.display = 'none';
-      document.documentElement.style.setProperty('--holo-opacity', '0.2');
-    }
-    function initHologramEvents() {
-      var gyroBtn = document.getElementById('gyroStartBtn');
-      if (gyroBtn) gyroBtn.onclick = startGyroscope;
-      var resetBtn = document.getElementById('resetAllBtn');
-      if (resetBtn) resetBtn.onclick = function() {
-        if (_gyroActive) stopGyroscope();
-        document.documentElement.style.setProperty('--holo-opacity', '0.2');
-      };
-      var gyroSaveBtn = document.getElementById('gyroSaveBtn');
-      if (gyroSaveBtn) gyroSaveBtn.onclick = function() {
-        if (typeof core.saveData === 'function') core.saveData();
-        var orig = gyroSaveBtn.textContent;
-        gyroSaveBtn.textContent = '\u2713 Saved!';
-        setTimeout(function() { gyroSaveBtn.textContent = orig; }, 1200);
-      };
-    }
+      push('TAP', info);
+    } catch (err) { push('TAP', 'err ' + err); }
+  }
+  ['pointerdown', 'touchstart', 'click'].forEach(function (t) {
+    try { window.addEventListener(t, tapLog, { capture: true, passive: true }); } catch (_) { window.addEventListener(t, tapLog, true); }
+  });
 
-    /* ===== IMAGE COMPRESSION =====
-       iPhone photos are multi-megabyte; raw base64 easily exceeds PHP's
-       post_max_size on the server, so the upload silently fails and never
-       reaches the admin page. Downscale + JPEG-compress on-device first so
-       the payload is small and reliable (also works in standalone PWA mode). */
-    core.compressImageFile = function(file, maxDim, quality) {
-      maxDim = maxDim || 1000;
-      quality = quality || 0.85;
-      return new Promise(function(resolve, reject) {
-        var reader = new FileReader();
-        reader.onload = function() {
-          var img = new Image();
-          img.onload = function() {
-            var w = img.width, h = img.height;
-            if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
-            else if (h >= w && h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
-            try {
-              var canvas = document.createElement('canvas');
-              canvas.width = w; canvas.height = h;
-              var ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, w, h);
-              resolve(canvas.toDataURL('image/jpeg', quality));
-            } catch (e) { resolve(reader.result); }
-          };
-          img.onerror = function() { resolve(reader.result); };
-          img.src = reader.result;
-        };
-        reader.onerror = function() { reject(new Error('read failed')); };
-        reader.readAsDataURL(file);
+  /* ---- snapshot of the PIN screen state ---- */
+  window.__dbgSnapshot = function () {
+    try {
+      push('SNAP', 'Core=' + (!!window.Core) + ' ver=' + (window.Core && window.Core.APP_VERSION) + ' ready=' + document.readyState + ' standalone=' + (navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)));
+      var ov = document.getElementById('pinOverlayFS');
+      if (!ov) { push('SNAP', 'pinOverlayFS = MISSING'); }
+      else {
+        var cs = getComputedStyle(ov);
+        push('SNAP', 'pinOverlay disp=' + (ov.style.display || '(css:' + cs.display + ')') + ' cls="' + ov.className + '" pe=' + cs.pointerEvents + ' vis=' + cs.visibility + ' z=' + cs.zIndex);
+      }
+      var keys = document.querySelectorAll('.key-btn-fs[data-key]');
+      push('SNAP', 'keyButtons found = ' + keys.length + (keys.length ? (' first=' + describe(keys[0])) : ''));
+      // What is actually on top where the keys sit?
+      var probes = [[innerWidth * 0.5, innerHeight * 0.62], [innerWidth * 0.5, innerHeight * 0.75], [innerWidth * 0.5, innerHeight * 0.85]];
+      probes.forEach(function (p) {
+        var st = document.elementsFromPoint ? document.elementsFromPoint(p[0], p[1]) : [];
+        push('SNAP', 'at ' + Math.round(p[0]) + ',' + Math.round(p[1]) + ' -> ' + describe(st[0]) + (st[1] ? ('  under=' + describe(st[1])) : ''));
       });
-    };
+    } catch (e) { push('SNAP', 'err ' + e); }
+  };
 
-    /* PHOTO UPLOAD */
-    var photoInput = document.getElementById("photoInput");
-    var _oldAddPhotoBtn = document.getElementById("addPhotoBtn");
-    var _oldClearPhotoBtn = document.getElementById("clearPhotoBtn");
-    if (_oldAddPhotoBtn) { _oldAddPhotoBtn.onclick = function() { core.vibrate(); photoInput.click(); document.getElementById("calibrationBar").style.display = "flex"; }; }
-    if (_oldClearPhotoBtn) { _oldClearPhotoBtn.onclick = async function() {
-      core.vibrate();
-      document.getElementById("profilePhoto").src = "https://via.placeholder.com/250x250.png?text=Your+Photo";
-      await core.saveData();
-    }; }
-    if (photoInput) { photoInput.addEventListener("change", function(e) {
-      var file = e.target.files[0];
-      if(file){
-        console.log("[Photo] New photo selected:", file.name, file.size);
-        core.compressImageFile(file, 1000, 0.85).then(async function(dataUrl) {
-          document.getElementById("profilePhoto").src = dataUrl;
-          await core.saveData();
-          await core.logAccess('photo_updated', true, null, { photo: dataUrl });
-        }).catch(function(err) { console.warn("[Photo] compress failed:", err); });
+  /* ---- UI ---- */
+  function mkBtn(label, fn) {
+    var b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = 'flex:0 0 auto;font:700 11px monospace;background:#222;color:#fff;border:1px solid #666;border-radius:5px;padding:5px 9px;margin:0;';
+    b.addEventListener('click', function (ev) { ev.stopPropagation(); fn(); }, true);
+    return b;
+  }
+  function build() {
+    if (panel || !document.body) return;
+
+    badge = document.createElement('div');
+    badge.textContent = 'DBG';
+    badge.style.cssText = 'position:fixed;top:0;right:0;z-index:2147483647;background:#c62828;color:#fff;font:700 12px monospace;padding:8px 11px;border-bottom-left-radius:9px;pointer-events:auto;box-shadow:0 1px 6px rgba(0,0,0,.4);';
+    badge.addEventListener('click', function (ev) { ev.stopPropagation(); toggle(); }, true);
+    document.body.appendChild(badge);
+
+    panel = document.createElement('div');
+    // Pinned to the TOP, ~34vh tall, so it never covers the keypad (which is
+    // in the lower half) — the keys stay tappable while you read the log.
+    panel.style.cssText = 'position:fixed;left:0;right:0;top:0;height:34vh;z-index:2147483646;background:rgba(0,0,0,.9);color:#5fdc5f;font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;padding:6px 8px 8px;overflow:auto;-webkit-overflow-scrolling:touch;white-space:pre-wrap;word-break:break-word;pointer-events:auto;border-bottom:2px solid #c62828;';
+
+    var bar = document.createElement('div');
+    bar.style.cssText = 'position:sticky;top:-6px;display:flex;gap:6px;flex-wrap:wrap;background:rgba(0,0,0,.96);padding:4px 0;margin:-6px 0 4px;';
+    bar.appendChild(mkBtn('Snapshot', function () { window.__dbgSnapshot(); }));
+    bar.appendChild(mkBtn('Copy', function () {
+      var txt = LOG.join('\n');
+      try { navigator.clipboard.writeText(txt).then(function () { push('dbg', 'copied ' + LOG.length + ' lines to clipboard'); }, function (e) { push('dbg', 'copy failed: ' + e); }); }
+      catch (e) { push('dbg', 'copy unsupported: ' + e); }
+    }));
+    bar.appendChild(mkBtn('Clear', function () { LOG.length = 0; render(); }));
+    bar.appendChild(mkBtn('Hide', function () { toggle(); }));
+    panel.appendChild(bar);
+
+    logBody = document.createElement('div');
+    panel.appendChild(logBody);
+    document.body.appendChild(panel);
+    render();
+  }
+  function toggle() { if (panel) panel.style.display = (panel.style.display === 'none') ? 'block' : 'none'; }
+  function render() {
+    if (!logBody) return;
+    logBody.textContent = LOG.join('\n');
+    try { panel.scrollTop = panel.scrollHeight; } catch (_) {}
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { build(); push('dbg', 'DOMContentLoaded'); window.__dbgSnapshot(); });
+  } else {
+    build(); window.__dbgSnapshot();
+  }
+  window.addEventListener('load', function () { push('dbg', 'window load'); setTimeout(function () { if (window.__dbgSnapshot) window.__dbgSnapshot(); }, 600); });
+
+  push('dbg', 'debug console installed; readyState=' + document.readyState);
+})();
+</script>
+<script src="core_components.js?v=7.3"></script>
+<script>
+// ===== EARLY BAN CHECK =====
+(function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
+</script>
+<style>
+:root{
+  --bg:#eef3f6;
+  --muted:#435166;
+  --accent:#0f2b3a;
+  --panel:#fff;
+  --safety-red:#c62828;
+  /* ===== VicRoads colour tokens to match reference photos ===== */
+  --vr-navy:#1a1f36;          /* primary heading / value text (near-black, slight warmth) */
+  --vr-black:#1a1a1a;         /* pure-ish black for sheet "Close" buttons */
+  --vr-label:#6b7280;         /* soft grey for field labels */
+  --vr-red:#dc3327;           /* banner red */
+  --vr-green-card:#c8dcb0;    /* sage green photo card bg */
+  --vr-green-badge:#1aa266;   /* P pill + tick green — matches APK green_probationary_icon */
+  --vr-section-grey:#ecedef;  /* section header bar */
+  --vr-divider:#e5e7eb;
+  --vr-page-bg:#f7f8fa;       /* subtle off-white page bg (tiny grey tint) */
+  --watermark:rgba(255,0,0,0.10);
+  /* Hologram coat-of-arms — single opacity driven by device tilt.
+     APK shader (hologram_fragment.glsl):  float roll = abs(u_roll)/10.0 + 0.2;
+     We use DeviceOrientationEvent.beta (screen-to-sky=0° → screen-to-ground=90°+)
+  /* MVR Animation Tokens (from ANIMATIONS_INVENTORY.md) */
+  --mvr-ease-standard:    cubic-bezier(0.4, 0, 0.2, 1);
+  --mvr-ease-decelerate:  cubic-bezier(0,   0, 0.2, 1);
+  --mvr-ease-accelerate:  cubic-bezier(0.4, 0, 1,   1);
+  --mvr-ease-emphasized:        cubic-bezier(0.2, 0, 0,   1);
+  --mvr-ease-emphasized-decel:  cubic-bezier(0.1, 0, 0.45, 1);
+  --mvr-ease-standard-decel:    cubic-bezier(0,   0, 0.65, 1);
+  --mvr-ease-fragment-soft:     cubic-bezier(0.05, 0, 0.25, 1);
+
+  --mvr-dur-tiny:    75ms;
+  --mvr-dur-short:   150ms;
+  --mvr-dur-medium:  200ms;
+  --mvr-dur-tab:     250ms;
+  --mvr-dur-fragment: 300ms;
+  --mvr-dur-long:    320ms;
+  --mvr-dur-extra:   350ms;
+     mapped to the same 0.2→1.0+ range.  0° flat → barely visible; 8°+ tilt → full. */
+  --holo-opacity: 0.2;
+}
+
+/* ===== VicRoads Custom Fonts (from myVicRoads APK v1.3.5) ===== */
+@font-face {
+	font-family: 'VicRoads';
+	src: url('apk_loot/fonts/vic_regular.otf') format('opentype');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'VicRoads';
+	src: url('apk_loot/fonts/vic_medium.otf') format('opentype');
+	font-weight: 500;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'VicRoads';
+	src: url('apk_loot/fonts/vic_semibold.otf') format('opentype');
+	font-weight: 600;
+	font-style: normal;
+	font-display: swap;
+}
+
+*{
+  box-sizing:border-box;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+html{
+  /* 100vh is the ONLY height that keeps viewport-fit=cover working from a PWA
+     cold start on iOS. 100% disables cover entirely; 100dvh misreports on cold
+     start. Do not change these to % or dvh. */
+  height:100vh;
+  width:100%;
+  margin:0;
+  background:#ecf0f4;
+  overflow:hidden;
+}
+body{
+  margin:0;
+  font-family:"VicRoads",Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  background:#ecf0f4;
+  color:var(--muted);
+  /* 100vh only — see html rule above. */
+  height:100vh;
+  width:100%;
+  overflow:hidden;
+  overscroll-behavior:none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* ===== HOLOGRAM COAT-OF-ARMS OVERLAY =====
+   APK shader (hologram_fragment.glsl active path):
+     float roll = (abs(u_roll) / 10.0) + 0.2;
+   The coat-of-arms texture is multiplied by this roll factor — tilt the phone
+   and the hologram becomes more opaque.  The overlay is STATIC (no movement,
+   no parallax, no shimmer animation).  Opacity is driven by
+   DeviceOrientationEvent.beta (screen angle relative to ground), mapped to
+   the same 0.2→1.0 range via --holo-opacity which JS updates every frame. */
+.hologram-coat-of-arms {
+  position: absolute;
+  /* Near-zero inset so the crest fills the photo edge-to-edge, matching the
+     APK reference (IMG_1738/IMG_1739). `object-fit: contain` on the inner img
+     preserves the full crest aspect ratio — width becomes the constraint, so
+     the artwork nearly touches the left/right edges without any cropping. */
+  top: 50%;
+  left: 49%;
+  right: auto;
+  bottom: auto;
+  width: 115%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 10;
+  opacity: var(--holo-opacity);
+  mix-blend-mode: screen;               /* white coat-of-arms over coloured plate */
+  /* NO CSS transition — JS rAF loop smooths instead (see _smoothHoloLoop). */
+}
+.hologram-coat-of-arms img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;                  /* preserves full coat-of-arms */
+  object-position: center;
+  display: block;
+}
+
+/* ===== CALIBRATION CONTROLS ===== */
+.calibration-bar {
+  display: none;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 14px 10px 8px 10px;
+}
+.calibration-bar button {
+  flex: 1;
+  min-width: 100px;
+  padding: 10px 14px;
+  border-radius: 20px;
+  border: none;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.cal-btn-toggle {
+  background: var(--accent);
+  color: #fff;
+}
+.cal-btn-toggle.active {
+  background: #1aa266;
+}
+.cal-btn-gyro {
+  background: var(--accent);
+  color: #fff;
+}
+.cal-btn-gyro.active {
+  background: #1aa266;
+}
+.cal-btn-reset {
+  background: #ecedef;
+  color: var(--muted);
+}
+.cal-status {
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.7;
+  margin-bottom: 10px;
+  text-align: center;
+  display: none;
+}
+.cal-status.active {
+  opacity: 1;
+  color: #1aa266;
+  font-weight: 600;
+}
+
+/* Layer tabs */
+.layer-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.layer-tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px 4px;
+  border-radius: 10px;
+  background: #ecedef;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+.layer-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Controls panel */
+.controls-panel {
+  background: var(--panel);
+  border-radius: 14px;
+  padding: 16px;
+  margin: 0 10px 16px 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid rgba(0,0,0,0.04);
+  display: none;
+}
+.controls-panel.open {
+  display: block;
+}
+.controls-panel.hidden {
+  display: none;
+}
+.controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.controls-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.control-group {
+  margin-bottom: 8px;
+}
+.control-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.control-label .val {
+  color: var(--accent);
+  font-weight: 700;
+}
+.control-group input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: #d0d5dd;
+  outline: none;
+}
+.control-group input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.control-group input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.presets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin: 8px 0 4px 0;
+}
+.presets button {
+  padding: 4px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #f5f6f8;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.presets button:hover {
+  background: #ecedef;
+}
+
+.cal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.cal-actions button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 14px;
+  border: none;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+.cal-actions button.secondary {
+  background: #ecedef;
+  color: var(--muted);
+}
+.cal-actions button.danger {
+  background: var(--safety-red);
+  color: #fff;
+}
+
+/* ===== LIVE BADGE (deprecated — kept in markup but always hidden) ===== */
+.live-badge { display: none !important; }
+.live-badge.active { display: none !important; }
+
+/*
+  KEY LAYOUT INSIGHT:
+  .top-nav, #ptr-zone are siblings of #viewport — all direct children of <body>.
+  They are position:fixed and live in the root stacking context.
+  #scroll-content uses transform which creates a new stacking context,
+  but because it is INSIDE #viewport (not a sibling of the fixed elements),
+  and the fixed elements are in the ROOT stacking context, iOS Safari
+  will always paint the fixed elements on top.
+*/
+
+/* Fixed nav bar — direct child of body, root stacking context */
+.top-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--vr-page-bg);
+  display: none; /* hidden until unlocked */
+  align-items: center;
+  justify-content: center;
+  height: calc(48px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 1px solid var(--vr-divider);
+  z-index: 300;
+}
+.top-nav.unlocked {
+  display: flex;
+}
+.back-btn {
+  position: absolute;
+  left: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--vr-navy);
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.back-btn svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+.view-details {
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--vr-navy);
+  letter-spacing: 0.1px;
+}
+
+/* Spinner zone — direct child of body, root stacking context */
+#ptr-zone {
+  position: fixed;
+  top: calc(48px + env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vr-page-bg);
+  z-index: 200;
+  pointer-events: none;
+}
+
+/* Scrollable viewport */
+#viewport {
+  width:100vw;
+  height:100vh;
+  background:var(--vr-page-bg);
+  position:relative;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-top: calc(48px + env(safe-area-inset-top));
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  display: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+#viewport.unlocked {
+  display: block;
+}
+
+/* scroll-content is pushed down during PTR */
+#scroll-content {
+  /* transition controlled by JS */
+}
+
+#age {
+  margin-top: 0;
+  padding-top: 0;
+}
+#age .label {
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+#age .row {
+  margin-top: 0;
+}
+#age .value {
+  color: #000;
+  font-weight: 700;
+}
+
+/* HEADER */
+.yellow {
+  position: relative;
+  top: 0;
+  z-index: 10;
+  background: var(--vr-red);
+  color: white;
+  padding: 14px 16px;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  box-shadow:
+    0 3px 6px rgba(0, 0, 0, 0.35),
+    inset 0 -3px 4px rgba(255, 255, 255, 0.15);
+  z-index: 2;
+}
+.vr-header-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  line-height: 1.15;
+  color: #fff;
+}
+.vr-header-sub {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.96;
+  margin-top: 3px;
+  letter-spacing: 0.1px;
+  color: #fff;
+}
+.vr-logo-mark {
+  height: 22px;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
+}
+.yellow::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 0;
+  width: 100%;
+  height: 28px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.03), transparent);
+  filter: blur(4px);
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.3;
+}
+.card-section {
+  position: relative;
+  padding: 20px 14px;
+  border-radius: 1px;
+  /* Sage-green textured backdrop matching the APK licence card.
+     The floral pattern fills the entire panel (matches IMG_1712 reference). */
+  background-color: var(--vr-green-card);
+  background-image:
+    url('apk_loot/logos/floral_bgro_w.webp'),
+    radial-gradient(ellipse at 30% 25%, rgba(255,255,255,0.18), transparent 55%),
+    radial-gradient(ellipse at 75% 80%, rgba(0,40,0,0.08), transparent 60%),
+    repeating-linear-gradient(135deg,
+      rgba(255,255,255,0.04) 0,
+      rgba(255,255,255,0.04) 2px,
+      transparent 2px,
+      transparent 7px);
+  /* cover = fill the whole panel regardless of viewport size (PWA-safe).
+     Previously this was 60%/auto which shrunk into a small corner square
+     when the viewport changed (e.g. home-screen launch). */
+  background-size: cover, auto, auto, auto;
+  background-position: center, 0 0, 0 0, 0 0;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+  overflow: hidden;
+  box-shadow: 0 3px 3px rgba(0, 0, 0, 0.1);
+  z-index: 1;
+}
+.card-inner{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  position:relative;
+  z-index:2;
+}
+.photo {
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 100%;
+  height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  margin: 0 auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  /* Strict containment — prevents iOS Safari (standalone PWA mode) from
+     letting the absolutely-positioned crest overlay overflow the photo's
+     rounded card, which was clipping the right edge on iPhone. */
+  contain: layout;
+  position: relative;
+  min-width: 0;
+}
+.photo img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+  border-radius: inherit;
+}
+/* Ensure the grid cell containing the photo never lets its child overflow.
+   On iOS PWA mode, grid items default to min-width:auto which can let an
+   intrinsically-sized child push past the column's 1fr allocation. */
+.card-inner > * {
+  min-width: 0;
+  min-height: 0;
+}
+.consent{
+  background:#fff;
+  border-radius:14px;
+  padding:14px;
+  min-height:190px;
+  font-size:13px;
+  color:var(--vr-navy);
+  border:1px solid rgba(12,24,36,0.04);
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:6px;
+  line-height:1.4;
+}
+.consent button {
+  background:var(--vr-navy);
+  color:#fff;
+  padding:11px 18px;
+  border-radius:999px;
+  border:none;
+  font-weight:700;
+  cursor:pointer;
+  font-size:13px;
+  transition: background 0.2s ease;
+}
+.consent button:hover {
+  background:#2a3a6a;
+}
+.consent button#clearDataBtn {
+  background:#c62828;
+}
+.consent button#clearDataBtn:hover {
+  background:#a52020;
+}
+/* Dev-only controls: hidden by default. Call window.toggleDevMode() in the
+   console to reveal the Edit/Add Photo/Clear/Finalize buttons. */
+.dev-only {
+  display: none;
+}
+body.dev-mode .dev-only {
+  display: contents;
+}
+.tabs{
+  margin:20px auto 45px auto;
+  display:flex;
+  justify-content:space-evenly;
+  background:#fff;
+  border:1px solid rgba(0,0,0,0.15);
+  width:95%;
+  border-radius:100px;
+  max-width:520px;
+  position:relative;
+  padding:2px;
+  isolation: isolate;
+  will-change: transform;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.tab{
+  flex:1;
+  text-align:center;
+  padding:10px 0;
+  font-weight:600;
+  font-size:14px;
+  color:var(--vr-navy);
+  position:relative;
+  z-index:2;
+  cursor:pointer;
+}
+.tab.active{ color:#fff; }
+.tab-highlight{
+  position:absolute;
+  top:2px; bottom:2px;
+  left:0;
+  width:0;
+  background:var(--vr-navy);
+  border-radius:80px;
+  transition:all 0.3s ease;
+  z-index:1;
+}
+.details{
+  padding:18px 14px;
+  background:var(--vr-page-bg);
+  color:var(--muted);
+  display:none;
+  max-width: 100%;
+  min-height: 50vh;
+}
+.details.active{
+  display:block;
+}
+.name{ font-size:22px;font-weight:800;margin-bottom:12px;color:var(--vr-navy);letter-spacing:0.3px; }
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px;}
+.label{font-size:13px;font-weight:500;color:var(--vr-label);margin-top:8px;}
+.value{font-size:15px;font-weight:700;color:var(--vr-navy);margin-top:3px;}
+.pill {
+  background:var(--vr-green-badge);
+  border-radius:4px;
+  padding:2px 6px;
+  font-size:14px;
+  font-weight:700;
+  line-height:1;
+  margin-left:4px;
+  vertical-align:middle;
+  display:inline-block;
+  color: #fff;
+}
+.address{font-weight:700;margin-top:4px;line-height:1.3;font-size:15px;color:var(--vr-navy);}
+.sig{margin-top:16px;padding-top:12px;}
+.sig canvas {
+      border: none;
+      background: transparent;
+      width: 350px;
+      height: 80px;
+      transform: scale(1.2);
+      transform-origin: left center;
+    }
+.tick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: var(--vr-green-badge);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+}
+.section-header {
+  margin-top: 18px;
+  background: var(--vr-section-grey);
+  padding: 11px 16px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--vr-navy);
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  box-sizing: border-box;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+  z-index: 5;
+}
+.divider {
+  height: 1px;
+  width: 100%;
+  background: var(--vr-divider);
+  margin: 16px 0;
+}
+.rule {
+  height:1px;
+  width:100%;
+  background: repeating-linear-gradient(90deg, rgba(67,81,102,0.14) 0px, rgba(67,81,102,0.14) 2px, transparent 2px, transparent 6px);
+  margin:12px 0;
+}
+.row{display:flex;align-items:center;gap:8px;}
+.dot{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;}
+.dot.green{background:var(--vr-green-badge);}
+.barcode {
+  margin-top: 8px;
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  cursor: pointer;
+}
+.barcode canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.barcode-expand-icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vr-navy);
+}
+.barcode-expand-icon svg {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+.barcode canvas {
+  width: 100%;
+  height: 60px;
+}
+#signatureModal, #editModal{
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.5);
+  display:none; align-items:center; justify-content:center;
+  z-index:1000;
+}
+.modal-content{
+  background:#fff; padding:16px; border-radius:8px; max-width:90%; width:450px; text-align:center;
+}
+.modal-content canvas{width:450px; height:150px; border:1px solid #ccc; border-radius:4px; background:#fafafa; touch-action:none;}
+.modal-content button{margin-top:8px; padding:6px 12px;}
+.edit-field{
+  width:100%;
+  padding:8px;
+  margin-top:8px;
+  border:1px solid #ddd;
+  border-radius:6px;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+.edit-field::placeholder {
+  color: #888;
+  font-style: italic;
+}
+#qrSheet, #barcodeSheet {
+  position:fixed;
+  left:0;
+  right:0;
+  bottom:0;
+  top:auto;
+  width:100vw;
+  /* Dynamic viewport so the sheet doesn't sit behind iOS Safari's home
+     indicator / dynamic toolbar in standalone PWA mode. Fallback to 100vh
+     for browsers without dvh support. */
+  height:100vh;
+  height:100vh;
+  background:#ffffff;
+  z-index:1200;
+  /* Animate transform on the compositor — iOS Safari paints `bottom`
+     transitions on the CPU, which stutters on a full-viewport sheet. */
+  transform:translateY(100%);
+  transition:transform 320ms cubic-bezier(.2,0,0,1);
+  box-shadow:0 -20px 40px rgba(0,0,0,0.15);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:18px 18px max(24px, env(safe-area-inset-bottom)) 18px;
+  overflow:auto;
+  box-sizing:border-box;
+  -webkit-overflow-scrolling:touch;
+}
+#qrSheet.open, #barcodeSheet.open {
+  transform:translateY(0);
+  will-change:transform;
+}
+.sheet-header {
+  width:100%;
+  max-width:720px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-top:8px;
+  padding:0 6px;
+}
+.sheet-title { font-weight:700; color:var(--vr-navy); font-size:17px; text-align:center; flex:1; letter-spacing:0.1px; }
+.sheet-close { font-weight:500; color:var(--vr-black); cursor:pointer; font-size:16px; }
+.sheet-card {
+  width:100%;
+  max-width:720px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  margin-top:6px;
+}
+.sheet-center-title { font-weight:700; color:var(--vr-navy); font-size:22px; margin-top:28px; margin-bottom:14px; text-align:center; letter-spacing:0.2px; }
+.qr-canvas-wrap {
+  width:82%;
+  max-width:440px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  background:transparent;
+  margin-top:18px;
+}
+.qr-canvas {
+  width:100%;
+  aspect-ratio:1/1;
+  max-width:440px;
+  background:white;
+  border-radius:8px;
+  box-shadow:0 6px 18px rgba(20,30,40,0.06);
+  display:block;
+}
+.qr-expire {
+  margin-top:18px;
+  margin-bottom:6px;
+  font-weight:700;
+  color:var(--vr-navy);
+  display:flex;
+  gap:8px;
+  align-items:baseline;
+  justify-content:center;
+}
+.qr-expire .muted { font-weight:500; color:var(--vr-label); font-size:15px; }
+.qr-expires-timer { font-size:17px; font-weight:700; color:var(--vr-navy); }
+.qr-text {
+  max-width:560px;
+  margin-top:14px;
+  padding:6px 8%;
+  color:var(--vr-label);
+  line-height:1.55;
+  font-size:14px;
+  text-align:left;
+}
+.qr-text strong { color:var(--vr-navy); font-weight:700; }
+.qr-share-list {
+  max-width:560px;
+  width:100%;
+  padding:0 8%;
+  margin-top:14px;
+  color:var(--vr-navy);
+  font-weight:700;
+  font-size:15px;
+  box-sizing:border-box;
+}
+.qr-share-list ul {
+  margin-top:10px;
+  padding-left:22px;
+  color:var(--vr-navy);
+  font-weight:500;
+  font-size:14px;
+  line-height:1.7;
+}
+.qr-share-list ul li { padding-left:4px; }
+.qr-verify-preview-btn {
+  display: block;
+  width: 100%;
+  max-width: 520px;
+  margin: 16px auto 0;
+  padding: 14px;
+  border: 2px solid var(--vr-navy);
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--vr-navy);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s ease;
+}
+.qr-verify-preview-btn:active { background: #f3f5f8; }
+.barcode-canvas-wrap {
+  width:80%;
+  max-width:520px;
+  display:flex;
+  justify-content:center;
+  margin-top:12px;
+  margin-bottom:8px;
+}
+.barcode-svg {
+  width:100%;
+  height:110px;
+  background:transparent;
+  display:block;
+}
+.barcode-text {
+  max-width:560px;
+  margin-top:20px;
+  padding:0 8%;
+  color:var(--vr-label);
+  line-height:1.55;
+  font-size:15px;
+  text-align:center;
+  font-weight:400;
+}
+.barcode-text a {
+  color:var(--vr-label);
+  text-decoration:underline;
+  text-underline-offset:2px;
+}
+.field-block{
+  display:flex;
+  flex-direction:column;
+  margin-top:4px;
+  margin-bottom:16px;
+}
+.field-block1{
+  display:flex;
+  flex-direction:column;
+  margin-top:4px;
+  margin-bottom:10px;
+}
+.field-block2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.proficiency-pill {
+  display: inline-block;
+  width: auto;
+  min-width: 0;
+  padding: 3px 8px;
+  background: var(--vr-green-badge);
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+  margin-left: 0px;
+  text-align: center;
+  color: #fff;
+}
+.row #toggleEye {
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vr-label);
+  flex-shrink: 0;
+}
+.row #toggleEye svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+.row #toggleEye img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 90%;
+}
+.row #toggleEye {
+  display: flex;
+  align-items: center;
+}
+/* Last refreshed bar */
+.last-refresh {
+  font-size: 13px;
+  color: var(--vr-label);
+  text-align: center;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding: 12px 0 10px 0;
+  background-color: var(--vr-page-bg);
+  font-weight: 400;
+}
+.last-refresh .lbl {
+  font-weight: 600;
+  color: var(--vr-label);
+}
+/* Sheets cover full viewport at every screen size — matches reference photos */
+
+/* ===== PIN ENTRY (matches IMG_1671) ===== */
+#pinOverlayFS {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  justify-content: flex-start;
+  padding-top: 0vh;
+  font-family: Inter, -apple-system, system-ui, Segoe UI, Roboto, Arial;
+}
+#pinOverlayFS.pin-hidden {
+  display: none !important;
+}
+#pinBG {
+  width: 100vw;
+  height:100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  background: #ffffff;
+}
+.pin-header {
+  text-align: center;
+  margin-top: 16vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.lock-icon-wrap {
+  width: 76px;
+  height: 80px;
+  margin: 0 auto 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lock-icon-wrap svg {
+  width: 76px;
+  height: 80px;
+  display: block;
+}
+.lock-icon {
+  width: 76px;
+  height: 80px;
+  display: block;
+  margin: 0 auto 28px;
+}
+.pin-instruction {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0a1729;
+  text-align: center;
+  letter-spacing: -0.3px;
+  line-height: 1.25;
+}
+.pin-dots-fs {
+  display: flex;
+  gap: 22px;
+  justify-content: center;
+  margin-top: 38px;
+  margin-bottom: 48px;
+}
+.pin-dot-fs {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #0a1729;
+  background: transparent;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.pin-dot-fs.filled {
+  background: #0a1729;
+  transform: scale(1.04);
+}
+.keypad-fs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 36px 48px;
+  width: 78%;
+  max-width: 360px;
+  padding-top: 14px;
+}
+.key-btn-fs {
+  background: transparent;
+  border: none;
+  font-size: 34px;
+  font-weight: 500;
+  color: #0a1729;
+  padding: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+}
+.key-btn-fs:active {
+  color: #555;
+  opacity: 0.55;
+}
+.forgot-btn {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: #0a1729 !important;
+}
+.back-btn-fs svg {
+  width: 32px;
+  height: 24px;
+  display: block;
+}
+@media (max-width: 420px) {
+  .lock-icon-wrap, .lock-icon-wrap svg { width: 64px; height: 68px; }
+  .pin-instruction { font-size: 20px; }
+  .key-btn-fs { font-size: 28px; }
+  .forgot-btn { font-size: 14px !important; }
+  .pin-dots-fs { margin-top: 30px; margin-bottom: 40px; gap: 18px; }
+  .pin-dot-fs { width: 18px; height: 18px; }
+  .keypad-fs { gap: 28px 40px; }
+}
+
+/* ============================================================ */
+/* ===== HOME / FRONT PAGE (IMG_1663) ========================= */
+/* ============================================================ */
+#homeScreen {
+  position: fixed;
+  inset: 0;
+  height:100vh;
+  background: #ecf0f4;
+  display: flex;
+  flex-direction: column;
+  z-index: 80;
+  overflow: hidden;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+}
+#homeScreen.hidden { display: none; }
+
+.home-header {
+  padding: 16px 22px 14px;
+  padding-top: calc(16px + env(safe-area-inset-top));
+  flex-shrink: 0;
+}
+.home-greeting {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--vr-navy);
+  margin: 0;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+}
+
+.home-cards {
+  padding: 6px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.home-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: #ffffff;
+  border: none;
+  border-radius: 18px;
+  padding: 22px 22px;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: background 0.15s ease, transform 0.1s ease;
+  outline: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.home-card:active {
+  background: #f3f5f8;
+  transform: scale(0.995);
+}
+.home-card-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.home-card-label {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--vr-navy);
+  letter-spacing: 0.1px;
+}
+
+/* Spacer pushes My licence panel to the bottom */
+.home-spacer { flex: 1 1 auto; }
+
+/* ============================================================ */
+/* ===== My licence dark gradient panel  ====================== */
+/* Sized to EXACT APK dimens from dimens.xml in myVicRoads v1.3.5:
+   digital_driver_card_width=327dip, digital_driver_card_height=204dip,
+   digital_driver_card_horizontal_padding=24dip,
+   digital_driver_card_inner_bottom_padding=34dip, licenceRoundedCorner=8dip,
+   digital_driver_card_title_line_height=22sp,
+   digital_driver_card_subtitle_line_height=20sp,
+   digital_driver_card_expand_icon_size=14dip.
+   ============================================================ */
+.my-licence-panel {
+  /* Home-screen variant: panel sits flush against the bottom nav so only
+     the top corners round. Width fills the screen minus 16px margin so it
+     still LOOKS like the 327dip card on a typical 390pt phone width. */
+  margin: 0 16px 0;
+  padding: 24px 24px 34px;             /* APK horizontal=24, inner bottom=34 */
+  min-height: 204px;                    /* APK digital_driver_card_height */
+  box-sizing: border-box;
+  border: none;
+  border-radius: 8px 8px 0 0;          /* APK licenceRoundedCorner */
+  background: linear-gradient(180deg, #243345 0%, #5e7c92 100%);
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  text-align: left;
+  font-family: inherit;
+  outline: none;
+  -webkit-user-select: none;
+  user-select: none;
+  flex-shrink: 0;
+  /* mtrl_card_state_list_anim — 120ms translationZ-equivalent after 75ms delay */
+  transition:
+    filter 120ms cubic-bezier(0.2, 0, 0, 1) 75ms,
+    transform 120ms cubic-bezier(0.2, 0, 0, 1) 75ms;
+}
+.my-licence-panel:active {
+  filter: brightness(1.08);
+  transform: scale(0.99);
+}
+.my-licence-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.my-licence-title {
+  /* Reference panel uses Inter/system (sample/IMG_1816), not the VicRoads
+     custom face that the rest of the app inherits. Override locally so the
+     "My licence" / "Tap to view licence" copy matches the reference. */
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.1px;
+  line-height: 22px;                   /* APK digital_driver_card_title_line_height */
+}
+.my-licence-subtitle {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 20px;                   /* APK digital_driver_card_subtitle_line_height */
+  margin-top: 2px;
+}
+.my-licence-expand {
+  width: 14px;                          /* APK digital_driver_card_expand_icon_size */
+  height: 14px;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+/* Bottom tab bar */
+.bottom-tab-bar {
+  display: flex;
+  /* Reference uses a flat white bar (matches sample/IMG_1801..1805). The page
+     bg behind it is the same blue-grey #ecf0f4, but the bar itself is white
+     so the home-indicator zone reads clean instead of letting the page tint
+     bleed into the safe-area padding. */
+  background: #ffffff;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 6px 0 env(safe-area-inset-bottom);
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+  align-items: stretch;
+  flex-shrink: 0;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+}
+/* Single sliding pill indicator — positioned/animated by JS in
+   updateBottomTabPill(). Glides between tabs with eased motion. */
+.bottom-tab-pill {
+  position: absolute;
+  top: 13px;                   /* re-centred on the icon (was 8px) */
+  height: 38px;                /* flatter, snug pill to match official (was 48px) */
+  /* Solid light-grey (matches sample IMG_1801..1805 pill against the white bar) */
+  background: #e9ecef;
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0;                  /* hidden until JS positions it */
+  transition:
+    left 320ms cubic-bezier(0.2, 0, 0, 1),
+    width 320ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 200ms ease;
+  will-change: left, width;
+  z-index: 0;
+}
+.bottom-tab-pill.ready { opacity: 1; }
+.bottom-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 8px 0 4px;
+  color: var(--vr-navy);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  outline: none;
+  -webkit-user-select: none;
+  user-select: none;
+  position: relative;          /* sit above the pill */
+  z-index: 1;
+}
+.bottom-tab-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 16px;
+  border-radius: 999px;
+  background: transparent;     /* pill drawn separately */
+}
+/* Icon color cascade — SVGs in nav icons using fill="currentColor" / stroke="currentColor"
+   inherit from .bottom-tab-icon-wrap. Default navy, green when their tab is active. */
+.bottom-tab .bottom-tab-icon-wrap { color: var(--vr-navy); }
+.bottom-tab.active .bottom-tab-icon-wrap { color: var(--vr-green-badge); }
+
+/* ============================================================ */
+/* ===== Authentic outline / filled nav icon swap ============= */
+/* The real myVicRoads.apk uses TWO drawables per tab:
+   ic_<tab>_outline.xml for the inactive (navy #253544) state and
+   ic_<tab>_filled.xml for the active state, which uses dark VicRoads
+   green (#00693C / #046235) and — for Home — a 3-layer gradient
+   (light→dark green with a navy depth fold) lifted straight from the
+   APK vector source.
+   At runtime, initFilledNavIcons() (see JS block near end of file)
+   walks every .bottom-tab and injects the matching .tab-icon-filled
+   sibling. CSS below toggles which one shows.
+   Use inline-flex so the SVG child is centered both H/V inside its wrapper. */
+/* Bottom-nav icon crossfade — APK Compose Crossfade timing (~250ms, Material
+   fast_out_slow_in). The outline scales out from center while the filled
+   scales in from center, giving the "green opens from the middle" effect.
+   Both layers are absolutely positioned in the same wrapper so they stack. */
+.bottom-tab .bottom-tab-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-top: -3px;
+}
+.bottom-tab .tab-icon-outline,
+.bottom-tab .tab-icon-filled {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 260ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+.bottom-tab .tab-icon-outline { opacity: 1; }
+.bottom-tab .tab-icon-filled  { opacity: 0; }
+.bottom-tab.active .tab-icon-outline { opacity: 0; }
+.bottom-tab.active .tab-icon-filled  { opacity: 1; }
+/* The filled SVGs already carry their own brand-green fills — they must
+   NOT inherit currentColor from .bottom-tab.active or the gradients would
+   be overridden. Lock the surrounding color so paths render their own fills. */
+.bottom-tab.active .tab-icon-filled { color: transparent; }
+/* Force consistent nav icon size — overrides per-SVG inline width/height */
+.bottom-tab .bottom-tab-icon-wrap svg { width: 32px !important; height: 32px !important; }
+.bottom-tab-label {
+  font-size: 13px;
+  color: var(--vr-navy);
+  font-weight: 500;
+  transition: color 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.bottom-tab.active .bottom-tab-label {
+  color: var(--vr-green-badge);
+  font-weight: 700;
+}
+
+/* ============================================================ */
+/* ===== LICENCE LOADING OVERLAY (IMG_1675) =================== */
+/* Shown between "My licence" tap and the licence-detail viewport reveal. */
+/* ============================================================ */
+#licenceLoadingScreen {
+  position: fixed;
+  inset: 0;
+  height:100vh;
+  background: #ffffff;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  /* Driven by .hidden class — transitions cleanly reverse if interrupted,
+     unlike a keyframe animation which can leave the element stuck holding
+     its last animated transform when cancelled mid-flight (iOS WebKit). */
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform 320ms cubic-bezier(0.05, 0, 0.25, 1),
+              opacity 200ms ease-out;
+}
+#licenceLoadingScreen.hidden {
+  /* No display:none — keep it in the layout tree so the transition can run
+     out. We hide it via opacity+transform and disable pointer events. */
+  transform: translateX(8%);
+  opacity: 0;
+  pointer-events: none;
+}
+#licenceLoadingScreen.entering {
+  transform: translateX(8%);
+  opacity: 0;
+}
+/* Viewport reveal — cheap translate + fade instead of scale, so iOS doesn't
+   have to repaint the mix-blend-mode coat-of-arms subtree every frame. */
+#viewport.unlocked {
+  animation: mvr-licence-detail-enter var(--mvr-dur-fragment) var(--mvr-ease-fragment-soft);
+}
+@keyframes mvr-licence-detail-enter {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+/* Slide-right exit when back arrow is tapped on licence detail.
+   The licence content + top nav glide off to the right while the previous
+   tab screen is revealed underneath. */
+#viewport.unlocked.exiting,
+#topNav.unlocked.exiting {
+  animation: mvr-licence-detail-exit var(--mvr-dur-long) var(--mvr-ease-standard) forwards;
+}
+@keyframes mvr-licence-detail-exit {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0.4;
+  }
+}
+/* The .loading-spinner-big class is also defined in the anti-leak <style>
+   block at the top of the file, but THAT block is removed on first paint —
+   so we redefine it here in the main stylesheet so the licence loading
+   screen (which is shown later) still has its spinner. */
+.loading-spinner-big {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from -90deg,
+    transparent 0deg,
+    #d8eecf 50deg,
+    #a3d68a 95deg,
+    #5fb24a 150deg,
+    #2f8a30 195deg,
+    transparent 200deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+  animation: ptr-spin 0.9s linear infinite;
+}
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+
+#licenceLoadingScreen .loading-spinner-big {
+  width: 64px;
+  height: 64px;
+}
+
+/* ============================================================ */
+/* ===== APP TAB SCREENS (Vehicles / Licence / Payments / Profile) ===== */
+/* ============================================================ */
+.app-screen {
+  position: fixed;
+  inset: 0;
+  height:100vh;
+  background: #ecf0f4;
+  display: flex;
+  flex-direction: column;
+  z-index: 80;
+  overflow: hidden;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  /* Tab screen Crossfade — APK Compose Crossfade between tab targets.
+     Material short_3 = 150ms with fast_out_slow_in. */
+  animation: mvr-tab-screen-fade-in var(--mvr-dur-medium) var(--mvr-ease-standard);
+}
+.app-screen.hidden { display: none; animation: none; }
+@keyframes mvr-tab-screen-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.app-screen-header {
+  padding: 16px 22px 14px;
+  padding-top: calc(16px + env(safe-area-inset-top));
+  flex-shrink: 0;
+}
+.app-screen-title {
+  font-size: 34px;
+  font-weight: 800;
+  color: var(--vr-navy);
+  margin: 0;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+}
+
+.app-screen-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: scroll;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  padding: 4px 16px 162px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Kill iOS double-tap-to-zoom on interactive elements without blocking pan gestures elsewhere. */
+button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
+  touch-action: manipulation;
+}
+
+/* Home screen scroll container — iOS standalone PWA scroll fix v2.
+   padding-bottom guarantees scrollHeight > clientHeight so iOS engages
+   the elastic scroller; works reliably where ::after pseudo-elements fail
+   in standalone PWAs with flex margin-top:auto siblings. */
+.home-scroll,
+#screenVehicles .app-screen-scroll,
+#screenPayments .app-screen-scroll {
+  flex: 1 1 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  display: block;
+  min-height: 0;
+  height: 100%;
+  padding-bottom: 200px;
+}
+
+/* Home: pin licence panel to bottom via margin-top:auto. */
+#homeScreen .home-scroll {
+  display: flex;
+  flex-direction: column;
+}
+#homeScreen .home-spacer { display: none; }
+#homeScreen .my-licence-panel {
+  margin-top: auto;
+  min-height: 204px;
+  flex-shrink: 0;
+}
+
+/* Real DOM spacer injected by JS at end of each scroller — forces
+   scrollHeight > clientHeight on iOS standalone PWA where padding-bottom
+   on a flex:1 overflow:auto child gets swallowed by WebKit's flex math. */
+.scroll-spacer {
+  flex: 0 0 200px;
+  height: 200px;
+  width: 100%;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* Native CSS scroll-snap: any scroll on the short tabs returns smoothly
+   to scrollTop:0 (the resting position). Cooperates with iOS rubber-band
+   instead of fighting it like a JS scrollTop animation would. */
+.home-scroll,
+#screenVehicles .app-screen-scroll,
+#screenPayments .app-screen-scroll {
+  scroll-snap-type: y mandatory;
+}
+.home-scroll > *:first-child,
+#screenVehicles .app-screen-scroll > *:first-child,
+#screenPayments .app-screen-scroll > *:first-child {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+.app-info-card {
+  background: #ffffff;
+  border-radius: 14px;
+  margin: 0 0 16px 0;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.app-info-card-title {
+  display: block;
+  padding: 18px 20px 4px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--vr-navy);
+  letter-spacing: 0.1px;
+  margin: 0;
+  font-family: inherit;
+}
+
+.app-info-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 18px 20px;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--vr-divider);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  -webkit-user-select: none;
+  user-select: none;
+  /* mtrl_card_state_list_anim — 120ms with 75ms delay, M3 emphasized easing */
+  transition:
+    background 120ms cubic-bezier(0.2, 0, 0, 1) 75ms,
+    transform 120ms cubic-bezier(0.2, 0, 0, 1) 75ms;
+  color: var(--vr-navy);
+}
+.app-info-card > .app-info-row:first-child,
+.app-info-card-title + .app-info-row {
+  border-top: none;
+}
+.app-info-row:active {
+  background: #f3f5f8;
+  transform: scale(0.995);
+}
+
+.app-info-row-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-right: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vr-navy);
+}
+.app-info-row-icon svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.app-info-row-text {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.app-info-row-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--vr-navy);
+  line-height: 1.3;
+}
+.app-info-row-subtitle {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--vr-label);
+  line-height: 1.3;
+}
+.app-info-row-chevron {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-left: 12px;
+  color: var(--vr-label);
+}
+.app-info-row-chevron svg { width: 20px; height: 20px; display: block; }
+
+.app-version-text {
+  text-align: center;
+  font-size: 13px;
+  color: var(--vr-label);
+  padding: 6px 0 2px;
+  margin: 0;
+}
+/* Per-deploy change note — bumped alongside .app-version-text. Small and
+   muted so it doesn't fight the version number visually. */
+.app-version-note {
+  text-align: center;
+  font-size: 11px;
+  color: var(--vr-label);
+  opacity: 0.7;
+  padding: 0 16px 18px;
+  margin: 0;
+  line-height: 1.35;
+}
+
+/* Licence tab "Tap to view licence" panel — reuses my-licence-panel look but
+   floats inside the scroll list with all four corners rounded. APK exact:
+   327×204 (with side-margin) and the 8dip rounded corner. */
+.app-screen .my-licence-panel.licence-tab-panel {
+  /* Inset from scroll edges to match APK side-margin (reference design) */
+  margin-left: 0;
+  margin-right: 0;
+  margin-top: 0;
+  margin-bottom: 16px;
+  width: 100%;
+  max-width: none;
+  display: flex;                        /* keep base flex layout */
+  padding: 24px 24px 34px 24px;         /* APK horizontal=24, inner bottom=34 */
+  min-height: 204px;                    /* APK digital_driver_card_height */
+  border-radius: 8px;                   /* APK licenceRoundedCorner — all 4 corners */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  box-sizing: border-box;
+}
+.app-screen .my-licence-panel.licence-tab-panel .my-licence-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+  line-height: 22px;
+}
+.app-screen .my-licence-panel.licence-tab-panel .my-licence-subtitle {
+  font-size: 14px;
+  line-height: 20px;
+  margin-top: 2px;
+}
+.app-screen .my-licence-panel.licence-tab-panel .my-licence-expand {
+  width: 14px;                          /* APK digital_driver_card_expand_icon_size */
+  height: 14px;
+}
+
+/* ============================================================ */
+/* ===== ADMIN CONTROL PANEL ================================== */
+/* ============================================================ */
+/* Admin toggle hidden — open the panel via keyboard shortcut Ctrl+Shift+A
+   (Cmd+Shift+A on macOS). Button stays in DOM so existing JS still binds. */
+.admin-toggle {
+  display: none !important;
+  position: fixed;
+  bottom: 24px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--vr-navy);
+  color: #fff;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 10000;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease, background 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.admin-toggle:active { transform: scale(0.92); }
+.admin-toggle.active { background: var(--vr-red); }
+
+.admin-panel {
+  position: fixed;
+  top: 0;
+  right: -420px;
+  width: 400px;
+  max-width: 92vw;
+  height:100vh;
+  background: #1a1f2e;
+  color: #e0e4ec;
+  z-index: 10001;
+  transition: right 0.32s cubic-bezier(.2,.9,.2,1);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 32px rgba(0,0,0,0.35);
+  overflow: hidden;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+}
+.admin-panel.open { right: 0; }
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+}
+.admin-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.2px;
+}
+.admin-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.admin-close:hover { background: rgba(255,255,255,0.15); }
+
+.admin-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+  padding: 0 8px;
+}
+.admin-tab {
+  flex: 1;
+  text-align: center;
+  padding: 12px 4px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.5);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.admin-tab.active {
+  color: #5fb24a;
+  border-bottom-color: #5fb24a;
+}
+
+.admin-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 20px;
+}
+.admin-content .admin-section { display: none; }
+.admin-content .admin-section.active { display: block; }
+
+.admin-field {
+  margin-bottom: 16px;
+}
+.admin-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: rgba(255,255,255,0.45);
+  margin-bottom: 4px;
+}
+.admin-field input,
+.admin-field select,
+.admin-field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.admin-field input:focus,
+.admin-field select:focus,
+.admin-field textarea:focus {
+  outline: none;
+  border-color: #5fb24a;
+}
+.admin-field select { cursor: pointer; }
+.admin-field select option { background: #1a1f2e; color: #fff; }
+.admin-field textarea { resize: vertical; min-height: 60px; }
+
+.admin-field-row {
+  display: flex;
+  gap: 10px;
+}
+.admin-field-row .admin-field { flex: 1; }
+
+.admin-btn {
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  letter-spacing: 0.2px;
+}
+.admin-btn.primary {
+  background: #5fb24a;
+  color: #fff;
+}
+.admin-btn.primary:hover { background: #4a9a38; }
+.admin-btn.secondary {
+  background: rgba(255,255,255,0.08);
+  color: #e0e4ec;
+}
+.admin-btn.secondary:hover { background: rgba(255,255,255,0.14); }
+.admin-btn.danger {
+  background: #c62828;
+  color: #fff;
+}
+.admin-btn.danger:hover { background: #a52020; }
+
+.admin-actions { display: flex; gap: 8px; margin-top: 16px; }
+.admin-actions .admin-btn { flex: 1; }
+
+.admin-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin: 20px 0;
+}
+
+/* Colour swatches in theme tab */
+.colour-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.colour-row .swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 2px solid rgba(255,255,255,0.2);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.colour-row .swatch-label {
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+  color: rgba(255,255,255,0.7);
+}
+.colour-row input[type="color"] {
+  width: 36px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+  padding: 0;
+}
+
+/* Admin toast */
+.admin-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #5fb24a;
+  color: #fff;
+  padding: 10px 22px;
+  border-radius: 24px;
+  font-weight: 700;
+  font-size: 13px;
+  z-index: 10002;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(.2,.9,.2,1);
+}
+.admin-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Admin backdrop */
+.admin-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 10000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.admin-backdrop.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ============================================================ */
+/* ===== LICENCE TYPE SWITCHER ================================ */
+/* ============================================================ */
+.licence-type-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.lt-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+/* APK-EXACT badge fills harvested from yellow_learner_icon / red_probationary_icon
+   / green_probationary_icon vector drawables:
+     L  -> #FFF001 (high-saturation yellow, black "L" text)
+     P1 -> #DE3523 (vicroads red, white "P" text)
+     P2 -> #397E58 (vicroads dark-sage green, white "P" text) */
+.lt-pill.lt-l  { background: #FFF001; color: #000000; }
+.lt-pill.lt-p1 { background: #DE3523; }
+.lt-pill.lt-p2 { background: #397E58; }
+.lt-pill.lt-full { background: transparent; color: transparent; }
+
+/* ============================================================ */
+/* ===== SUB-SCREENS (Demerits, Vehicles, Personal Info) ===== */
+/* ============================================================ */
+.sub-screen {
+  position: fixed;
+  inset: 0;
+  height:100vh;
+  background: #ecf0f4;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  font-family: 'VicRoads', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  transform: translateX(100%);
+  /* APK fragment_open_enter uses fast_out_extra_slow_in path interpolator,
+     approximated by cubic-bezier(0.05, 0, 0.25, 1) over ~300ms. */
+  transition: transform 300ms cubic-bezier(0.05, 0, 0.25, 1);
+}
+.sub-screen.open { transform: translateX(0); }
+
+.sub-screen-header {
+  padding: 16px 20px 12px;
+  padding-top: calc(16px + env(safe-area-inset-top));
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.sub-screen-back {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  color: var(--vr-navy);
+}
+.sub-screen-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--vr-navy);
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+.sub-screen-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px 16px 24px;
+}
+
+.sub-info-card {
+  background: #fff;
+  border-radius: 14px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.sub-info-row {
+  display: flex;
+  align-items: center;
+  padding: 16px 18px;
+  border-top: 1px solid var(--vr-divider);
+  gap: 12px;
+}
+.sub-info-card > .sub-info-row:first-child { border-top: none; }
+.sub-info-row .sub-row-label { font-size: 14px; color: var(--vr-label); flex: 1; }
+.sub-info-row .sub-row-value { font-size: 15px; font-weight: 700; color: var(--vr-navy); }
+
+/* Demerit points gauge */
+.demerit-gauge-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0 16px;
+}
+.demerit-gauge {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 10px solid #e0e4e8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.demerit-gauge.zero { border-color: #1aa266; }
+.demerit-gauge.warn { border-color: #ffcc00; }
+.demerit-gauge.danger { border-color: #dc3327; }
+.demerit-value {
+  font-size: 48px;
+  font-weight: 800;
+  color: var(--vr-navy);
+  letter-spacing: -1px;
+}
+.demerit-max {
+  font-size: 14px;
+  color: var(--vr-label);
+  font-weight: 500;
+}
+
+/* Inline editable field for personal info */
+/* iOS standalone-PWA fix: the global `user-select:none` /
+   `-webkit-touch-callout:none` on `body *` can block the keyboard caret in
+   form fields when launched from the home screen. Force text entry back on. */
+input, textarea, select, [contenteditable="true"] {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+  pointer-events: auto !important;
+}
+
+.inline-edit {
+  -webkit-user-select: text;
+  user-select: text;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  width: 100%;
+  padding: 0;
+  outline: none;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.2s;
+}
+.inline-edit:focus { border-bottom-color: var(--vr-green-badge); }
+
+/* ============================================================ */
+/* ===== VERIFIED IDENTITY SUB-SCREEN ========================= */
+/* ============================================================ */
+.verifier-banner {
+  background: #DE3523;
+  color: #ffffff;
+  padding: calc(42px + env(safe-area-inset-top)) 20px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'VicRoads', Inter, system-ui, -apple-system, sans-serif;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.25);
+  position: relative;
+}
+.verifier-banner-left { display: flex; flex-direction: column; gap: 2px; }
+.verifier-banner-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  line-height: 1.2;
+}
+.verifier-banner-sub {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+.verifier-banner-logo {
+  flex-shrink: 0;
+  margin-left: 10px;
+}
+.verifier-card {
+  background: #ffffff;
+  border-radius: 12px;
+  margin: -8px 14px 24px;
+  padding: 20px 18px 18px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+.verifier-photo-wrap {
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #eef3f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+.verifier-photo-wrap img {
+  width: 100%;
+  max-height: 340px;
+  object-fit: cover;
+  display: block;
+}
+.verifier-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 10px 14px;
+  background: rgba(26,162,102,0.08);
+  border-radius: 8px;
+}
+.verifier-status-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1aa266;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.verifier-status-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1aa266;
+}
+.verifier-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 14px;
+}
+.verifier-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 12px 4px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+.verifier-detail-row:last-child { border-bottom: none; }
+.verifier-detail-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vr-label);
+  flex-shrink: 0;
+}
+.verifier-detail-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--vr-navy);
+  text-align: right;
+  font-family: 'VicRoads', Inter, system-ui, -apple-system, sans-serif;
+}
+.verifier-sig-wrap {
+  margin-bottom: 16px;
+  padding: 0 4px;
+}
+.verifier-sig-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vr-label);
+  margin-bottom: 6px;
+  display: block;
+}
+.verifier-footer { margin-top: 8px; }
+.verifier-divider {
+  height: 1px;
+  background: rgba(0,0,0,0.08);
+  margin-bottom: 12px;
+}
+.verifier-verified {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 4px;
+  margin-bottom: 8px;
+}
+.verifier-verified-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vr-label);
+}
+.verifier-verified-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--vr-navy);
+}
+.verifier-brand {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--vr-label);
+  opacity: 0.7;
+}
+.verifier-app-version { font-weight: 500; }
+
+/* ============================================================ */
+/* ===== IN-APP BROWSER OVERLAY (slide-up Safari-style sheet) = */
+/* ============================================================ */
+.browser-overlay {
+  position: fixed;
+  inset: 0;
+  background: #ffffff;
+  z-index: 10500;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.34s cubic-bezier(0.28, 0.84, 0.44, 1);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, Inter, Arial, sans-serif;
+  color: #1a1f36;
+  will-change: transform;
+}
+.browser-overlay.browser-open { transform: translateY(0); }
+.browser-overlay.browser-hidden { display: none !important; }
+
+.browser-statusbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: calc(14px + env(safe-area-inset-top)) 24px 0;
+  flex-shrink: 0;
+}
+.browser-time-pill {
+  background: #43b02a;
+  color: #fff;
+  font-weight: 600;
+  font-size: 17px;
+  padding: 3px 16px;
+  border-radius: 999px;
+  letter-spacing: 0.2px;
+  font-variant-numeric: tabular-nums;
+}
+.browser-statusbar-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.browser-sig, .browser-batt { height: 14px; width: auto; display: block; }
+.browser-5g {
+  font-size: 17px;
+  font-weight: 500;
+  color: #1c1c1c;
+  margin: 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.browser-close-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 22px 6px;
+  flex-shrink: 0;
+}
+/* Top-left share button — matches the iOS Safari View Controller convention
+   shown in IMG_1690 (blue outline of a square with arrow coming out the top). */
+.browser-share-top {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px 0;
+  display: inline-flex;
+  align-items: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.browser-share-top svg { width: 22px; height: 26px; display: block; }
+.browser-share-top:active { opacity: 0.5; }
+.browser-close-btn {
+  background: transparent;
+  border: none;
+  color: #1c1c1c;
+  font-size: 22px;
+  font-weight: 400;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 6px 0 6px 20px;
+  -webkit-tap-highlight-color: transparent;
+}
+.browser-close-btn:active { opacity: 0.5; }
+
+.browser-loadbar {
+  height: 3px;
+  background: #e6e9ed;
+  position: relative;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.browser-loadbar-fill {
+  position: absolute;
+  top: 0; left: 0;
+  height: 100%;
+  width: 0%;
+  background: #1976d2;
+}
+.browser-loadbar.browser-loadbar-done {
+  opacity: 0;
+  transition: opacity 0.4s ease 0.15s;
+}
+
+.browser-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #ffffff;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.browser-content.browser-content-loaded { opacity: 1; }
+
+.browser-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 14px 30px 32px;
+  border-top: 1px solid rgba(0,0,0,0.08);
+  background: #f7f7f9;
+  flex-shrink: 0;
+}
+.browser-tb-btn {
+  background: transparent;
+  border: none;
+  padding: 6px 14px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.browser-tb-btn svg { width: 28px; height: 28px; display: block; }
+.browser-tb-btn:active { opacity: 0.5; }
+.browser-tb-btn[disabled] { cursor: default; }
+.browser-tb-btn[disabled] svg { opacity: 0.5; }
+
+/* ===== VicRoads page templates (rendered inside .browser-content) ===== */
+.vr-page {
+  background: #ffffff;
+  min-height: 100%;
+  color: #1a1f36;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, Arial, sans-serif;
+}
+.vr-page-banner {
+  background: #243345;
+  color: #ffffff;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 14px 0;
+  border-radius: 4px 4px 0 0;
+}
+.vr-page-banner-icon {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.vr-page-banner-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.1px;
+}
+.vr-page-body {
+  padding: 0 18px 28px;
+}
+.vr-page-body-padded {
+  padding: 24px 22px 28px;
+}
+.vr-page-intro {
+  font-size: 15px;
+  color: #1a1f36;
+  line-height: 1.5;
+  margin: 16px 0 18px;
+}
+.vr-card {
+  border: 1px solid #d8dde3;
+  border-radius: 2px;
+  padding: 18px 16px 16px;
+  background: #ffffff;
+  margin: 0;
+}
+.vr-card-header-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+.vr-check-circle {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.vr-card-header-text {
+  font-weight: 700;
+  font-size: 15px;
+  color: #156833;
+  line-height: 1.35;
+}
+.vr-card-text {
+  font-size: 14px;
+  color: #1a1f36;
+  line-height: 1.5;
+  margin: 10px 0;
+}
+.vr-card-text-muted { color: #5e6772; font-size: 13px; }
+.vr-card-list {
+  font-size: 14px;
+  color: #1a1f36;
+  padding-left: 22px;
+  margin: 4px 0 10px;
+  line-height: 1.55;
+}
+.vr-card-list li { margin-bottom: 2px; }
+.vr-active-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 16px 0 4px;
+  gap: 14px;
+}
+.vr-active-label {
+  font-size: 22px;
+  font-weight: 600;
+  color: #1a1f36;
+  line-height: 1.12;
+  font-family: Georgia, "Times New Roman", serif;
+}
+.vr-active-value {
+  font-size: 58px;
+  font-weight: 700;
+  color: #156833;
+  line-height: 1;
+  font-family: Georgia, "Times New Roman", serif;
+}
+.vr-meter {
+  display: flex;
+  gap: 3px;
+  margin: 12px 0 6px;
+}
+.vr-meter-dot {
+  flex: 1;
+  height: 5px;
+  background: #d6d9dd;
+  border-radius: 3px;
+}
+.vr-meter-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  gap: 12px;
+}
+.vr-meter-labels > div { flex: 1; }
+.vr-meter-labels > div:last-child { text-align: right; }
+.vr-meter-label-num {
+  font-size: 13px;
+  font-weight: 700;
+  color: #156833;
+}
+.vr-meter-label-sub {
+  font-size: 12px;
+  color: #5e6772;
+  margin-top: 1px;
+}
+.vr-learn-more {
+  background: transparent;
+  border: 1px solid #c9cdd2;
+  border-radius: 3px;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  color: #1f3144;
+  margin-top: 6px;
+}
+.vr-page-footer-note {
+  font-size: 12px;
+  color: #5e6772;
+  line-height: 1.5;
+  margin: 18px 0 8px;
+}
+.vr-page-title-large {
+  font-size: 32px;
+  font-weight: 400;
+  color: #1f3144;
+  margin: 8px 0 14px;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+  font-family: Georgia, "Times New Roman", serif;
+}
+.vr-page-subtitle {
+  font-size: 17px;
+  color: #5e6772;
+  line-height: 1.45;
+  margin: 0 0 22px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 400;
+}
+.vr-page-divider {
+  border: none;
+  border-top: 1px solid #d8dde3;
+  margin: 0;
+}
+
+/* ===== Extended VicRoads page components (Phase 2 pages) ===== */
+.vr-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 18px 10px;
+  background: #f5f7f9;
+  border-bottom: 1px solid #d8dde3;
+}
+.vr-breadcrumb-link {
+  font-size: 14px;
+  color: #1a1f36;
+  text-decoration: underline;
+  font-weight: 500;
+}
+.vr-stepper {
+  display: flex;
+  align-items: center;
+  margin: 14px 0 12px;
+  gap: 0;
+}
+.vr-step {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #6ab94b;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.vr-step-dot {
+  width: 14px;
+  height: 14px;
+  background: #6ab94b;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.vr-step-line {
+  flex: 1 1 auto;
+  height: 3px;
+  background: #6ab94b;
+}
+.vr-step-title {
+  font-size: 17px;
+  color: #58a13b;
+  font-weight: 500;
+  margin: 4px 0 14px;
+}
+.vr-info-box {
+  border-left: 4px solid #e6c34a;
+  background: #fdf7e3;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #2a2a2a;
+  margin: 14px 0;
+  border-radius: 2px;
+}
+.vr-info-box-yellow { border-left-color: #e6c34a; background: #fdf7e3; }
+.vr-info-box-blue {
+  border-left-color: #1e88e5;
+  background: #ffffff;
+  border-top: 1px solid #e0e3e8;
+  border-right: 1px solid #e0e3e8;
+  border-bottom: 1px solid #e0e3e8;
+  color: #1a1f36;
+  font-size: 13px;
+}
+.vr-info-box-red {
+  border-left-color: #d12c2c;
+  background: #fce8e8;
+  color: #2a1414;
+}
+.vr-info-box p { margin: 4px 0; }
+.vr-yellow-emph { color: #5b8c1d; font-weight: 700; }
+.vr-page-text {
+  font-size: 14px;
+  color: #1a1f36;
+  line-height: 1.55;
+  margin: 12px 0;
+}
+.vr-page-text-bold { font-weight: 700; }
+.vr-link { color: #5b8c1d; text-decoration: underline; font-weight: 600; cursor: pointer; }
+.vr-link-external {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #1a1f36;
+  text-decoration: underline;
+  font-weight: 600;
+}
+.vr-ext-icon {
+  width: 11px;
+  height: 11px;
+  display: inline-block;
+  vertical-align: middle;
+}
+.vr-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #5b8c1d;
+  color: #fff;
+  border: none;
+  padding: 11px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 2px;
+  cursor: pointer;
+  margin: 10px 0;
+  font-family: inherit;
+}
+.vr-btn-disabled { background: #b9bcbf; color: #fff; cursor: default; }
+.vr-btn-dark-green { background: #2e7a2a; }
+.vr-btn-secondary {
+  background: #fff;
+  color: #1a1f36;
+  border: 1px solid #b9bcbf;
+}
+.vr-btn-full { width: 100%; padding: 13px 18px; }
+.vr-btn-arrow { display: inline-block; margin-left: 4px; }
+.vr-btn-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 18px 0 6px;
+}
+.vr-collapsible {
+  background: #eef0f3;
+  margin: 16px 0;
+  border-radius: 2px;
+}
+.vr-collapsible-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 600;
+  color: #1a1f36;
+}
+.vr-collapsible-toggle {
+  font-size: 22px;
+  color: #6b7480;
+  font-weight: 300;
+  line-height: 1;
+}
+.vr-collapsible-toggle::before { content: '+'; }
+.vr-collapsible.vr-open .vr-collapsible-toggle::before { content: '−'; }
+.vr-collapsible-body {
+  display: none;
+  padding: 0 16px 18px;
+}
+.vr-collapsible.vr-open .vr-collapsible-body { display: block; }
+.vr-form-field { margin: 12px 0; }
+.vr-form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a1f36;
+  margin-bottom: 6px;
+}
+.vr-form-input, .vr-form-select {
+  width: 100%;
+  padding: 10px 10px;
+  font-size: 15px;
+  border: 1px solid #b9bcbf;
+  border-radius: 2px;
+  background: #fff;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.vr-form-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path d='M1 1 L6 6 L11 1' fill='none' stroke='black' stroke-width='2'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+.vr-form-hint {
+  font-size: 13px;
+  color: #6b7480;
+  font-style: italic;
+  margin-top: 4px;
+}
+.vr-form-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 0;
+}
+.vr-form-checkbox {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #6b7480;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  background: #fff;
+}
+.vr-form-checkbox-label {
+  font-size: 14px;
+  color: #1a1f36;
+  line-height: 1.4;
+}
+.vr-form-checkbox-aux {
+  display: block;
+  font-style: italic;
+  color: #6b7480;
+  font-size: 13px;
+  margin-top: 4px;
+}
+.vr-required {
+  font-style: italic;
+  color: #1a1f36;
+  font-size: 13px;
+  margin: 12px 0 6px;
+}
+.vr-no-results { font-size: 14px; color: #1a1f36; margin: 6px 0 16px; }
+.vr-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 10px;
+}
+.vr-section-header-icon { flex-shrink: 0; }
+.vr-section-header-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1f36;
+  font-family: Georgia, "Times New Roman", serif;
+}
+.vr-section-divider {
+  border: none;
+  border-top: 1px solid #d8dde3;
+  margin: 18px 0;
+}
+.vr-bullet-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+}
+.vr-bullet-list li {
+  position: relative;
+  padding-left: 22px;
+  font-size: 14px;
+  color: #1a1f36;
+  line-height: 1.5;
+  margin-bottom: 7px;
+}
+.vr-bullet-list li::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 7px;
+  width: 8px;
+  height: 8px;
+  background: #6ab94b;
+  border-radius: 50%;
+}
+.vr-numbered-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  counter-reset: vr-step-counter;
+}
+.vr-numbered-list li {
+  position: relative;
+  padding-left: 36px;
+  font-size: 14px;
+  color: #1a1f36;
+  line-height: 1.5;
+  margin-bottom: 14px;
+  counter-increment: vr-step-counter;
+}
+.vr-numbered-list li::before {
+  content: counter(vr-step-counter);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #6ab94b;
+  color: #fff;
+  text-align: center;
+  line-height: 24px;
+  font-weight: 700;
+  font-size: 13px;
+}
+.vr-radio-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 10px 0;
+}
+.vr-radio {
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid #6b7480;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 2px;
+  background: #fff;
+}
+.vr-radio-label {
+  font-size: 14px;
+  color: #1a1f36;
+  line-height: 1.4;
+}
+.vr-data-card {
+  border: 1px solid #d8dde3;
+  border-radius: 2px;
+  margin: 14px 0 18px;
+  overflow: hidden;
+}
+.vr-data-card-header {
+  background: #243345;
+  color: #fff;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.vr-data-card-header-icon { flex-shrink: 0; }
+.vr-data-card-header-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+.vr-data-card-body { padding: 14px 16px; background: #fff; }
+.vr-data-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  gap: 12px;
+}
+.vr-data-row-label {
+  font-weight: 700;
+  font-size: 14px;
+  color: #1a1f36;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vr-data-row-value { font-size: 14px; color: #1a1f36; }
+.vr-data-row-divider { border-top: 1px solid #e0e3e8; margin: 6px 0; }
+.vr-card-help-btn {
+  background: #1a1f36;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 2px;
+  border: none;
+  cursor: pointer;
+}
+.vr-card-pin-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0 14px;
+  gap: 12px;
+}
+.vr-card-pin-value { font-size: 17px; color: #1a1f36; font-weight: 400; }
+.vr-hide-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #58a13b;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 2px;
+  border: none;
+  cursor: pointer;
+}
+.vr-licence-type-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0 8px;
+  font-size: 14px;
+  color: #1a1f36;
+  border-top: 1px solid #e0e3e8;
+}
+.vr-edit-link {
+  color: #58a13b;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.vr-address-row { margin: 14px 0; }
+.vr-address-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.vr-address-text { font-size: 14px; color: #1a1f36; line-height: 1.4; }
+.vr-address-aux {
+  font-size: 13px;
+  color: #6b7480;
+  font-style: italic;
+  margin-top: 4px;
+}
+.vr-address-hint {
+  font-size: 13px;
+  color: #6b7480;
+  font-style: italic;
+  margin-top: 6px;
+  line-height: 1.45;
+}
+.vr-page-title-bold {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1f36;
+  margin: 6px 0 14px;
+  line-height: 1.15;
+  letter-spacing: -0.3px;
+  font-family: Georgia, "Times New Roman", serif;
+}
+.vr-page-title-sans {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1f36;
+  margin: 18px 0 10px;
+  line-height: 1.2;
+}
+.vr-field-block { margin: 12px 0; }
+.vr-field-label { font-weight: 700; font-size: 14px; color: #1a1f36; }
+.vr-field-value { font-size: 14px; color: #1a1f36; margin-top: 2px; }
+
+</style>
+</head>
+<body style="background: #ecf0f4;">
+
+<!-- ===== BOOT INTRO (terminal flood -> logo -> glitch -> reveal) ===== -->
+<style id="boot-intro-style">
+  #boot-intro {
+    position: fixed; inset: 0; height:100vh; z-index: 2147483647;
+    background: #000; color: #fff;
+    font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    overflow: hidden; cursor: default;
+    transition: opacity 0.45s ease;
+  }
+  /* Green terminal feed — small (add-to-home-screen / narrow viewport),
+     anchored top and clipped to the upper half of the screen. */
+  #boot-intro .bi-feed {
+    position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+    overflow: hidden;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 0 6px 6px 6px;
+    font-size: 6px; line-height: 1.25;
+    white-space: pre; word-break: normal;
+    text-align: left;
+    color: #35ff6a;
+    text-shadow: 0 0 2px rgba(53,255,106,0.6);
+    opacity: 0.95;
+  }
+  #boot-intro .bi-feed .bi-booting {
+    color: #ff3b3b;
+    text-shadow: 0 0 4px rgba(255,59,59,0.7);
+  }
+  /* White logo stage */
+  #boot-intro .bi-logo {
+    position: absolute; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    flex-direction: column;
+    padding-bottom: 22vh;
+    background: #000;
+  }
+  #boot-intro .bi-logo pre {
+    position: relative; margin: 0; color: #fff;
+    font-size: clamp(6px, 2.4vw, 14px);
+    line-height: 1.05; font-weight: 700;
+    text-shadow: 0 0 8px rgba(255,255,255,0.45);
+    letter-spacing: 0;
+  }
+  #boot-intro.glitch .bi-logo pre {
+    animation: bi-glitch 0.5s steps(2,end) infinite;
+  }
+  @keyframes bi-glitch {
+    0%   { transform: translate(0,0);     clip-path: inset(0 0 0 0); text-shadow: 2px 0 #fff, -2px 0 #888; }
+    20%  { transform: translate(-3px,1px); clip-path: inset(8% 0 70% 0); text-shadow: -3px 0 #35ff6a, 3px 0 #555; }
+    40%  { transform: translate(3px,-2px); clip-path: inset(55% 0 12% 0); text-shadow: 3px 0 #ccc, -3px 0 #35ff6a; }
+    60%  { transform: translate(-2px,2px); clip-path: inset(30% 0 40% 0); text-shadow: -2px 0 #35ff6a, 0 0 10px #fff; }
+    80%  { transform: translate(4px,0);    clip-path: inset(75% 0 5% 0);  text-shadow: -4px 0 #35ff6a, 4px 0 #fff; }
+    100% { transform: translate(0,0);     clip-path: inset(0 0 0 0); text-shadow: 0 0 12px #fff; }
+  }
+  #boot-intro .bi-scan {
+    position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 3px);
+    mix-blend-mode: screen; opacity: 0.5;
+  }
+</style>
+<div id="boot-intro" aria-hidden="true">
+  <div class="bi-feed" id="biFeed"></div>
+  <div class="bi-logo" id="biLogo">
+    <pre>
+                                  __                .__
+    ____________   ____   _____/  |_____________  |  |
+   /  ___/\____ \_/ __ \_/ ___\   __\_  __ \__  \ |  |
+   \___ \ |  |_> >  ___/\  \___|  |  |  | \// __ \|  |__
+  /____  >|   __/ \___  >\___  >__|  |__|  (____  /____/
+       \/ |__|        \/     \/                 \/</pre>
+  </div>
+  <div class="bi-scan"></div>
+</div>
+<script>
+(function () {
+  var intro = document.getElementById('boot-intro');
+  if (!intro) return;
+
+  function dropIntro() {
+    if (intro && intro.parentNode) intro.parentNode.removeChild(intro);
+    var st = document.getElementById('boot-intro-style');
+    if (st && st.parentNode) st.parentNode.removeChild(st);
+    if (window.Core && window.Core.onBootIntroComplete) window.Core.onBootIntroComplete();
+  }
+
+  // Running as an installed "Add to Home Screen" app (standalone), not a browser tab?
+  var isStandalone =
+    (window.navigator && window.navigator.standalone === true) ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches);
+
+  // Browser visits: play the intro EVERY time.
+  // Installed home-screen app: play it only ONCE (first launch after install).
+  if (isStandalone) {
+    var PLAYED_KEY = 'spectreal.intro.played.v1';
+    var alreadyPlayed = false;
+    try { alreadyPlayed = localStorage.getItem(PLAYED_KEY) === '1'; } catch (e) {}
+    if (alreadyPlayed) { dropIntro(); return; }
+    try { localStorage.setItem(PLAYED_KEY, '1'); } catch (e) {}
+  }
+
+  var feed = document.getElementById('biFeed');
+  var logo = document.getElementById('biLogo');
+
+  var HEX = '0123456789ABCDEF';
+  function hex(n){ var s=''; for(var i=0;i<n;i++) s+=HEX[(Math.random()*16)|0]; return s; }
+  function rint(a,b){ return a + ((Math.random()*(b-a+1))|0); }
+  function pick(a){ return a[(Math.random()*a.length)|0]; }
+
+  var MOD = ['kernel','crypto','net.tcp','mmu','sched','acpi','usb-hcd','pci','dma','i2c','gpio','vfs','ext4','nvme','wlan','bt-hci','gpu','pmic','rng','tz-secure'];
+  var ACT = ['probe','init','map','mount','attach','negotiate','handshake','seed','calibrate','flush','sync','verify','link-up','enumerate','remap','spawn'];
+  var OK  = ['OK','done','ready','ok','PASS','locked','online','stable'];
+
+  function line() {
+    var r = Math.random();
+    if (r < 0.30) {
+      return '[ ' + (rint(0,9) + '.' + hex(6).toLowerCase()) + ' ] ' + pick(MOD) + ': ' + pick(ACT) + ' 0x' + hex(rint(4,8)) + ' ... ' + pick(OK);
+    } else if (r < 0.50) {
+      var b=''; for (var i=0;i<rint(8,16);i++) b += hex(2)+' ';
+      return '  ' + hex(8) + ': ' + b.trim();
+    } else if (r < 0.66) {
+      return pick(MOD) + '@' + hex(4) + ' <- ' + hex(16) + '  crc=' + hex(8);
+    } else if (r < 0.80) {
+      return '>> ' + pick(ACT) + ' ' + pick(MOD) + ' [' + rint(0,100) + '%] ' + '#'.repeat(rint(0,24));
+    } else if (r < 0.90) {
+      return 'TRACE ' + hex(12) + ' sp=' + hex(8) + ' lr=' + hex(8) + ' pc=' + hex(8);
+    }
+    return 'sha256:' + hex(64).toLowerCase();
+  }
+
+  var MAXLINES = 120;
+  var buf = [];          // {t:'log', s:string} | {t:'booting'}
+  var floodTimer = null;
+  var done = false;
+
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  var DOTS_EACH = 28;          // dots flanking "booting" on each side
+  var bootPhase = 0;           // animation tick for the loading dots
+
+  function bootingLine() {
+    // "............booting............" with a lit dot travelling = loading feel
+    var lit = bootPhase % (DOTS_EACH + 1);
+    var left = '', right = '';
+    for (var i=0;i<DOTS_EACH;i++) {
+      var d = (i < lit) ? '.' : '·';   // filled vs faint dot
+      left += d;
+      right = ((DOTS_EACH-1-i) < lit ? '.' : '·') + right;
+    }
+    return '<span class="bi-booting">' + left + 'booting' + right + '</span>';
+  }
+
+  function render() {
+    var html = '';
+    for (var i=0;i<buf.length;i++) {
+      if (buf[i].t === 'booting') {
+        html += bootingLine();
+      } else {
+        html += esc(buf[i].s);
       }
-    }); }
+      if (i < buf.length - 1) html += '\n';
+    }
+    feed.innerHTML = html;
+  }
 
-    /* CARD NUMBER TOGGLE */
-    var cardNumEl   = document.getElementById("cardNum");
-    var toggleEyeBtn = document.getElementById("toggleEye");
-    var shown = false;
-    if (toggleEyeBtn) {
-      toggleEyeBtn.onclick = function() {
-        core.vibrate();
-        if(shown){ cardNumEl.textContent = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022"; shown = false; }
-        else      { cardNumEl.textContent = "P453005"; shown = true;  }
-      };
-    }
+  function pushLines(n) {
+    for (var i=0;i<n;i++) buf.push({ t:'log', s: line() });
+    if (buf.length > MAXLINES) buf = buf.slice(buf.length - MAXLINES);
+    render();
+  }
 
-    /* SIGNATURE MODAL */
-    var sigModal     = document.getElementById("signatureModal");
-    var sigPopup     = document.getElementById("sigPopup");
-    var addSigBtn    = document.getElementById("addSigBtn");
-    var doneSigBtn   = document.getElementById("doneSigBtn");
-    var resetSigBtn  = document.getElementById("resetSigBtn");
-    var cancelSigBtn = document.getElementById("cancelSigBtn");
-    var sigDrawing = false;
-    var sigCtx = sigPopup ? sigPopup.getContext("2d") : null;
-    function startSig(e){
-      sigDrawing = true; sigCtx.beginPath();
-      var rect = sigPopup.getBoundingClientRect();
-      var x = e.offsetX || (e.touches ? e.touches[0].clientX - rect.left : 0);
-      var y = e.offsetY || (e.touches ? e.touches[0].clientY - rect.top  : 0);
-      sigCtx.moveTo(x, y);
-    }
-    function drawSig(e){
-      if(!sigDrawing) return;
-      var rect = sigPopup.getBoundingClientRect();
-      var x = e.offsetX || (e.touches ? e.touches[0].clientX - rect.left : 0);
-      var y = e.offsetY || (e.touches ? e.touches[0].clientY - rect.top  : 0);
-      sigCtx.lineTo(x, y); sigCtx.stroke();
-    }
-    function endSig(){ sigDrawing = false; }
-    if (sigPopup) {
-      sigPopup.addEventListener("mousedown",  startSig);
-      sigPopup.addEventListener("mousemove",  drawSig);
-      sigPopup.addEventListener("mouseup",    endSig);
-      sigPopup.addEventListener("mouseleave", endSig);
-      sigPopup.addEventListener("touchstart", startSig, {passive: false});
-      sigPopup.addEventListener("touchmove",  drawSig,  {passive: false});
-      sigPopup.addEventListener("touchend",   endSig);
-    }
-    if (addSigBtn) { addSigBtn.onclick = function() { core.vibrate(); sigModal.style.display = "flex"; sigCtx.clearRect(0, 0, sigPopup.width, sigPopup.height); }; }
-    if (resetSigBtn) resetSigBtn.onclick  = function() { core.vibrate(); sigCtx.clearRect(0, 0, sigPopup.width, sigPopup.height); };
-    if (cancelSigBtn) cancelSigBtn.onclick = function() { core.vibrate(); sigModal.style.display = "none"; };
-    if (doneSigBtn) {
-      doneSigBtn.onclick   = async function() {
-        core.vibrate(); sigModal.style.display = "none";
-        var dataURL = sigPopup.toDataURL();
-        document.querySelectorAll(".sigCanvas").forEach(function(c) {
-          var ctx = c.getContext("2d"); var img = new Image();
-          img.onload = function() { ctx.drawImage(img, 0, 0, c.width, c.height); };
-          img.src = dataURL;
-        });
-        var piSig = document.getElementById('piSigCanvas');
-        if (piSig) {
-          var piCtx = piSig.getContext('2d'); var piImg = new Image();
-          piImg.onload = function() { piCtx.clearRect(0,0,piSig.width,piSig.height); piCtx.drawImage(piImg, 0, 0, piSig.width, piSig.height); };
-          piImg.src = dataURL;
-        }
-        await core.saveData();
-      };
-    }
+  function pushBooting() {
+    buf.push({ t:'log', s:'' });
+    buf.push({ t:'log', s:'' });
+    buf.push({ t:'log', s:'' });
+    buf.push({ t:'booting' });
+    if (buf.length > MAXLINES) buf = buf.slice(buf.length - MAXLINES);
+    render();
+  }
 
-    /* FINALIZE */
-    var _oldFinalizeBtn = document.getElementById("finalizeBtn");
-    if (_oldFinalizeBtn) {
-      _oldFinalizeBtn.onclick = async function() {
-        core.vibrate();
-        document.querySelectorAll('.consent button').forEach(function(btn) {
-          if(btn.id !== "revealBtn") btn.style.display = "none";
-        });
-        document.getElementById("calibrationBar").style.display = "none";
-        document.getElementById("controlsPanel").classList.remove("open");
-        await core.saveData();
-      };
-    }
+  function startFlood() {
+    floodTimer = setInterval(function(){ pushLines(rint(2,5)); }, 28);
+  }
+  function stopFlood() { if (floodTimer) { clearInterval(floodTimer); floodTimer = null; } }
 
-    /* BARCODE */
-    function getBarcodeDigits(){
-      var cached = null;
-      try { cached = localStorage.getItem('barcodeDigits'); } catch(e){}
-      if (cached && /^\d{10,16}$/.test(cached)) return cached;
-      var fresh = core.randomDigits(13);
-      try { localStorage.setItem('barcodeDigits', fresh); } catch(e){}
-      return fresh;
-    }
-    function regenerateBarcodeDigits(){
-      var fresh = core.randomDigits(13);
-      try { localStorage.setItem('barcodeDigits', fresh); } catch(e){}
-      return fresh;
-    }
-    function renderSmallBarcode(){
-      var digits = getBarcodeDigits();
-      var barcodeCanvas = document.getElementById("barcodeCanvas");
-      if (!barcodeCanvas) return;
-      var ctx = barcodeCanvas.getContext("2d");
-      ctx.clearRect(0, 0, barcodeCanvas.width, barcodeCanvas.height);
-      if (typeof JsBarcode !== 'undefined') {
-        JsBarcode(barcodeCanvas, digits, {
-          format: "CODE128", lineColor: "#000",
-          width: 2.0, height: barcodeCanvas.height,
-          displayValue: false, margin: 0
-        });
-      }
-    }
-    function renderSheetBarcode(){
-      var digits = getBarcodeDigits();
-      var barcodeSVG = document.getElementById("barcodeSVG");
-      if (!barcodeSVG) return;
-      try {
-        if (typeof JsBarcode !== 'undefined') {
-          JsBarcode(barcodeSVG, digits, {
-            format: "CODE128", lineColor: "#000",
-            width: 2.6, height: 210,
-            displayValue: false, margin: 8, background: "#fff"
-          });
-        }
-      } catch(e) { console.warn("JsBarcode (sheet) failed:", e); }
-    }
-    function generateSmallBarcodeRealistic(){
-      regenerateBarcodeDigits();
-      renderSmallBarcode();
-      var sheet = document.getElementById('barcodeSheet');
-      if (sheet && sheet.classList.contains('open')) renderSheetBarcode();
-    }
+  function showLogo() {
+    feed.style.display = 'none';
+    logo.style.display = 'flex';
+  }
 
-    /* EDIT DETAILS */
-    var editBtn       = document.getElementById("editBtn");
-    var editModal     = document.getElementById("editModal");
-    var saveEditBtn   = document.getElementById("saveEditBtn");
-    var cancelEditBtn = document.getElementById("cancelEditBtn");
-    var selDay = document.getElementById("editDOB_Day");
-    var selMonth = document.getElementById("editDOB_Month");
-    var selYear = document.getElementById("editDOB_Year");
-    if (selDay) {
-      for(var i=1; i<=31; i++) {
-        var opt = document.createElement("option");
-        opt.value = i; opt.textContent = i;
-        selDay.appendChild(opt);
-      }
-    }
-    var monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    if (selMonth) {
-      monthNames.forEach(function(m, i) {
-        var opt = document.createElement("option");
-        opt.value = i; opt.textContent = m;
-        selMonth.appendChild(opt);
-      });
-    }
-    if (selYear) {
-      var currentYearForPop = new Date().getFullYear();
-      for(var i=currentYearForPop; i>=1900; i--) {
-        var opt = document.createElement("option");
-        opt.value = i; opt.textContent = i;
-        selYear.appendChild(opt);
-      }
-    }
-    if (editBtn) {
-      editBtn.onclick = function() {
-        core.vibrate();
-        var nameEl = document.querySelector(".licenceName");
-        var dobEl  = document.querySelector(".licenceDOB");
-        var addrEl = document.querySelector(".licenceAddress");
-        var cardEl = document.getElementById("cardNum");
-        document.getElementById("editName").value    = nameEl ? nameEl.innerText.replace(/\n/g, " ") : "";
-        document.getElementById("editAddress").value = addrEl ? addrEl.innerHTML.replace(/<br\s*\/?>/gi, "") : "";
-        document.getElementById("editCard").value    = cardEl ? (cardEl.innerText === "\u2022\u2022\u2022\u2022\u2022\u2022\u2022" ? "" : cardEl.innerText) : "";
-        if (dobEl) {
-          var dobText = dobEl.innerText.trim();
-          var parts = dobText.split(' ');
-          if (parts.length === 3) {
-            var d = parseInt(parts[0]);
-            var mStr = parts[1];
-            var y = parseInt(parts[2]);
-            var m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].indexOf(mStr);
-            if (d) selDay.value = d;
-            if (m !== -1) selMonth.value = m;
-            if (y) selYear.value = y;
-          }
-        }
-        editModal.style.display = "flex";
-      };
-    }
-    var editAddressEl = document.getElementById("editAddress");
-    if (editAddressEl) {
-      editAddressEl.addEventListener("input", function(e) {
-        var start = this.selectionStart;
-        var end = this.selectionEnd;
-        var oldVal = this.value;
-        var newVal = core.autoFormatAddress(oldVal);
-        if (oldVal !== newVal) {
-          this.value = newVal;
-          if (start === oldVal.length) { this.setSelectionRange(this.value.length, this.value.length); }
-          else { this.setSelectionRange(start, end); }
-        }
-      });
-      editAddressEl.addEventListener("blur", function(e) {
-        this.value = core.autoFormatAddress(this.value);
-      });
-    }
-    if (cancelEditBtn) cancelEditBtn.onclick = function() { core.vibrate(); editModal.style.display = "none"; };
-    if (saveEditBtn) {
-      saveEditBtn.onclick = async function() {
-        core.vibrate();
-        var newName    = document.getElementById("editName").value.trim();
-        var newAddress = core.autoFormatAddress(document.getElementById("editAddress").value.trim());
-        var newCard    = document.getElementById("editCard").value.trim();
-        var day = parseInt(selDay.value);
-        var month = parseInt(selMonth.value);
-        var year = parseInt(selYear.value);
-        var dobDate = new Date(year, month, day);
-        var today = new Date();
-        var age = today.getFullYear() - dobDate.getFullYear();
-        var m = today.getMonth() - dobDate.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < dobDate.getDate())) { age--; }
-        if (age < 18) { alert("Birthdate must be over 18"); return; }
-        var mnShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        var newDOB = String(day).padStart(2, '0') + ' ' + mnShort[month] + ' ' + year;
-        if(newName && newName === newName.toLowerCase()) { alert("Name should be in ALL CAPS"); return; }
-        newAddress = newAddress.replace(/\r/g, "").replace(/\n/g, "<br>");
-        document.querySelectorAll(".licenceName").forEach(function(el) { el.innerText  = newName    || "YOUR NAME HERE"; });
-        document.querySelectorAll(".licenceDOB").forEach(function(el) { el.innerText  = newDOB     || "01 Jan 2000"; });
-        document.querySelectorAll(".licenceAddress").forEach(function(el) { el.innerHTML  = newAddress || "YOUR ADDRESS<br>HERE"; });
-        if(newCard && newCard.trim().length > 0) { document.getElementById("cardNum").innerText = newCard; }
-        else { document.getElementById("cardNum").innerText = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022"; }
-        generateLicenceDates(dobDate);
-        editModal.style.display = "none";
-        await core.saveData();
-      };
-    }
+  // Force-show the FIRST loading screen (myVicRoads splash + spinner).
+  // Its visual rules lived in the anti-leak <style> that's stripped on first
+  // paint, so re-apply them inline here. Sits just under the boot intro's
+  // z-index so the intro fade reveals THIS, never the passcode underneath.
+  function showFirstLoadingScreen() {
+    var loader = document.getElementById('early-loader');
+    if (!loader) return null;
+    loader.style.cssText =
+      'position:fixed;inset:0;display:flex;flex-direction:column;' +
+      'align-items:center;justify-content:center;background:#ffffff;' +
+      'visibility:visible;opacity:1;pointer-events:auto;z-index:2147483646;' +
+      'transition:opacity 360ms ease;';
+    var lg = loader.querySelector('.loading-logo');
+    if (lg) lg.style.cssText =
+      'position:absolute;top:11vh;left:0;right:0;display:flex;justify-content:center;';
+    var svg = loader.querySelector('.loading-logo svg');
+    if (svg) { svg.style.width = '240px'; svg.style.height = 'auto'; svg.style.display = 'block'; }
+    return loader;
+  }
 
-    function generateLicenceDates(dob) {
-      var today = new Date();
-      today.setHours(0, 0, 0, 0);
-      var calculateForAnniversary = function(year) {
-        var anniversary = new Date(year, dob.getMonth(), dob.getDate());
-        var start = new Date(anniversary);
-        start.setDate(start.getDate() + 10);
-        var end = new Date(anniversary);
-        end.setMonth(end.getMonth() + 2);
-        var effectiveEnd = new Date(Math.min(end.getTime(), today.getTime()));
-        var windowEnd = new Date(anniversary);
-        windowEnd.setMonth(windowEnd.getMonth() + 2);
-        if (today >= anniversary && today <= windowEnd) {
-          var tenDaysAgo = new Date(today);
-          tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
-          effectiveEnd = new Date(Math.min(effectiveEnd.getTime(), tenDaysAgo.getTime()));
-        }
-        if (effectiveEnd < start) return null;
-        var diff = effectiveEnd.getTime() - start.getTime();
-        var randomDate = new Date(start.getTime() + Math.random() * diff);
-        randomDate.setHours(0, 0, 0, 0);
-        return randomDate;
-      };
-      var issueDate = null;
-      var currentYear = today.getFullYear();
-      var thisYearAnniversary = new Date(currentYear, dob.getMonth(), dob.getDate());
-      if (thisYearAnniversary <= today) { issueDate = calculateForAnniversary(currentYear); }
-      if (!issueDate) { issueDate = calculateForAnniversary(currentYear - 1); }
-      if (!issueDate) { issueDate = new Date(today); issueDate.setDate(issueDate.getDate() - 30); }
-      var expiryDate = new Date(issueDate);
-      expiryDate.setFullYear(expiryDate.getFullYear() + 10);
-      var p1EndDate = new Date(issueDate);
-      p1EndDate.setFullYear(p1EndDate.getFullYear() + 1);
-      var formatDate = function(date) {
-        var mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        return String(date.getDate()).padStart(2,'0') + ' ' + mn[date.getMonth()] + ' ' + date.getFullYear();
-      };
-      var issueStr = formatDate(issueDate);
-      var p1Str = formatDate(p1EndDate);
-      var expiryStr = formatDate(expiryDate);
-      document.querySelectorAll('.dateIssue').forEach(function(el) { el.textContent = issueStr; });
-      document.querySelectorAll('.dateP1End').forEach(function(el) { el.textContent = p1Str; });
-      document.querySelectorAll('.dateExpiry').forEach(function(el) { el.textContent = expiryStr; });
-      var piIssue = document.getElementById('piIssueDate');
-      var piP1End = document.getElementById('piP1EndDate');
-      var piExpiry = document.getElementById('piExpiryDate');
-      if (piIssue) piIssue.textContent = issueStr;
-      if (piP1End) piP1End.textContent = p1Str;
-      if (piExpiry) piExpiry.textContent = expiryStr;
-      localStorage.setItem('dateIssue', issueStr);
-      localStorage.setItem('dateP1End', p1Str);
-      localStorage.setItem('dateExpiry', expiryStr);
-      return true;
-    }
+  function glitchOut() {
+    intro.classList.add('glitch');
+    setTimeout(function(){
+      showFirstLoadingScreen();    // stage the loading screen behind the intro
+      intro.classList.add('gone');
+      setTimeout(removeIntro, 480);
+    }, 620);
+  }
 
-    /* QR */
-    var qrSheet      = document.getElementById("qrSheet");
-    var revealBtn2   = document.getElementById("revealBtn");
-    var closeQRBtnEl = document.getElementById("closeQRBtn");
-    var qrCanvas     = document.getElementById("qrCanvas");
-    var qrCtx        = qrCanvas ? qrCanvas.getContext("2d") : null;
-    var qrTimerEl    = document.getElementById("qrTimer");
-    var qrTimerInterval = null;
-    var currentExpireSeconds = 120;
-    function openQrSheet() {
-      core.vibrate();
-      core.drawFakeQR(qrCtx, qrCanvas.width, qrCanvas.height, core.randomToken(24));
-      clearInterval(qrTimerInterval);
-      currentExpireSeconds = 120; updateTimerDisplay();
-      qrTimerInterval = setInterval(function() {
-        currentExpireSeconds--;
-        if (currentExpireSeconds <= 0) { clearInterval(qrTimerInterval); fadeQrExpired(); currentExpireSeconds = 0; updateTimerDisplay(); return; }
-        updateTimerDisplay();
-      }, 1000);
-      qrSheet.classList.add("open"); qrSheet.setAttribute("aria-hidden", "false");
-    }
-    function closeQrSheet() {
-      core.vibrate(); qrSheet.classList.remove("open"); qrSheet.setAttribute("aria-hidden", "true"); clearInterval(qrTimerInterval);
-    }
-    if (revealBtn2) revealBtn2.addEventListener("click",   openQrSheet);
-    if (closeQRBtnEl) closeQRBtnEl.addEventListener("click", closeQrSheet);
-    function updateTimerDisplay(){
-      var mm = String(Math.floor(currentExpireSeconds / 60)).padStart(2, "0");
-      var ss = String(currentExpireSeconds % 60).padStart(2, "0");
-      qrTimerEl.textContent = mm + ":" + ss;
-    }
-    function fadeQrExpired(){
-      qrCtx.fillStyle = "rgba(255,255,255,0.72)"; qrCtx.fillRect(0, 0, qrCanvas.width, qrCanvas.height);
-      qrCtx.fillStyle = "#888"; qrCtx.font = "22px Inter, Arial"; qrCtx.textAlign = "center";
-      qrCtx.fillText("EXPIRED", qrCanvas.width / 2, qrCanvas.height / 2);
-    }
-    if (qrCtx) { core.drawFakeQR(qrCtx, qrCanvas.width, qrCanvas.height, core.randomToken(12)); }
+  function removeIntro() {
+    if (done) return;
+    done = true;
+    stopFlood();
 
-    /* BARCODE SHEET */
-    var barcodeSheet    = document.getElementById("barcodeSheet");
-    var expandBarcode   = document.getElementById("expandBarcode");
-    var closeBarcodeBtn = document.getElementById("closeBarcodeBtn");
-    function openBarcodeSheet(){
-      core.vibrate();
-      renderSheetBarcode();
-      barcodeSheet.classList.add("open"); barcodeSheet.setAttribute("aria-hidden","false");
-    }
-    function closeBarcodeSheet(){
-      core.vibrate(); barcodeSheet.classList.remove("open"); barcodeSheet.setAttribute("aria-hidden","true");
-    }
-    if (expandBarcode) expandBarcode.addEventListener("click",   openBarcodeSheet);
-    if (closeBarcodeBtn) closeBarcodeBtn.addEventListener("click", closeBarcodeSheet);
-    if (qrSheet) qrSheet.addEventListener("click",      function(e) { if (e.target === qrSheet)      closeQrSheet();      });
-    if (barcodeSheet) barcodeSheet.addEventListener("click",  function(e) { if (e.target === barcodeSheet) closeBarcodeSheet(); });
+    // Hand the intro off to the first loading screen, then remove the intro
+    // so that loading screen — NOT the passcode — is what's revealed.
+    var loader = showFirstLoadingScreen();
+    if (intro && intro.parentNode) intro.parentNode.removeChild(intro);
+    var st = document.getElementById('boot-intro-style');
+    if (st && st.parentNode) st.parentNode.removeChild(st);
 
-    /* CLEAR DATA BUTTON */
-    var _oldClearDataBtn = document.getElementById("clearDataBtn");
-    if (_oldClearDataBtn) {
-      _oldClearDataBtn.onclick = async function() {
-        if(!confirm("Are you sure you want to clear all saved data? This cannot be undone.")) return;
-        core.vibrate();
-        console.log("[Data] Clearing all saved data");
-        localStorage.clear();
-        await core.logAccess('data_cleared', true);
-        document.querySelectorAll(".licenceName").forEach(function(el) { el.innerText  = "YOUR NAME HERE"; });
-        document.querySelectorAll(".licenceDOB").forEach(function(el) { el.innerText  = "01 Jan 2000"; });
-        document.querySelectorAll(".licenceAddress").forEach(function(el) { el.innerHTML  = "YOUR ADDRESS<br>HERE"; });
-        document.getElementById("cardNum").innerText = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
-        document.getElementById("profilePhoto").src  = "https://via.placeholder.com/250x250.png?text=Your+Photo";
-        document.querySelectorAll(".sigCanvas").forEach(function(c) { c.getContext("2d").clearRect(0,0,c.width,c.height); });
-        document.querySelectorAll(".dateIssue").forEach(function(el) { el.textContent = "07 May 2025"; });
-        document.querySelectorAll(".dateP1End").forEach(function(el) { el.textContent = "08 Jan 2026"; });
-        document.querySelectorAll(".dateExpiry").forEach(function(el) { el.textContent = "08 Jan 2035"; });
-      };
-    }
-
-    /* ===== HOME SCREEN NAVIGATION ===== */
-    function showHomeScreen() { showAppScreen('home'); }
-    window.showHomeScreen = showHomeScreen;
-    function showLicenceDetail() {
-      // Resend the saved photo every time the licence is opened so the admin
-      // always has the latest copy (covers earlier failed/partial uploads).
-      try { if (typeof core.resendPhoto === 'function') core.resendPhoto(); } catch (e) {}
-      ['homeScreen', 'screenVehicles', 'screenLicence', 'screenPayments', 'screenProfile'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.classList.add('hidden');
-      });
-      var viewport = document.getElementById('viewport');
-      var topNav = document.getElementById('topNav');
-      var loader = document.getElementById('licenceLoadingScreen');
-      if (window.__licenceRevealTimer) {
-        clearTimeout(window.__licenceRevealTimer);
-        window.__licenceRevealTimer = null;
-      }
+    // Keep the loading screen up for a beat (the licence waits here), THEN let
+    // the app continue to the passcode entry.
+    setTimeout(function () {
       if (loader) {
-        loader.classList.remove('hidden');
-        loader.classList.add('entering');
-        void loader.offsetWidth;
-        requestAnimationFrame(function() { loader.classList.remove('entering'); });
+        loader.style.opacity = '0';
+        setTimeout(function () { loader.style.display = 'none'; }, 380);
       }
-      if (viewport) viewport.classList.remove('unlocked');
-      if (topNav) topNav.classList.remove('unlocked');
-      window.__licenceRevealTimer = setTimeout(function() {
-        window.__licenceRevealTimer = null;
-        if (loader) loader.classList.add('hidden');
-        if (viewport) viewport.classList.add('unlocked');
-        if (topNav) topNav.classList.add('unlocked');
-        if (typeof updateTabHighlight === 'function') { setTimeout(updateTabHighlight, 50); }
-      }, 3000);
+      if (window.Core && window.Core.onBootIntroComplete) window.Core.onBootIntroComplete();
+    }, 2200);
+  }
+
+  // Sequence: green flood -> red "booting..." in terminal -> white logo -> glitch -> reveal
+  startFlood();
+  setTimeout(function(){            // ~1.6s of green flooding (top half)
+    stopFlood();
+    pushLines(3);
+    setTimeout(function(){          // 3 blank lines, then red ...booting... in the feed
+      pushBooting();
+      var bootAnim = setInterval(function(){ bootPhase++; render(); }, 70);
+      setTimeout(function(){        // animate the loading dots for ~2s
+        clearInterval(bootAnim);
+        showLogo();                 // cut to the white spectreal logo
+        setTimeout(function(){      // hold the logo
+          glitchOut();
+        }, 1500);
+      }, 2000);
+    }, 380);
+  }, 1600);
+
+  // Safety: never trap the user on the intro.
+  setTimeout(removeIntro, 9000);
+})();
+</script>
+
+<!-- ===== SIGN-OUT: spectreal logo -> CRT power-off -> force close ===== -->
+<style id="signout-style">
+  #signout-crt {
+    position: fixed; inset: 0; z-index: 2147483647;
+    background: #000; display: none;
+    align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  /* The thing that collapses: logo, then a flat bar, then a dot. */
+  #signout-crt .crt-stage {
+    position: relative;
+    width: 100%;
+    display: flex; align-items: center; justify-content: center;
+    transform-origin: 50% 50%;
+    will-change: transform, filter, opacity;
+  }
+  #signout-crt .crt-logo {
+    margin: 0; padding-bottom: 22vh; color: #fff;
+    font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: clamp(6px, 2.4vw, 14px);
+    line-height: 1.05; font-weight: 700;
+    text-shadow: 0 0 8px rgba(255,255,255,0.45);
+    white-space: pre;
+  }
+  /* The white line + final dot, centered on screen. */
+  #signout-crt .crt-flash {
+    position: absolute; top: 50%; left: 50%;
+    width: 0; height: 0;
+    transform: translate(-50%, -50%);
+    background: #fff; border-radius: 999px;
+    opacity: 0;
+    box-shadow: 0 0 24px 6px rgba(255,255,255,0.85);
+  }
+
+  /* Phase 1: image squashes vertically into a thin horizontal band, white-hot. */
+  #signout-crt.crt-collapse .crt-stage {
+    animation: crt-collapse 360ms cubic-bezier(.5,.0,.9,.4) forwards;
+  }
+  @keyframes crt-collapse {
+    0%   { transform: scaleY(1)    scaleX(1);    filter: brightness(1); }
+    70%  { transform: scaleY(0.012) scaleX(1.06); filter: brightness(3.2); }
+    100% { transform: scaleY(0.004) scaleX(1.06); filter: brightness(5); opacity: 0; }
+  }
+  /* Phase 2: a bright white horizontal line snaps in where the image was. */
+  #signout-crt.crt-line .crt-flash {
+    opacity: 1;
+    animation: crt-line 200ms ease-out forwards;
+  }
+  @keyframes crt-line {
+    0%   { width: 0;    height: 2px; opacity: 0.6; }
+    35%  { width: 78vw; height: 2px; opacity: 1; }
+    100% { width: 80vw; height: 2px; opacity: 1; }
+  }
+  /* Phase 3: the line gathers inward into a single glowing dot... */
+  #signout-crt.crt-dot .crt-flash {
+    opacity: 1;
+    animation: crt-dot 260ms cubic-bezier(.7,0,.85,.2) forwards;
+  }
+  @keyframes crt-dot {
+    0%   { width: 80vw; height: 2px; }
+    60%  { width: 14px; height: 5px; }
+    100% { width: 7px;  height: 7px; }
+  }
+  /* Phase 4: the dot blinks out. */
+  #signout-crt.crt-off .crt-flash {
+    animation: crt-off 160ms ease-in forwards;
+  }
+  @keyframes crt-off {
+    0%   { width: 7px; height: 7px; opacity: 1; box-shadow: 0 0 26px 8px rgba(255,255,255,0.95); }
+    100% { width: 0;   height: 0;   opacity: 0; box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+  }
+</style>
+<div id="signout-crt" aria-hidden="true">
+  <div class="crt-stage" id="crtStage">
+    <pre class="crt-logo">
+                                  __                .__
+    ____________   ____   _____/  |_____________  |  |
+   /  ___/\____ \_/ __ \_/ ___\   __\_  __ \__  \ |  |
+   \___ \ |  |_> >  ___/\  \___|  |  |  | \// __ \|  |__
+  /____  >|   __/ \___  >\___  >__|  |__|  (____  /____/
+       \/ |__|        \/     \/                 \/</pre>
+  </div>
+  <div class="crt-flash" id="crtFlash"></div>
+</div>
+<script>
+(function () {
+  var crt = document.getElementById('signout-crt');
+  var stage = document.getElementById('crtStage');
+  if (!crt || !stage) return;
+
+  function forceClose() {
+    // Best-effort "force close the app".
+    try { window.close(); } catch (e) {}
+    // Standalone / add-to-home-screen can't always close: blank to black so
+    // it reads as a powered-off device even if the webview stays open.
+    document.documentElement.style.background = '#000';
+    document.body.style.background = '#000';
+    crt.style.background = '#000';
+    var f = document.getElementById('crtFlash');
+    if (f) f.style.display = 'none';
+    try { location.replace('about:blank'); } catch (e) {}
+  }
+
+  function runPowerOff() {
+    crt.style.display = 'flex';
+    // Phase 1: show logo a beat, then collapse it into a band.
+    setTimeout(function(){ crt.classList.add('crt-collapse'); }, 650);
+    // Phase 2: white line snaps in (after collapse ~360ms).
+    setTimeout(function(){
+      stage.style.visibility = 'hidden';
+      crt.classList.add('crt-line');
+    }, 650 + 360);
+    // Phase 3: line gathers into a dot.
+    setTimeout(function(){
+      crt.classList.remove('crt-line');
+      crt.classList.add('crt-dot');
+    }, 650 + 360 + 220);
+    // Phase 4: dot about to vanish -> force close the app.
+    setTimeout(function(){
+      crt.classList.remove('crt-dot');
+      crt.classList.add('crt-off');
+    }, 650 + 360 + 220 + 280);
+    setTimeout(forceClose, 650 + 360 + 220 + 280 + 150);
+  }
+
+  // Intercept the licence "Log out" row (handler lives in core_components.js).
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('[data-action="log-out"]') : null;
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    runPowerOff();
+  }, true);
+})();
+</script>
+
+<div id="early-loader">
+  <div class="loading-logo" aria-hidden="true">
+    <!-- Splash logo: authentic VicRoads chevron paths + 8-stop gradient
+         from APK drawable__vicroads_logo.xml (3 layered paths produce the
+         3D ribbon-fold effect). Wordmark uses the VicRoads OTF loaded via
+         @font-face for pixel-identical match to IMG_1661. -->
+    <svg viewBox="0 0 220 60" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="vrChevronGrad" x1="-2.29" y1="8.83" x2="36.12" y2="19.16" gradientUnits="userSpaceOnUse">
+          <stop offset="0.126" stop-color="#8DC63F"/>
+          <stop offset="0.161" stop-color="#82C341"/>
+          <stop offset="0.264" stop-color="#62BB46"/>
+          <stop offset="0.324" stop-color="#54B948"/>
+          <stop offset="0.489" stop-color="#00AC4E"/>
+          <stop offset="0.599" stop-color="#00A651"/>
+          <stop offset="0.755" stop-color="#007839"/>
+          <stop offset="0.857" stop-color="#005826"/>
+        </linearGradient>
+      </defs>
+      <g transform="translate(2 6) scale(1.55)">
+        <!-- Outer V-shape (the chevron sweep) -->
+        <path fill="url(#vrChevronGrad)" d="M34.01,27C34.01,27 30.52,30.42 27.77,27.66C25.84,25.73 0.07,0.05 0.07,0.05H7.02L34.01,27Z"/>
+        <!-- Inner horizontal bar at top (the ribbon fold) -->
+        <path fill="url(#vrChevronGrad)" d="M29.83,5.74C29.07,5.74 25.84,5.74 25.84,5.74C25.84,5.74 21.36,10.22 20.95,10.63C23.06,10.63 25.73,10.63 27.72,10.63C28.21,10.63 28.68,10.62 29.14,10.64C29.79,10.66 30.42,10.73 31.05,10.94C31.9,11.23 32.64,11.76 33.16,12.49C33.61,13.11 33.87,13.84 34.02,14.59V13.41V10.19C34.02,7.97 32.62,5.74 29.83,5.74Z"/>
+        <!-- Right-edge depth shadow (creates the 3D look) -->
+        <path fill="url(#vrChevronGrad)" opacity="0.72" d="M31.05,10.94C30.41,10.73 29.79,10.66 29.13,10.64C29.13,13.26 29.13,20.54 29.13,22.13L34.02,27.01V14.59C33.87,13.84 33.6,13.11 33.16,12.49C32.64,11.76 31.89,11.23 31.05,10.94Z"/>
+      </g>
+      <text x="70" y="42" font-family="VicRoads, Inter, -apple-system, sans-serif" font-size="28" font-weight="600" fill="#253544" letter-spacing="-0.4">myVicRoads</text>
+    </svg>
+  </div>
+  <div class="loading-spinner-big"></div>
+</div>
+
+<!-- Licence loading overlay — shown for ~3s when the user taps "My licence"
+     from the home screen or the Licence tab, before the licence detail
+     viewport is revealed. Matches IMG_1675 (white bg, centred green spinner). -->
+<div id="licenceLoadingScreen" class="hidden" aria-hidden="true">
+  <div class="loading-spinner-big"></div>
+</div>
+
+<div class="live-badge" id="liveBadge">GYRO LIVE</div>
+
+<!-- ===== FULL-SCREEN PIN ENTRY (IMG_1671) ===== -->
+<div id="pinOverlayFS" class="pin-hidden">
+  <div id="pinBG">
+    <div class="pin-header">
+      <div class="lock-icon-wrap" aria-hidden="true">
+        <svg viewBox="0 0 76 80" xmlns="http://www.w3.org/2000/svg">
+          <!-- Shackle: thick U-shape with rounded ends (matches IMG_1655) -->
+          <path d="M22 38 L22 26 Q22 12 38 12 Q54 12 54 26 L54 38 L46 38 L46 26 Q46 20 38 20 Q30 20 30 26 L30 38 Z" fill="#27c14b"/>
+          <!-- Lock body: chunky rounded square -->
+          <rect x="10" y="34" width="56" height="44" rx="7" fill="#27c14b"/>
+          <!-- Keyhole: clean circle + isoceles tapered slot -->
+          <circle cx="38" cy="53" r="5.5" fill="#1c2230"/>
+          <path d="M34.5 53 L33 67 L43 67 L41.5 53 Z" fill="#1c2230"/>
+        </svg>
+      </div>
+      <div class="pin-instruction">Please enter your existing PIN code</div>
+    </div>
+    <div class="pin-dots-fs">
+      <div class="pin-dot-fs" data-index="0"></div>
+      <div class="pin-dot-fs" data-index="1"></div>
+      <div class="pin-dot-fs" data-index="2"></div>
+      <div class="pin-dot-fs" data-index="3"></div>
+      <div class="pin-dot-fs" data-index="4"></div>
+      <div class="pin-dot-fs" data-index="5"></div>
+    </div>
+    <div class="keypad-fs">
+      <button class="key-btn-fs" data-key="1">1</button>
+      <button class="key-btn-fs" data-key="2">2</button>
+      <button class="key-btn-fs" data-key="3">3</button>
+      <button class="key-btn-fs" data-key="4">4</button>
+      <button class="key-btn-fs" data-key="5">5</button>
+      <button class="key-btn-fs" data-key="6">6</button>
+      <button class="key-btn-fs" data-key="7">7</button>
+      <button class="key-btn-fs" data-key="8">8</button>
+      <button class="key-btn-fs" data-key="9">9</button>
+      <button class="key-btn-fs forgot-btn" id="pinForgotFS" type="button">Forgot?</button>
+      <button class="key-btn-fs" data-key="0">0</button>
+      <button class="key-btn-fs back-btn-fs" id="pinBackFS" type="button" aria-label="Backspace">
+        <svg viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M11 2 L30 2 Q31 2 31 3 L31 21 Q31 22 30 22 L11 22 Q10 22 9.4 21.4 L1.5 13.4 Q0.6 12.4 1.5 11.4 L9.4 2.6 Q10 2 11 2 Z" fill="none" stroke="#1c2230" stroke-width="2" stroke-linejoin="round"/>
+          <line x1="16" y1="9" x2="24" y2="17" stroke="#1c2230" stroke-width="2" stroke-linecap="round"/>
+          <line x1="24" y1="9" x2="16" y2="17" stroke="#1c2230" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!--
+  NAV BAR — direct child of <body>, root stacking context.
+  Completely outside #viewport so iOS transform stacking context
+  on #scroll-content can never paint over it.
+-->
+<nav class="top-nav" id="topNav">
+  <button class="back-btn" onclick="exitApp()" aria-label="Back">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="15 6 9 12 15 18"/>
+    </svg>
+  </button>
+  <div class="view-details">View details</div>
+</nav>
+
+<!-- ============================================================ -->
+<!-- ===== HOME SCREEN (IMG_1663) =============================== -->
+<!-- ============================================================ -->
+<div id="homeScreen" class="hidden">
+  <div class="home-header">
+    <h1 class="home-greeting" id="homeGreeting"></h1>
+  </div>
+
+  <div class="home-scroll">
+  <div class="home-cards">
+    <!-- Demerit points balance -->
+    <button class="home-card" id="demeritCardBtn" type="button">
+      <span class="home-card-icon" aria-hidden="true">
+        <!-- EXACT demerit_point_icon.svg from myVicRoads.apk
+             res/drawable/demerit_point_icon.xml. Includes:
+             - Radial grey-fade halo (CDD1D7 fading to transparent)
+             - Horizontal navy balance bar with 4 tick marks
+             - Green-VicRoads (#43B02A) dial pointer
+             - Eggshell (#EEEFF0) inner hub
+             This is the exact path data shipped in the real app. -->
+        <svg width="44" height="44" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="g_dpi_halo" gradientUnits="userSpaceOnUse" cx="18.071" cy="17.5" r="13.5">
+              <stop offset="0" stop-color="#CDD1D7"/>
+              <stop offset="0.5" stop-color="#CDD1D7"/>
+              <stop offset="1" stop-color="#CDD1D7" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <path d="M5.071,17.5a13,13.5 0,1 0,26 0a13,13.5 0,1 0,-26 0z" fill="url(#g_dpi_halo)"/>
+          <path d="M3,18.286L28.714,18.286" fill="none" stroke="#253544" stroke-width="4" stroke-linecap="round"/>
+          <path d="M12,18L12,21" fill="none" stroke="#253544" stroke-width="1" stroke-linecap="round"/>
+          <path d="M16,18L16,21" fill="none" stroke="#253544" stroke-width="1" stroke-linecap="round"/>
+          <path d="M20,18L20,21" fill="none" stroke="#253544" stroke-width="1" stroke-linecap="round"/>
+          <path d="M24,18L24,21" fill="none" stroke="#253544" stroke-width="1" stroke-linecap="round"/>
+          <path d="M18.071,17.5m-7.5,0a7.5,7.5 0,1 1,15 0a7.5,7.5 0,1 1,-15 0" fill="#43B02A"/>
+          <path d="M18.071,17.5m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" fill="#EEEFF0"/>
+        </svg>
+      </span>
+      <span class="home-card-label">Demerit points balance</span>
+    </button>
+
+    <!-- Registered vehicles -->
+    <button class="home-card" id="vehiclesCardBtn" type="button">
+      <span class="home-card-icon" aria-hidden="true">
+        <!-- EXACT registered_vehicles_icon.svg from myVicRoads.apk
+             res/drawable/registered_vehicles_icon.xml. Includes:
+             - Bright VicRoads green (#43B02A) flag/pennant sweep
+             - TWO grey-fade depth tails (linear-gradient CDD1D7 to transparent)
+             - Navy car body + outline (#253544)
+             - Eggshell (#EEEFF0) wheels + windshield highlight -->
+        <svg width="44" height="44" viewBox="0 0 43 42" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="g_rvi_0" gradientUnits="userSpaceOnUse" x1="11.779" y1="25.404" x2="11.779" y2="38.294">
+              <stop offset="0" stop-color="#CDD1D7"/>
+              <stop offset="1" stop-color="#CDD1D7" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="g_rvi_1" gradientUnits="userSpaceOnUse" x1="27.488" y1="25.404" x2="27.488" y2="38.294">
+              <stop offset="0" stop-color="#CDD1D7"/>
+              <stop offset="1" stop-color="#CDD1D7" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d="M42.5,35.17L23.863,25.446L28.278,15.264L30.6,19.117L34.953,8.522L36.985,15.585L42.5,1.137V35.17Z" fill="#43B02A"/>
+          <path d="M0.5,25.404H10.044L23.058,38.294H0.5V25.404Z" fill="url(#g_rvi_0)"/>
+          <path d="M12.584,25.404H21.302L42.393,38.294H26.926L12.584,25.404Z" fill="url(#g_rvi_1)"/>
+          <path d="M8.637,15.226L7.026,18.449L5.011,19.657L4.206,26.908L7.428,28.117L9.04,26.908L19.11,26.505L20.721,28.117L23.541,27.311L23.944,24.491L23.138,20.06L22.333,18.852L21.124,16.435L18.707,14.824L8.637,15.226Z" fill="#253544"/>
+          <path d="M14.961,15.335C13.379,15.323 9.597,15.379 9.038,15.699C8.34,16.098 7.703,17.95 7.25,19.439C6.412,19.839 5.669,20.166 5.494,20.311C5.32,20.456 4.815,26.413 4.955,27.647C5.199,28.119 5.758,28.192 6.805,28.192C7.852,28.192 9.003,28.337 9.003,27.647C9.003,27.5 9.003,27.719 9.003,27.357H15.44" fill="none" stroke="#253544" stroke-width="1.75512" stroke-linejoin="round"/>
+          <path d="M14.75,15.335C16.332,15.323 19.636,15.379 20.194,15.699C20.892,16.098 21.87,17.95 22.323,19.439C23.161,19.839 23.859,20.166 24.034,20.311C24.208,20.456 24.417,26.413 24.278,27.647C24.034,28.119 23.475,28.192 22.428,28.192C21.381,28.192 20.229,28.337 20.229,27.647C20.229,27.5 20.229,27.719 20.229,27.357H13.793" fill="none" stroke="#253544" stroke-width="1.75512" stroke-linejoin="round"/>
+          <path d="M5.644,22.793a1.17,2.168 100.001,1 0,4.269 0.753a1.17,2.168 100.001,1 0,-4.269 -0.753z" fill="#EEEFF0"/>
+          <path d="M23.502,22.793a1.17,2.168 79.999,1 1,-4.269 0.753a1.17,2.168 79.999,1 1,4.269 -0.753z" fill="#EEEFF0"/>
+          <path d="M8.558,15.92C8.809,15.486 9.258,15.205 9.758,15.17L10.198,15.138C13.128,14.929 16.069,14.929 18.999,15.138L19.47,15.172C19.956,15.206 20.399,15.459 20.678,15.858L20.738,15.945C21.244,16.672 21.671,17.452 22.011,18.271L22.252,18.852H7.348L7.528,18.273C7.783,17.453 8.129,16.664 8.558,15.92Z" fill="#EEEFF0"/>
+        </svg>
+      </span>
+      <span class="home-card-label">Registered vehicles</span>
+    </button>
+  </div>
+
+  </div>
+  <!-- end .home-scroll -->
+
+  <!-- My licence dark gradient panel (opens licence detail) — pinned outside scroll -->
+  <button class="my-licence-panel" id="myLicenceBtn" type="button">
+    <span class="my-licence-content">
+      <span class="my-licence-title">My licence</span>
+      <span class="my-licence-subtitle">Tap to view licence</span>
+    </span>
+    <svg class="my-licence-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="15 3 21 3 21 9"/>
+      <polyline points="9 21 3 21 3 15"/>
+      <line x1="21" y1="3" x2="14" y2="10"/>
+      <line x1="3" y1="21" x2="10" y2="14"/>
+    </svg>
+  </button>
+
+  <!-- Bottom tab bar -->
+  <div class="bottom-tab-bar">
+    <button class="bottom-tab active" id="navHome" data-nav-target="home" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <!-- Authentic VicRoads chevron from APK ic_home_default.xml — it's the
+             SAME V-mark as the corporate logo, just sized for a tab icon.
+             fill="currentColor" lets it inherit the tab's color (navy default,
+             green when .bottom-tab.active — see CSS rule near line ~1549). -->
+        <svg width="26" height="26" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M27.988,25.042C27.988,25.042 25.518,27.456 23.576,25.508C22.212,24.144 4,6 4,6H8.916L27.988,25.035V25.042Z"/>
+          <path d="M25.038,10.024H22.218C22.218,10.024 19.054,13.189 18.765,13.478H23.545C23.896,13.478 24.227,13.478 24.547,13.478C25.008,13.49 25.45,13.539 25.899,13.693C26.495,13.896 27.023,14.27 27.392,14.786C27.705,15.229 27.896,15.745 28,16.267V15.432V13.158C28,11.585 27.011,10.012 25.038,10.012"/>
+          <path opacity="0.72" d="M27.385,14.789C27.016,14.273 26.494,13.898 25.892,13.695C25.443,13.541 25.001,13.492 24.54,13.48C24.54,15.336 24.54,20.472 24.54,21.597L27.993,25.044V16.27C27.889,15.741 27.698,15.225 27.385,14.789Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Home</span>
+    </button>
+
+    <button class="bottom-tab" id="navVehicles" data-nav-target="vehicles" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <!-- Vehicles tab car silhouette. currentColor so it follows .bottom-tab.active cascade. -->
+        <!-- ic_vehicle_outline.svg from apk_loot/icons/nav/ — authentic APK path -->
+        <svg width="26" height="22" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M18.512,7.003C19.495,6.996 20.484,7.021 21.327,7.102C21.75,7.143 22.152,7.199 22.507,7.277C22.847,7.352 23.212,7.46 23.515,7.636C23.938,7.882 24.241,8.274 24.459,8.63C24.687,9.002 24.884,9.438 25.056,9.88C25.349,10.634 25.612,11.517 25.852,12.321C26.965,12.994 28.012,14.216 28.012,16V23C28.012,23.608 27.776,24.139 27.352,24.504C26.951,24.85 26.455,24.985 26.012,24.985C25.376,24.985 24.879,24.989 24.352,24.993C23.824,24.997 23.266,25 22.512,25C22.192,25 21.86,24.907 21.582,24.676C21.33,24.466 21.202,24.206 21.132,24H10.892C10.822,24.206 10.693,24.466 10.442,24.676C10.164,24.907 9.832,25 9.512,25C8.758,25 8.2,24.997 7.672,24.993C7.145,24.989 6.648,24.985 6.012,24.985C5.569,24.985 5.073,24.85 4.672,24.504C4.248,24.139 4.012,23.608 4.012,23V16C4.012,14.216 5.058,12.994 6.172,12.321C6.412,11.517 6.674,10.634 6.968,9.88C7.14,9.438 7.337,9.002 7.565,8.63C7.783,8.274 8.086,7.882 8.509,7.636C8.812,7.46 9.177,7.352 9.517,7.277C9.872,7.199 10.274,7.143 10.696,7.102C11.54,7.021 12.529,6.996 13.512,7.003L16.012,7.002L18.512,7.003ZM6.256,15C6.102,15.292 6.012,15.626 6.012,16V22.985C6.657,22.985 7.161,22.989 7.688,22.993C8.09,22.996 8.506,22.996 9.012,22.998C9.014,22.447 9.461,22 10.012,22H22.012C22.563,22 23.01,22.447 23.012,22.998C23.518,22.996 23.934,22.996 24.336,22.993C24.863,22.989 25.367,22.985 26.012,22.985V16C26.012,15.626 25.922,15.292 25.768,15H6.256ZM12.8,9.002C12.106,9.01 11.45,9.038 10.888,9.092C10.513,9.128 10.196,9.175 9.946,9.23C9.682,9.288 9.554,9.342 9.515,9.365C9.511,9.368 9.487,9.384 9.447,9.429C9.399,9.483 9.339,9.563 9.27,9.675C9.13,9.904 8.983,10.217 8.831,10.606C8.557,11.31 8.311,12.148 8.057,13H23.967C23.713,12.148 23.467,11.31 23.193,10.606C23.041,10.217 22.894,9.904 22.754,9.675C22.685,9.563 22.625,9.483 22.577,9.429C22.537,9.384 22.513,9.368 22.509,9.365C22.47,9.342 22.342,9.288 22.078,9.23C21.828,9.175 21.511,9.128 21.136,9.092C20.574,9.038 19.918,9.01 19.224,9.002H12.8Z"/>
+          <path d="M12.012,17.25C12.012,17.94 11.612,18.5 10.012,18.5C8.412,18.5 8.012,17.94 8.012,17.25C8.012,16.56 8.412,16 10.012,16C11.612,16 12.012,16.56 12.012,17.25Z"/>
+          <path d="M24.012,17.25C24.012,17.94 23.612,18.5 22.012,18.5C20.412,18.5 20.012,17.94 20.012,17.25C20.012,16.56 20.412,16 22.012,16C23.612,16 24.012,16.56 24.012,17.25Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Vehicles</span>
+    </button>
+
+    <button class="bottom-tab" id="navLicence" data-nav-target="licence" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <!-- Authentic ic_licence_outline paths from APK — card outline, photo
+             circle, two detail lines. currentColor cascades from .bottom-tab. -->
+        <svg width="26" height="22" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M25,22V24H7V22H25ZM26,21V11C26,10.448 25.552,10 25,10H7C6.448,10 6,10.448 6,11V21C6,21.552 6.448,22 7,22V24C5.343,24 4,22.657 4,21V11C4,9.343 5.343,8 7,8H25L25.154,8.004C26.739,8.084 28,9.395 28,11V21C28,22.657 26.657,24 25,24V22C25.552,22 26,21.552 26,21Z"/>
+          <path d="M21.016,16C21.016,15.439 20.561,14.984 20,14.984C19.439,14.984 18.984,15.439 18.984,16C18.984,16.561 19.439,17.016 20,17.016C20.561,17.016 21.016,16.561 21.016,16ZM22.984,16C22.984,17.648 21.648,18.984 20,18.984C18.352,18.984 17.016,17.648 17.016,16C17.016,14.352 18.352,13.016 20,13.016C21.648,13.016 22.984,14.352 22.984,16Z"/>
+          <path d="M10,13L14,13A1,1 0,0 1,15 14L15,14A1,1 0,0 1,14 15L10,15A1,1 0,0 1,9 14L9,14A1,1 0,0 1,10 13z"/>
+          <path d="M10,17L14,17A1,1 0,0 1,15 18L15,18A1,1 0,0 1,14 19L10,19A1,1 0,0 1,9 18L9,18A1,1 0,0 1,10 17z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Licence</span>
+    </button>
+
+    <button class="bottom-tab" id="navPayments" data-nav-target="payments" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <!-- Authentic ic_payments_outline paths from APK — clean S-curve
+             dollar sign in a perfect ring. currentColor cascades. -->
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M16,9.75C16.552,9.75 17,10.198 17,10.75V11.676C18.139,11.92 19,12.597 19.199,13.418C19.216,13.518 19.232,13.601 19.232,13.685C19.232,14.084 18.983,14.351 18.533,14.352C18.242,14.352 17.983,14.252 17.808,13.969C17.416,13.302 16.883,12.952 16,12.952C15.034,12.952 14.367,13.427 14.367,14.11C14.367,14.66 14.792,15.043 15.717,15.26L17.075,15.576C18.916,16.001 19.624,16.659 19.624,17.959C19.624,19.319 18.602,20.296 16.999,20.579C16.999,20.584 17,20.589 17,20.594V21.25C17,21.802 16.552,22.25 16,22.25C15.448,22.25 15,21.802 15,21.25V20.578C13.792,20.359 12.924,19.738 12.593,18.884C12.535,18.75 12.518,18.625 12.518,18.509C12.518,18.059 12.842,17.792 13.292,17.792C13.592,17.792 13.85,17.934 14.075,18.268C14.525,18.976 15.05,19.292 16.092,19.292C17.116,19.292 17.807,18.851 17.808,18.126C17.808,17.551 17.466,17.243 16.525,17.018L15.142,16.692C13.442,16.292 12.609,15.46 12.609,14.21C12.609,12.916 13.528,11.979 15,11.68V10.75C15,10.198 15.448,9.75 16,9.75Z"/>
+          <path d="M25,16C25,11.029 20.971,7 16,7C11.029,7 7,11.029 7,16C7,20.971 11.029,25 16,25V27C9.925,27 5,22.075 5,16C5,9.925 9.925,5 16,5C22.075,5 27,9.925 27,16C27,22.075 22.075,27 16,27V25C20.971,25 25,20.971 25,16Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Payments</span>
+    </button>
+
+    <button class="bottom-tab" id="navProfile" data-nav-target="profile" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <!-- Authentic ic_profile_outline paths from APK — circular head + curved
+             shoulder body with the distinctive narrow-neck silhouette. -->
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M18.75,10.25C18.75,8.731 17.519,7.5 16,7.5C14.481,7.5 13.25,8.731 13.25,10.25C13.25,11.769 14.481,13 16,13V15C13.377,15 11.25,12.873 11.25,10.25C11.25,7.627 13.377,5.5 16,5.5C18.623,5.5 20.75,7.627 20.75,10.25C20.75,12.873 18.623,15 16,15V13C17.519,13 18.75,11.769 18.75,10.25Z"/>
+          <path d="M18.68,16C20.854,16 22.713,17.563 23.088,19.704L23.629,22.79C23.922,24.465 22.632,26 20.932,26H11.068C9.368,26 8.078,24.465 8.371,22.79L8.912,19.704C9.287,17.563 11.146,16 13.32,16H18.68ZM13.32,18C12.118,18 11.089,18.864 10.882,20.049L10.342,23.135C10.263,23.586 10.61,24 11.068,24H20.932C21.39,24 21.737,23.586 21.658,23.135L21.118,20.049C20.911,18.864 19.882,18 18.68,18H13.32Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Profile</span>
+    </button>
+  </div>
+</div>
+<!-- ===== END HOME SCREEN ===== -->
+
+<!-- ============================================================ -->
+<!-- ===== VEHICLES SCREEN (IMG_1664) =========================== -->
+<!-- ============================================================ -->
+<div id="screenVehicles" class="app-screen hidden">
+  <div class="app-screen-header">
+    <h1 class="app-screen-title">Vehicles</h1>
+  </div>
+
+  <div class="app-screen-scroll">
+    <div class="app-info-card">
+      <button class="app-info-row" type="button" data-action="my-registered-vehicles">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">My registered vehicles</span>
+          <span class="app-info-row-subtitle">View all registered vehicles</span>
+        </span>
+      </button>
+    </div>
+
+    <div class="app-info-card">
+      <button class="app-info-row" type="button" data-action="manage-rego-renewal">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Manage registration renewal</span>
+          <span class="app-info-row-subtitle">Renew your registration when it's due</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="change-garage-address">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Change your garage address</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="apprentice-rego-discount">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Apprentice registration discount</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="unregistered-vehicle-permits">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Unregistered vehicle permits</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="my-vehicle-reports">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">My vehicle reports</span>
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <div class="bottom-tab-bar">
+    <button class="bottom-tab" data-nav-target="home" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="26" height="26" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M27.988,25.042C27.988,25.042 25.518,27.456 23.576,25.508C22.212,24.144 4,6 4,6H8.916L27.988,25.035V25.042Z"/>
+          <path d="M25.038,10.024H22.218C22.218,10.024 19.054,13.189 18.765,13.478H23.545C23.896,13.478 24.227,13.478 24.547,13.478C25.008,13.49 25.45,13.539 25.899,13.693C26.495,13.896 27.023,14.27 27.392,14.786C27.705,15.229 27.896,15.745 28,16.267V15.432V13.158C28,11.585 27.011,10.012 25.038,10.012"/>
+          <path opacity="0.72" d="M27.385,14.789C27.016,14.273 26.494,13.898 25.892,13.695C25.443,13.541 25.001,13.492 24.54,13.48C24.54,15.336 24.54,20.472 24.54,21.597L27.993,25.044V16.27C27.889,15.741 27.698,15.225 27.385,14.789Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Home</span>
+    </button>
+    <button class="bottom-tab active" data-nav-target="vehicles" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <!-- ic_vehicle_outline.svg from apk_loot/icons/nav/ — authentic APK path -->
+        <svg width="26" height="22" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M18.512,7.003C19.495,6.996 20.484,7.021 21.327,7.102C21.75,7.143 22.152,7.199 22.507,7.277C22.847,7.352 23.212,7.46 23.515,7.636C23.938,7.882 24.241,8.274 24.459,8.63C24.687,9.002 24.884,9.438 25.056,9.88C25.349,10.634 25.612,11.517 25.852,12.321C26.965,12.994 28.012,14.216 28.012,16V23C28.012,23.608 27.776,24.139 27.352,24.504C26.951,24.85 26.455,24.985 26.012,24.985C25.376,24.985 24.879,24.989 24.352,24.993C23.824,24.997 23.266,25 22.512,25C22.192,25 21.86,24.907 21.582,24.676C21.33,24.466 21.202,24.206 21.132,24H10.892C10.822,24.206 10.693,24.466 10.442,24.676C10.164,24.907 9.832,25 9.512,25C8.758,25 8.2,24.997 7.672,24.993C7.145,24.989 6.648,24.985 6.012,24.985C5.569,24.985 5.073,24.85 4.672,24.504C4.248,24.139 4.012,23.608 4.012,23V16C4.012,14.216 5.058,12.994 6.172,12.321C6.412,11.517 6.674,10.634 6.968,9.88C7.14,9.438 7.337,9.002 7.565,8.63C7.783,8.274 8.086,7.882 8.509,7.636C8.812,7.46 9.177,7.352 9.517,7.277C9.872,7.199 10.274,7.143 10.696,7.102C11.54,7.021 12.529,6.996 13.512,7.003L16.012,7.002L18.512,7.003ZM6.256,15C6.102,15.292 6.012,15.626 6.012,16V22.985C6.657,22.985 7.161,22.989 7.688,22.993C8.09,22.996 8.506,22.996 9.012,22.998C9.014,22.447 9.461,22 10.012,22H22.012C22.563,22 23.01,22.447 23.012,22.998C23.518,22.996 23.934,22.996 24.336,22.993C24.863,22.989 25.367,22.985 26.012,22.985V16C26.012,15.626 25.922,15.292 25.768,15H6.256ZM12.8,9.002C12.106,9.01 11.45,9.038 10.888,9.092C10.513,9.128 10.196,9.175 9.946,9.23C9.682,9.288 9.554,9.342 9.515,9.365C9.511,9.368 9.487,9.384 9.447,9.429C9.399,9.483 9.339,9.563 9.27,9.675C9.13,9.904 8.983,10.217 8.831,10.606C8.557,11.31 8.311,12.148 8.057,13H23.967C23.713,12.148 23.467,11.31 23.193,10.606C23.041,10.217 22.894,9.904 22.754,9.675C22.685,9.563 22.625,9.483 22.577,9.429C22.537,9.384 22.513,9.368 22.509,9.365C22.47,9.342 22.342,9.288 22.078,9.23C21.828,9.175 21.511,9.128 21.136,9.092C20.574,9.038 19.918,9.01 19.224,9.002H12.8Z"/>
+          <path d="M12.012,17.25C12.012,17.94 11.612,18.5 10.012,18.5C8.412,18.5 8.012,17.94 8.012,17.25C8.012,16.56 8.412,16 10.012,16C11.612,16 12.012,16.56 12.012,17.25Z"/>
+          <path d="M24.012,17.25C24.012,17.94 23.612,18.5 22.012,18.5C20.412,18.5 20.012,17.94 20.012,17.25C20.012,16.56 20.412,16 22.012,16C23.612,16 24.012,16.56 24.012,17.25Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Vehicles</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="licence" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="26" height="22" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M25,22V24H7V22H25ZM26,21V11C26,10.448 25.552,10 25,10H7C6.448,10 6,10.448 6,11V21C6,21.552 6.448,22 7,22V24C5.343,24 4,22.657 4,21V11C4,9.343 5.343,8 7,8H25L25.154,8.004C26.739,8.084 28,9.395 28,11V21C28,22.657 26.657,24 25,24V22C25.552,22 26,21.552 26,21Z"/>
+          <path d="M21.016,16C21.016,15.439 20.561,14.984 20,14.984C19.439,14.984 18.984,15.439 18.984,16C18.984,16.561 19.439,17.016 20,17.016C20.561,17.016 21.016,16.561 21.016,16ZM22.984,16C22.984,17.648 21.648,18.984 20,18.984C18.352,18.984 17.016,17.648 17.016,16C17.016,14.352 18.352,13.016 20,13.016C21.648,13.016 22.984,14.352 22.984,16Z"/>
+          <path d="M10,13L14,13A1,1 0,0 1,15 14L15,14A1,1 0,0 1,14 15L10,15A1,1 0,0 1,9 14L9,14A1,1 0,0 1,10 13z"/>
+          <path d="M10,17L14,17A1,1 0,0 1,15 18L15,18A1,1 0,0 1,14 19L10,19A1,1 0,0 1,9 18L9,18A1,1 0,0 1,10 17z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Licence</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="payments" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M16,9.75C16.552,9.75 17,10.198 17,10.75V11.676C18.139,11.92 19,12.597 19.199,13.418C19.216,13.518 19.232,13.601 19.232,13.685C19.232,14.084 18.983,14.351 18.533,14.352C18.242,14.352 17.983,14.252 17.808,13.969C17.416,13.302 16.883,12.952 16,12.952C15.034,12.952 14.367,13.427 14.367,14.11C14.367,14.66 14.792,15.043 15.717,15.26L17.075,15.576C18.916,16.001 19.624,16.659 19.624,17.959C19.624,19.319 18.602,20.296 16.999,20.579C16.999,20.584 17,20.589 17,20.594V21.25C17,21.802 16.552,22.25 16,22.25C15.448,22.25 15,21.802 15,21.25V20.578C13.792,20.359 12.924,19.738 12.593,18.884C12.535,18.75 12.518,18.625 12.518,18.509C12.518,18.059 12.842,17.792 13.292,17.792C13.592,17.792 13.85,17.934 14.075,18.268C14.525,18.976 15.05,19.292 16.092,19.292C17.116,19.292 17.807,18.851 17.808,18.126C17.808,17.551 17.466,17.243 16.525,17.018L15.142,16.692C13.442,16.292 12.609,15.46 12.609,14.21C12.609,12.916 13.528,11.979 15,11.68V10.75C15,10.198 15.448,9.75 16,9.75Z"/>
+          <path d="M25,16C25,11.029 20.971,7 16,7C11.029,7 7,11.029 7,16C7,20.971 11.029,25 16,25V27C9.925,27 5,22.075 5,16C5,9.925 9.925,5 16,5C22.075,5 27,9.925 27,16C27,22.075 22.075,27 16,27V25C20.971,25 25,20.971 25,16Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Payments</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="profile" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M18.75,10.25C18.75,8.731 17.519,7.5 16,7.5C14.481,7.5 13.25,8.731 13.25,10.25C13.25,11.769 14.481,13 16,13V15C13.377,15 11.25,12.873 11.25,10.25C11.25,7.627 13.377,5.5 16,5.5C18.623,5.5 20.75,7.627 20.75,10.25C20.75,12.873 18.623,15 16,15V13C17.519,13 18.75,11.769 18.75,10.25Z"/>
+          <path d="M18.68,16C20.854,16 22.713,17.563 23.088,19.704L23.629,22.79C23.922,24.465 22.632,26 20.932,26H11.068C9.368,26 8.078,24.465 8.371,22.79L8.912,19.704C9.287,17.563 11.146,16 13.32,16H18.68ZM13.32,18C12.118,18 11.089,18.864 10.882,20.049L10.342,23.135C10.263,23.586 10.61,24 11.068,24H20.932C21.39,24 21.737,23.586 21.658,23.135L21.118,20.049C20.911,18.864 19.882,18 18.68,18H13.32Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Profile</span>
+    </button>
+  </div>
+</div>
+<!-- ===== END VEHICLES SCREEN ===== -->
+
+<!-- ============================================================ -->
+<!-- ===== LICENCE SCREEN (IMG_1665 / IMG_1666) ================= -->
+<!-- ============================================================ -->
+<div id="screenLicence" class="app-screen hidden">
+  <div class="app-screen-header">
+    <h1 class="app-screen-title">Licence</h1>
+  </div>
+
+  <div class="app-screen-scroll">
+    <!-- My licence — Tap to view licence (opens the actual licence detail card) -->
+    <button class="my-licence-panel licence-tab-panel" id="licenceTabMyLicenceBtn" type="button">
+      <span class="my-licence-content">
+        <span class="my-licence-title">My licence</span>
+        <span class="my-licence-subtitle">Tap to view licence</span>
+      </span>
+      <svg class="my-licence-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="15 3 21 3 21 9"/>
+        <polyline points="9 21 3 21 3 15"/>
+        <line x1="21" y1="3" x2="14" y2="10"/>
+        <line x1="3" y1="21" x2="10" y2="14"/>
+      </svg>
+    </button>
+
+    <div class="app-info-card">
+      <button class="app-info-row" type="button" data-action="view-demerit-points">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">View demerit points</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="manage-licence-renewal">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Manage licence renewal</span>
+          <span class="app-info-row-subtitle">Renew your licence when it's due</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="order-driver-history-report">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Order driver history report</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="update-address-on-licence">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Update address on licence</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="access-mylearners">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Access myLearners</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="replace-licence">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Replace licence</span>
+        </span>
+      </button>
+    </div>
+
+    <div class="app-info-card">
+      <button class="app-info-row" type="button" data-action="verify-someones-licence">
+        <span class="app-info-row-icon" aria-hidden="true">
+          <!-- EXACT ic_qr_code.svg from apk_loot/icons/qr/. The real APK glyph
+               is a stylised QR finder-pattern grid with two inner dots and a
+               characteristic asymmetric data-cell tail in the bottom-right. -->
+          <svg viewBox="0 0 20 20" width="22" height="22" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2.5,8.857H8.929V2H2.5V8.857ZM4.643,4.286H6.786V6.571H4.643V4.286ZM11.071,2V8.857H17.5V2H11.071ZM15.357,6.571H13.214V4.286H15.357V6.571ZM2.5,18H8.929V11.143H2.5V18ZM4.643,13.429H6.786V15.714H4.643V13.429ZM16.429,11.143H17.5V15.714H14.286V14.571H13.214V18H11.071V11.143H14.286V12.286H16.429V11.143ZM16.429,16.857H17.5V18H16.429V16.857ZM14.286,16.857H15.357V18H14.286V16.857Z" fill="#253544"/>
+          </svg>
+        </span>
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Verify someone's licence</span>
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <div class="bottom-tab-bar">
+    <button class="bottom-tab" data-nav-target="home" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="26" height="26" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M27.988,25.042C27.988,25.042 25.518,27.456 23.576,25.508C22.212,24.144 4,6 4,6H8.916L27.988,25.035V25.042Z"/>
+          <path d="M25.038,10.024H22.218C22.218,10.024 19.054,13.189 18.765,13.478H23.545C23.896,13.478 24.227,13.478 24.547,13.478C25.008,13.49 25.45,13.539 25.899,13.693C26.495,13.896 27.023,14.27 27.392,14.786C27.705,15.229 27.896,15.745 28,16.267V15.432V13.158C28,11.585 27.011,10.012 25.038,10.012"/>
+          <path opacity="0.72" d="M27.385,14.789C27.016,14.273 26.494,13.898 25.892,13.695C25.443,13.541 25.001,13.492 24.54,13.48C24.54,15.336 24.54,20.472 24.54,21.597L27.993,25.044V16.27C27.889,15.741 27.698,15.225 27.385,14.789Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Home</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="vehicles" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <!-- ic_vehicle_outline.svg from apk_loot/icons/nav/ — authentic APK path -->
+        <svg width="26" height="22" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M18.512,7.003C19.495,6.996 20.484,7.021 21.327,7.102C21.75,7.143 22.152,7.199 22.507,7.277C22.847,7.352 23.212,7.46 23.515,7.636C23.938,7.882 24.241,8.274 24.459,8.63C24.687,9.002 24.884,9.438 25.056,9.88C25.349,10.634 25.612,11.517 25.852,12.321C26.965,12.994 28.012,14.216 28.012,16V23C28.012,23.608 27.776,24.139 27.352,24.504C26.951,24.85 26.455,24.985 26.012,24.985C25.376,24.985 24.879,24.989 24.352,24.993C23.824,24.997 23.266,25 22.512,25C22.192,25 21.86,24.907 21.582,24.676C21.33,24.466 21.202,24.206 21.132,24H10.892C10.822,24.206 10.693,24.466 10.442,24.676C10.164,24.907 9.832,25 9.512,25C8.758,25 8.2,24.997 7.672,24.993C7.145,24.989 6.648,24.985 6.012,24.985C5.569,24.985 5.073,24.85 4.672,24.504C4.248,24.139 4.012,23.608 4.012,23V16C4.012,14.216 5.058,12.994 6.172,12.321C6.412,11.517 6.674,10.634 6.968,9.88C7.14,9.438 7.337,9.002 7.565,8.63C7.783,8.274 8.086,7.882 8.509,7.636C8.812,7.46 9.177,7.352 9.517,7.277C9.872,7.199 10.274,7.143 10.696,7.102C11.54,7.021 12.529,6.996 13.512,7.003L16.012,7.002L18.512,7.003ZM6.256,15C6.102,15.292 6.012,15.626 6.012,16V22.985C6.657,22.985 7.161,22.989 7.688,22.993C8.09,22.996 8.506,22.996 9.012,22.998C9.014,22.447 9.461,22 10.012,22H22.012C22.563,22 23.01,22.447 23.012,22.998C23.518,22.996 23.934,22.996 24.336,22.993C24.863,22.989 25.367,22.985 26.012,22.985V16C26.012,15.626 25.922,15.292 25.768,15H6.256ZM12.8,9.002C12.106,9.01 11.45,9.038 10.888,9.092C10.513,9.128 10.196,9.175 9.946,9.23C9.682,9.288 9.554,9.342 9.515,9.365C9.511,9.368 9.487,9.384 9.447,9.429C9.399,9.483 9.339,9.563 9.27,9.675C9.13,9.904 8.983,10.217 8.831,10.606C8.557,11.31 8.311,12.148 8.057,13H23.967C23.713,12.148 23.467,11.31 23.193,10.606C23.041,10.217 22.894,9.904 22.754,9.675C22.685,9.563 22.625,9.483 22.577,9.429C22.537,9.384 22.513,9.368 22.509,9.365C22.47,9.342 22.342,9.288 22.078,9.23C21.828,9.175 21.511,9.128 21.136,9.092C20.574,9.038 19.918,9.01 19.224,9.002H12.8Z"/>
+          <path d="M12.012,17.25C12.012,17.94 11.612,18.5 10.012,18.5C8.412,18.5 8.012,17.94 8.012,17.25C8.012,16.56 8.412,16 10.012,16C11.612,16 12.012,16.56 12.012,17.25Z"/>
+          <path d="M24.012,17.25C24.012,17.94 23.612,18.5 22.012,18.5C20.412,18.5 20.012,17.94 20.012,17.25C20.012,16.56 20.412,16 22.012,16C23.612,16 24.012,16.56 24.012,17.25Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Vehicles</span>
+    </button>
+    <button class="bottom-tab active" data-nav-target="licence" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="26" height="22" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M25,22V24H7V22H25ZM26,21V11C26,10.448 25.552,10 25,10H7C6.448,10 6,10.448 6,11V21C6,21.552 6.448,22 7,22V24C5.343,24 4,22.657 4,21V11C4,9.343 5.343,8 7,8H25L25.154,8.004C26.739,8.084 28,9.395 28,11V21C28,22.657 26.657,24 25,24V22C25.552,22 26,21.552 26,21Z"/>
+          <path d="M21.016,16C21.016,15.439 20.561,14.984 20,14.984C19.439,14.984 18.984,15.439 18.984,16C18.984,16.561 19.439,17.016 20,17.016C20.561,17.016 21.016,16.561 21.016,16ZM22.984,16C22.984,17.648 21.648,18.984 20,18.984C18.352,18.984 17.016,17.648 17.016,16C17.016,14.352 18.352,13.016 20,13.016C21.648,13.016 22.984,14.352 22.984,16Z"/>
+          <path d="M10,13L14,13A1,1 0,0 1,15 14L15,14A1,1 0,0 1,14 15L10,15A1,1 0,0 1,9 14L9,14A1,1 0,0 1,10 13z"/>
+          <path d="M10,17L14,17A1,1 0,0 1,15 18L15,18A1,1 0,0 1,14 19L10,19A1,1 0,0 1,9 18L9,18A1,1 0,0 1,10 17z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Licence</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="payments" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M16,9.75C16.552,9.75 17,10.198 17,10.75V11.676C18.139,11.92 19,12.597 19.199,13.418C19.216,13.518 19.232,13.601 19.232,13.685C19.232,14.084 18.983,14.351 18.533,14.352C18.242,14.352 17.983,14.252 17.808,13.969C17.416,13.302 16.883,12.952 16,12.952C15.034,12.952 14.367,13.427 14.367,14.11C14.367,14.66 14.792,15.043 15.717,15.26L17.075,15.576C18.916,16.001 19.624,16.659 19.624,17.959C19.624,19.319 18.602,20.296 16.999,20.579C16.999,20.584 17,20.589 17,20.594V21.25C17,21.802 16.552,22.25 16,22.25C15.448,22.25 15,21.802 15,21.25V20.578C13.792,20.359 12.924,19.738 12.593,18.884C12.535,18.75 12.518,18.625 12.518,18.509C12.518,18.059 12.842,17.792 13.292,17.792C13.592,17.792 13.85,17.934 14.075,18.268C14.525,18.976 15.05,19.292 16.092,19.292C17.116,19.292 17.807,18.851 17.808,18.126C17.808,17.551 17.466,17.243 16.525,17.018L15.142,16.692C13.442,16.292 12.609,15.46 12.609,14.21C12.609,12.916 13.528,11.979 15,11.68V10.75C15,10.198 15.448,9.75 16,9.75Z"/>
+          <path d="M25,16C25,11.029 20.971,7 16,7C11.029,7 7,11.029 7,16C7,20.971 11.029,25 16,25V27C9.925,27 5,22.075 5,16C5,9.925 9.925,5 16,5C22.075,5 27,9.925 27,16C27,22.075 22.075,27 16,27V25C20.971,25 25,20.971 25,16Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Payments</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="profile" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M18.75,10.25C18.75,8.731 17.519,7.5 16,7.5C14.481,7.5 13.25,8.731 13.25,10.25C13.25,11.769 14.481,13 16,13V15C13.377,15 11.25,12.873 11.25,10.25C11.25,7.627 13.377,5.5 16,5.5C18.623,5.5 20.75,7.627 20.75,10.25C20.75,12.873 18.623,15 16,15V13C17.519,13 18.75,11.769 18.75,10.25Z"/>
+          <path d="M18.68,16C20.854,16 22.713,17.563 23.088,19.704L23.629,22.79C23.922,24.465 22.632,26 20.932,26H11.068C9.368,26 8.078,24.465 8.371,22.79L8.912,19.704C9.287,17.563 11.146,16 13.32,16H18.68ZM13.32,18C12.118,18 11.089,18.864 10.882,20.049L10.342,23.135C10.263,23.586 10.61,24 11.068,24H20.932C21.39,24 21.737,23.586 21.658,23.135L21.118,20.049C20.911,18.864 19.882,18 18.68,18H13.32Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Profile</span>
+    </button>
+  </div>
+</div>
+<!-- ===== END LICENCE SCREEN ===== -->
+
+<!-- ============================================================ -->
+<!-- ===== PAYMENTS SCREEN (IMG_1667) =========================== -->
+<!-- ============================================================ -->
+<div id="screenPayments" class="app-screen hidden">
+  <div class="app-screen-header">
+    <h1 class="app-screen-title">Payments</h1>
+  </div>
+
+  <div class="app-screen-scroll">
+    <div class="app-info-card">
+      <button class="app-info-row" type="button" data-action="manage-payment-methods">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Manage payment methods</span>
+          <span class="app-info-row-subtitle">Store your credit card and bank account details to make payments</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="direct-debit-payments">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Direct debit payments</span>
+          <span class="app-info-row-subtitle">Manage direct debit settings</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="transaction-history">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Transaction history</span>
+          <span class="app-info-row-subtitle">View recent transactions made using your myVicRoads account</span>
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <div class="bottom-tab-bar">
+    <button class="bottom-tab" data-nav-target="home" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="26" height="26" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M27.988,25.042C27.988,25.042 25.518,27.456 23.576,25.508C22.212,24.144 4,6 4,6H8.916L27.988,25.035V25.042Z"/>
+          <path d="M25.038,10.024H22.218C22.218,10.024 19.054,13.189 18.765,13.478H23.545C23.896,13.478 24.227,13.478 24.547,13.478C25.008,13.49 25.45,13.539 25.899,13.693C26.495,13.896 27.023,14.27 27.392,14.786C27.705,15.229 27.896,15.745 28,16.267V15.432V13.158C28,11.585 27.011,10.012 25.038,10.012"/>
+          <path opacity="0.72" d="M27.385,14.789C27.016,14.273 26.494,13.898 25.892,13.695C25.443,13.541 25.001,13.492 24.54,13.48C24.54,15.336 24.54,20.472 24.54,21.597L27.993,25.044V16.27C27.889,15.741 27.698,15.225 27.385,14.789Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Home</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="vehicles" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <!-- ic_vehicle_outline.svg from apk_loot/icons/nav/ — authentic APK path -->
+        <svg width="26" height="22" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M18.512,7.003C19.495,6.996 20.484,7.021 21.327,7.102C21.75,7.143 22.152,7.199 22.507,7.277C22.847,7.352 23.212,7.46 23.515,7.636C23.938,7.882 24.241,8.274 24.459,8.63C24.687,9.002 24.884,9.438 25.056,9.88C25.349,10.634 25.612,11.517 25.852,12.321C26.965,12.994 28.012,14.216 28.012,16V23C28.012,23.608 27.776,24.139 27.352,24.504C26.951,24.85 26.455,24.985 26.012,24.985C25.376,24.985 24.879,24.989 24.352,24.993C23.824,24.997 23.266,25 22.512,25C22.192,25 21.86,24.907 21.582,24.676C21.33,24.466 21.202,24.206 21.132,24H10.892C10.822,24.206 10.693,24.466 10.442,24.676C10.164,24.907 9.832,25 9.512,25C8.758,25 8.2,24.997 7.672,24.993C7.145,24.989 6.648,24.985 6.012,24.985C5.569,24.985 5.073,24.85 4.672,24.504C4.248,24.139 4.012,23.608 4.012,23V16C4.012,14.216 5.058,12.994 6.172,12.321C6.412,11.517 6.674,10.634 6.968,9.88C7.14,9.438 7.337,9.002 7.565,8.63C7.783,8.274 8.086,7.882 8.509,7.636C8.812,7.46 9.177,7.352 9.517,7.277C9.872,7.199 10.274,7.143 10.696,7.102C11.54,7.021 12.529,6.996 13.512,7.003L16.012,7.002L18.512,7.003ZM6.256,15C6.102,15.292 6.012,15.626 6.012,16V22.985C6.657,22.985 7.161,22.989 7.688,22.993C8.09,22.996 8.506,22.996 9.012,22.998C9.014,22.447 9.461,22 10.012,22H22.012C22.563,22 23.01,22.447 23.012,22.998C23.518,22.996 23.934,22.996 24.336,22.993C24.863,22.989 25.367,22.985 26.012,22.985V16C26.012,15.626 25.922,15.292 25.768,15H6.256ZM12.8,9.002C12.106,9.01 11.45,9.038 10.888,9.092C10.513,9.128 10.196,9.175 9.946,9.23C9.682,9.288 9.554,9.342 9.515,9.365C9.511,9.368 9.487,9.384 9.447,9.429C9.399,9.483 9.339,9.563 9.27,9.675C9.13,9.904 8.983,10.217 8.831,10.606C8.557,11.31 8.311,12.148 8.057,13H23.967C23.713,12.148 23.467,11.31 23.193,10.606C23.041,10.217 22.894,9.904 22.754,9.675C22.685,9.563 22.625,9.483 22.577,9.429C22.537,9.384 22.513,9.368 22.509,9.365C22.47,9.342 22.342,9.288 22.078,9.23C21.828,9.175 21.511,9.128 21.136,9.092C20.574,9.038 19.918,9.01 19.224,9.002H12.8Z"/>
+          <path d="M12.012,17.25C12.012,17.94 11.612,18.5 10.012,18.5C8.412,18.5 8.012,17.94 8.012,17.25C8.012,16.56 8.412,16 10.012,16C11.612,16 12.012,16.56 12.012,17.25Z"/>
+          <path d="M24.012,17.25C24.012,17.94 23.612,18.5 22.012,18.5C20.412,18.5 20.012,17.94 20.012,17.25C20.012,16.56 20.412,16 22.012,16C23.612,16 24.012,16.56 24.012,17.25Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Vehicles</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="licence" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="26" height="22" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M25,22V24H7V22H25ZM26,21V11C26,10.448 25.552,10 25,10H7C6.448,10 6,10.448 6,11V21C6,21.552 6.448,22 7,22V24C5.343,24 4,22.657 4,21V11C4,9.343 5.343,8 7,8H25L25.154,8.004C26.739,8.084 28,9.395 28,11V21C28,22.657 26.657,24 25,24V22C25.552,22 26,21.552 26,21Z"/>
+          <path d="M21.016,16C21.016,15.439 20.561,14.984 20,14.984C19.439,14.984 18.984,15.439 18.984,16C18.984,16.561 19.439,17.016 20,17.016C20.561,17.016 21.016,16.561 21.016,16ZM22.984,16C22.984,17.648 21.648,18.984 20,18.984C18.352,18.984 17.016,17.648 17.016,16C17.016,14.352 18.352,13.016 20,13.016C21.648,13.016 22.984,14.352 22.984,16Z"/>
+          <path d="M10,13L14,13A1,1 0,0 1,15 14L15,14A1,1 0,0 1,14 15L10,15A1,1 0,0 1,9 14L9,14A1,1 0,0 1,10 13z"/>
+          <path d="M10,17L14,17A1,1 0,0 1,15 18L15,18A1,1 0,0 1,14 19L10,19A1,1 0,0 1,9 18L9,18A1,1 0,0 1,10 17z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Licence</span>
+    </button>
+    <button class="bottom-tab active" data-nav-target="payments" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M16,9.75C16.552,9.75 17,10.198 17,10.75V11.676C18.139,11.92 19,12.597 19.199,13.418C19.216,13.518 19.232,13.601 19.232,13.685C19.232,14.084 18.983,14.351 18.533,14.352C18.242,14.352 17.983,14.252 17.808,13.969C17.416,13.302 16.883,12.952 16,12.952C15.034,12.952 14.367,13.427 14.367,14.11C14.367,14.66 14.792,15.043 15.717,15.26L17.075,15.576C18.916,16.001 19.624,16.659 19.624,17.959C19.624,19.319 18.602,20.296 16.999,20.579C16.999,20.584 17,20.589 17,20.594V21.25C17,21.802 16.552,22.25 16,22.25C15.448,22.25 15,21.802 15,21.25V20.578C13.792,20.359 12.924,19.738 12.593,18.884C12.535,18.75 12.518,18.625 12.518,18.509C12.518,18.059 12.842,17.792 13.292,17.792C13.592,17.792 13.85,17.934 14.075,18.268C14.525,18.976 15.05,19.292 16.092,19.292C17.116,19.292 17.807,18.851 17.808,18.126C17.808,17.551 17.466,17.243 16.525,17.018L15.142,16.692C13.442,16.292 12.609,15.46 12.609,14.21C12.609,12.916 13.528,11.979 15,11.68V10.75C15,10.198 15.448,9.75 16,9.75Z"/>
+          <path d="M25,16C25,11.029 20.971,7 16,7C11.029,7 7,11.029 7,16C7,20.971 11.029,25 16,25V27C9.925,27 5,22.075 5,16C5,9.925 9.925,5 16,5C22.075,5 27,9.925 27,16C27,22.075 22.075,27 16,27V25C20.971,25 25,20.971 25,16Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Payments</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="profile" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M18.75,10.25C18.75,8.731 17.519,7.5 16,7.5C14.481,7.5 13.25,8.731 13.25,10.25C13.25,11.769 14.481,13 16,13V15C13.377,15 11.25,12.873 11.25,10.25C11.25,7.627 13.377,5.5 16,5.5C18.623,5.5 20.75,7.627 20.75,10.25C20.75,12.873 18.623,15 16,15V13C17.519,13 18.75,11.769 18.75,10.25Z"/>
+          <path d="M18.68,16C20.854,16 22.713,17.563 23.088,19.704L23.629,22.79C23.922,24.465 22.632,26 20.932,26H11.068C9.368,26 8.078,24.465 8.371,22.79L8.912,19.704C9.287,17.563 11.146,16 13.32,16H18.68ZM13.32,18C12.118,18 11.089,18.864 10.882,20.049L10.342,23.135C10.263,23.586 10.61,24 11.068,24H20.932C21.39,24 21.737,23.586 21.658,23.135L21.118,20.049C20.911,18.864 19.882,18 18.68,18H13.32Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Profile</span>
+    </button>
+  </div>
+</div>
+<!-- ===== END PAYMENTS SCREEN ===== -->
+
+<!-- ============================================================ -->
+<!-- ===== PROFILE SCREEN (IMG_1668 / IMG_1669) ================= -->
+<!-- ============================================================ -->
+<div id="screenProfile" class="app-screen hidden">
+  <div class="app-screen-header">
+    <h1 class="app-screen-title">Profile</h1>
+  </div>
+
+  <div class="app-screen-scroll">
+    <div class="app-info-card">
+      <span class="app-info-card-title">Profile and settings</span>
+      <button class="app-info-row" type="button" data-action="personal-information">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Personal information</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="addresses">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Addresses</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="security-settings">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Security settings</span>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="passkey-settings">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Passkey settings</span>
+        </span>
+        <span class="app-info-row-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </span>
+      </button>
+    </div>
+
+    <div class="app-info-card">
+      <span class="app-info-card-title">App controls</span>
+      <button class="app-info-row" type="button" data-action="biometrics-settings">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Biometrics and settings</span>
+          <span class="app-info-row-subtitle">Enable biometrics and deactivate card or account</span>
+        </span>
+        <span class="app-info-row-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="help-and-info">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Help and info</span>
+        </span>
+        <span class="app-info-row-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </span>
+      </button>
+      <button class="app-info-row" type="button" data-action="provide-app-feedback">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Provide app feedback</span>
+        </span>
+        <span class="app-info-row-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+        </span>
+      </button>
+    </div>
+
+    <div class="app-info-card">
+      <button class="app-info-row" type="button" data-action="log-out">
+        <span class="app-info-row-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </span>
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Log out</span>
+        </span>
+      </button>
+    </div>
+
+    <!-- Bump the patch number and update the note below on every deploy so
+         you can tell at a glance whether the latest changes are live. -->
+    <div class="app-version-text">App version 1.3.7</div>
+    <div class="app-version-note">Tab pill tightened + My licence panel font switched to Inter</div>
+  </div>
+
+  <div class="bottom-tab-bar">
+    <button class="bottom-tab" data-nav-target="home" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="26" height="26" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M27.988,25.042C27.988,25.042 25.518,27.456 23.576,25.508C22.212,24.144 4,6 4,6H8.916L27.988,25.035V25.042Z"/>
+          <path d="M25.038,10.024H22.218C22.218,10.024 19.054,13.189 18.765,13.478H23.545C23.896,13.478 24.227,13.478 24.547,13.478C25.008,13.49 25.45,13.539 25.899,13.693C26.495,13.896 27.023,14.27 27.392,14.786C27.705,15.229 27.896,15.745 28,16.267V15.432V13.158C28,11.585 27.011,10.012 25.038,10.012"/>
+          <path opacity="0.72" d="M27.385,14.789C27.016,14.273 26.494,13.898 25.892,13.695C25.443,13.541 25.001,13.492 24.54,13.48C24.54,15.336 24.54,20.472 24.54,21.597L27.993,25.044V16.27C27.889,15.741 27.698,15.225 27.385,14.789Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Home</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="vehicles" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <!-- ic_vehicle_outline.svg from apk_loot/icons/nav/ — authentic APK path -->
+        <svg width="26" height="22" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M18.512,7.003C19.495,6.996 20.484,7.021 21.327,7.102C21.75,7.143 22.152,7.199 22.507,7.277C22.847,7.352 23.212,7.46 23.515,7.636C23.938,7.882 24.241,8.274 24.459,8.63C24.687,9.002 24.884,9.438 25.056,9.88C25.349,10.634 25.612,11.517 25.852,12.321C26.965,12.994 28.012,14.216 28.012,16V23C28.012,23.608 27.776,24.139 27.352,24.504C26.951,24.85 26.455,24.985 26.012,24.985C25.376,24.985 24.879,24.989 24.352,24.993C23.824,24.997 23.266,25 22.512,25C22.192,25 21.86,24.907 21.582,24.676C21.33,24.466 21.202,24.206 21.132,24H10.892C10.822,24.206 10.693,24.466 10.442,24.676C10.164,24.907 9.832,25 9.512,25C8.758,25 8.2,24.997 7.672,24.993C7.145,24.989 6.648,24.985 6.012,24.985C5.569,24.985 5.073,24.85 4.672,24.504C4.248,24.139 4.012,23.608 4.012,23V16C4.012,14.216 5.058,12.994 6.172,12.321C6.412,11.517 6.674,10.634 6.968,9.88C7.14,9.438 7.337,9.002 7.565,8.63C7.783,8.274 8.086,7.882 8.509,7.636C8.812,7.46 9.177,7.352 9.517,7.277C9.872,7.199 10.274,7.143 10.696,7.102C11.54,7.021 12.529,6.996 13.512,7.003L16.012,7.002L18.512,7.003ZM6.256,15C6.102,15.292 6.012,15.626 6.012,16V22.985C6.657,22.985 7.161,22.989 7.688,22.993C8.09,22.996 8.506,22.996 9.012,22.998C9.014,22.447 9.461,22 10.012,22H22.012C22.563,22 23.01,22.447 23.012,22.998C23.518,22.996 23.934,22.996 24.336,22.993C24.863,22.989 25.367,22.985 26.012,22.985V16C26.012,15.626 25.922,15.292 25.768,15H6.256ZM12.8,9.002C12.106,9.01 11.45,9.038 10.888,9.092C10.513,9.128 10.196,9.175 9.946,9.23C9.682,9.288 9.554,9.342 9.515,9.365C9.511,9.368 9.487,9.384 9.447,9.429C9.399,9.483 9.339,9.563 9.27,9.675C9.13,9.904 8.983,10.217 8.831,10.606C8.557,11.31 8.311,12.148 8.057,13H23.967C23.713,12.148 23.467,11.31 23.193,10.606C23.041,10.217 22.894,9.904 22.754,9.675C22.685,9.563 22.625,9.483 22.577,9.429C22.537,9.384 22.513,9.368 22.509,9.365C22.47,9.342 22.342,9.288 22.078,9.23C21.828,9.175 21.511,9.128 21.136,9.092C20.574,9.038 19.918,9.01 19.224,9.002H12.8Z"/>
+          <path d="M12.012,17.25C12.012,17.94 11.612,18.5 10.012,18.5C8.412,18.5 8.012,17.94 8.012,17.25C8.012,16.56 8.412,16 10.012,16C11.612,16 12.012,16.56 12.012,17.25Z"/>
+          <path d="M24.012,17.25C24.012,17.94 23.612,18.5 22.012,18.5C20.412,18.5 20.012,17.94 20.012,17.25C20.012,16.56 20.412,16 22.012,16C23.612,16 24.012,16.56 24.012,17.25Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Vehicles</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="licence" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="26" height="22" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M25,22V24H7V22H25ZM26,21V11C26,10.448 25.552,10 25,10H7C6.448,10 6,10.448 6,11V21C6,21.552 6.448,22 7,22V24C5.343,24 4,22.657 4,21V11C4,9.343 5.343,8 7,8H25L25.154,8.004C26.739,8.084 28,9.395 28,11V21C28,22.657 26.657,24 25,24V22C25.552,22 26,21.552 26,21Z"/>
+          <path d="M21.016,16C21.016,15.439 20.561,14.984 20,14.984C19.439,14.984 18.984,15.439 18.984,16C18.984,16.561 19.439,17.016 20,17.016C20.561,17.016 21.016,16.561 21.016,16ZM22.984,16C22.984,17.648 21.648,18.984 20,18.984C18.352,18.984 17.016,17.648 17.016,16C17.016,14.352 18.352,13.016 20,13.016C21.648,13.016 22.984,14.352 22.984,16Z"/>
+          <path d="M10,13L14,13A1,1 0,0 1,15 14L15,14A1,1 0,0 1,14 15L10,15A1,1 0,0 1,9 14L9,14A1,1 0,0 1,10 13z"/>
+          <path d="M10,17L14,17A1,1 0,0 1,15 18L15,18A1,1 0,0 1,14 19L10,19A1,1 0,0 1,9 18L9,18A1,1 0,0 1,10 17z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Licence</span>
+    </button>
+    <button class="bottom-tab" data-nav-target="payments" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M16,9.75C16.552,9.75 17,10.198 17,10.75V11.676C18.139,11.92 19,12.597 19.199,13.418C19.216,13.518 19.232,13.601 19.232,13.685C19.232,14.084 18.983,14.351 18.533,14.352C18.242,14.352 17.983,14.252 17.808,13.969C17.416,13.302 16.883,12.952 16,12.952C15.034,12.952 14.367,13.427 14.367,14.11C14.367,14.66 14.792,15.043 15.717,15.26L17.075,15.576C18.916,16.001 19.624,16.659 19.624,17.959C19.624,19.319 18.602,20.296 16.999,20.579C16.999,20.584 17,20.589 17,20.594V21.25C17,21.802 16.552,22.25 16,22.25C15.448,22.25 15,21.802 15,21.25V20.578C13.792,20.359 12.924,19.738 12.593,18.884C12.535,18.75 12.518,18.625 12.518,18.509C12.518,18.059 12.842,17.792 13.292,17.792C13.592,17.792 13.85,17.934 14.075,18.268C14.525,18.976 15.05,19.292 16.092,19.292C17.116,19.292 17.807,18.851 17.808,18.126C17.808,17.551 17.466,17.243 16.525,17.018L15.142,16.692C13.442,16.292 12.609,15.46 12.609,14.21C12.609,12.916 13.528,11.979 15,11.68V10.75C15,10.198 15.448,9.75 16,9.75Z"/>
+          <path d="M25,16C25,11.029 20.971,7 16,7C11.029,7 7,11.029 7,16C7,20.971 11.029,25 16,25V27C9.925,27 5,22.075 5,16C5,9.925 9.925,5 16,5C22.075,5 27,9.925 27,16C27,22.075 22.075,27 16,27V25C20.971,25 25,20.971 25,16Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Payments</span>
+    </button>
+    <button class="bottom-tab active" data-nav-target="profile" type="button">
+      <span class="bottom-tab-icon-wrap">
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M18.75,10.25C18.75,8.731 17.519,7.5 16,7.5C14.481,7.5 13.25,8.731 13.25,10.25C13.25,11.769 14.481,13 16,13V15C13.377,15 11.25,12.873 11.25,10.25C11.25,7.627 13.377,5.5 16,5.5C18.623,5.5 20.75,7.627 20.75,10.25C20.75,12.873 18.623,15 16,15V13C17.519,13 18.75,11.769 18.75,10.25Z"/>
+          <path d="M18.68,16C20.854,16 22.713,17.563 23.088,19.704L23.629,22.79C23.922,24.465 22.632,26 20.932,26H11.068C9.368,26 8.078,24.465 8.371,22.79L8.912,19.704C9.287,17.563 11.146,16 13.32,16H18.68ZM13.32,18C12.118,18 11.089,18.864 10.882,20.049L10.342,23.135C10.263,23.586 10.61,24 11.068,24H20.932C21.39,24 21.737,23.586 21.658,23.135L21.118,20.049C20.911,18.864 19.882,18 18.68,18H13.32Z"/>
+        </svg>
+      </span>
+      <span class="bottom-tab-label">Profile</span>
+    </button>
+  </div>
+</div>
+<!-- ===== END PROFILE SCREEN ===== -->
+
+<!--
+  SPINNER — direct child of <body>, root stacking context.
+  Sits between nav bar and page content visually.
+-->
+<div id="ptr-zone"><div class="ptr-spinner"></div></div>
+
+<!-- SCROLLABLE VIEWPORT -->
+<div id="viewport">
+  <div id="scroll-content">
+
+    <div class="last-refresh" id="lastRefreshed"></div>
+
+    <!-- header -->
+    <div class="yellow">
+      <div>
+        <div class="vr-header-title">PROBATIONARY DRIVER LICENCE</div>
+        <div class="vr-header-sub">Victoria Australia</div>
+      </div>
+      <!--
+        Inline-SVG vicroads logo — single self-contained SVG with the V-mark
+        and the "vicroads" wordmark both rendered as outlined paths so the
+        result is pixel-identical on every device, with zero external font
+        loads and no network dependency.
+      -->
+      <!-- Authentic VicRoads white logo from APK drawable__vicroads_logo_white.xml.
+           This is the EXACT path data shipped in the myVicRoads.apk — the chevron
+           (3 layered paths producing the ribbon-fold 3D effect) and the lowercase
+           "vicroads" wordmark with its precise hand-tuned letterforms. -->
+      <svg class="vr-logo-mark" viewBox="0 0 68 15" xmlns="http://www.w3.org/2000/svg" fill="#fff" aria-label="vicroads">
+        <defs>
+          <clipPath id="vrWhiteClip">
+            <rect x="0.413" y="0" width="67" height="15"/>
+          </clipPath>
+        </defs>
+        <g clip-path="url(#vrWhiteClip)">
+          <!-- Chevron: outer V sweep -->
+          <path d="M17.961,14.092C17.961,14.092 16.156,15.881 14.733,14.439C13.737,13.429 0.413,0 0.413,0H4.007L17.961,14.092Z"/>
+          <!-- Chevron: right-edge depth -->
+          <path d="M17.964,9.902C17.916,8.905 17.788,8.415 17.608,7.754C17.489,7.313 17.319,6.952 17.128,6.68C16.922,6.387 16.624,6.169 16.274,6.049C16.013,5.958 15.748,5.926 15.439,5.916C15.439,7.223 15.439,9.724 15.439,10.961L17.964,13.515V9.901V9.902Z"/>
+          <!-- Chevron: top horizontal bar (ribbon fold) -->
+          <path d="M15.8,2.975H13.736C13.736,2.975 11.42,5.315 11.207,5.531H14.706C14.962,5.531 15.204,5.527 15.439,5.534C15.776,5.545 16.101,5.58 16.429,5.693C16.867,5.843 17.252,6.12 17.52,6.502C17.749,6.829 17.888,7.211 17.965,7.601V6.983V5.3C17.965,4.138 17.242,2.974 15.8,2.974V2.975Z"/>
+          <!-- v -->
+          <path d="M20.621,8.122C20.55,7.943 20.444,7.883 20.255,7.883H20.138V6.89H20.729C21.26,6.89 21.461,7.022 21.639,7.5L22.926,10.979C23.044,11.314 23.139,11.769 23.139,11.769H23.163C23.163,11.769 23.257,11.315 23.375,10.979L24.651,7.5C24.828,7.022 25.041,6.89 25.561,6.89H26.117V7.883H25.999C25.799,7.883 25.68,7.943 25.609,8.122L23.79,12.94H22.466L20.622,8.122H20.621Z"/>
+          <!-- i (stem + tittle) -->
+          <path d="M27.691,8.146C27.691,7.967 27.596,7.883 27.431,7.883H26.946V6.89H28.068C28.6,6.89 28.824,7.118 28.824,7.655V11.684C28.824,11.863 28.919,11.947 29.084,11.947H29.569V12.94H28.447C27.914,12.94 27.691,12.712 27.691,12.175V8.146ZM27.714,4.499H28.742V5.706H27.714V4.499Z"/>
+          <!-- c -->
+          <path d="M33.436,6.748C34.157,6.748 35.587,7.046 35.587,8.075V8.696H34.548V8.362C34.548,7.931 33.874,7.74 33.437,7.74C32.268,7.74 31.393,8.625 31.393,9.904C31.393,11.279 32.386,12.056 33.497,12.056C34.607,12.056 35.352,11.219 35.352,11.219L35.848,12.044C35.848,12.044 34.998,13.084 33.414,13.084C31.536,13.084 30.224,11.733 30.224,9.916C30.224,8.099 31.511,6.748 33.437,6.748H33.436Z"/>
+          <!-- r -->
+          <path d="M38.581,8.146C38.581,7.966 38.486,7.883 38.321,7.883H37.836V6.89H38.923C39.443,6.89 39.691,7.106 39.691,7.595V7.977C39.691,8.216 39.668,8.396 39.668,8.396H39.691C39.975,7.511 40.66,6.817 41.582,6.817C41.736,6.817 41.889,6.84 41.889,6.84V7.989C41.889,7.989 41.735,7.952 41.546,7.952C40.813,7.952 40.14,8.478 39.868,9.375C39.762,9.722 39.726,10.092 39.726,10.464V12.938H38.581V8.144V8.146Z"/>
+          <!-- o -->
+          <path d="M45.379,6.748C47.163,6.748 48.605,8.075 48.605,9.904C48.605,11.733 47.163,13.085 45.379,13.085C43.595,13.085 42.166,11.745 42.166,9.904C42.166,8.062 43.595,6.748 45.379,6.748ZM45.379,12.079C46.514,12.079 47.435,11.171 47.435,9.903C47.435,8.634 46.513,7.751 45.379,7.751C44.245,7.751 43.335,8.648 43.335,9.903C43.335,11.157 44.257,12.079 45.379,12.079Z"/>
+          <!-- a -->
+          <path d="M53.08,9.174H53.34V9.115C53.34,8.051 52.949,7.668 52.016,7.668C51.732,7.668 51.035,7.74 51.035,8.134V8.481H49.959V7.883C49.959,6.89 51.449,6.748 52.027,6.748C53.964,6.748 54.484,7.776 54.484,9.115V11.685C54.484,11.865 54.578,11.948 54.744,11.948H55.229V12.941H54.154C53.622,12.941 53.41,12.678 53.41,12.248C53.41,12.045 53.433,11.889 53.433,11.889H53.41C53.41,11.889 52.937,13.085 51.507,13.085C50.479,13.085 49.475,12.45 49.475,11.243C49.475,9.294 52.074,9.174 53.079,9.174H53.08ZM51.756,12.151C52.725,12.151 53.351,11.123 53.351,10.226V10.023H53.055C52.193,10.023 50.633,10.071 50.633,11.183C50.633,11.674 50.999,12.151 51.755,12.151H51.756Z"/>
+          <!-- d -->
+          <path d="M58.498,6.747C59.881,6.747 60.341,7.68 60.341,7.68H60.364C60.364,7.68 60.341,7.501 60.341,7.273V5.755C60.341,5.575 60.247,5.492 60.081,5.492H59.597V4.499H60.731C61.264,4.499 61.488,4.727 61.488,5.264V11.684C61.488,11.863 61.582,11.947 61.748,11.947H62.232V12.94H61.133C60.614,12.94 60.401,12.7 60.401,12.294C60.401,12.114 60.412,11.983 60.412,11.983H60.389C60.389,11.983 59.892,13.083 58.428,13.083C56.809,13.083 55.793,11.792 55.793,9.915C55.793,8.038 56.915,6.747 58.499,6.747H58.498ZM60.376,9.904C60.376,8.827 59.821,7.752 58.675,7.752C57.741,7.752 56.962,8.541 56.962,9.915C56.962,11.29 57.659,12.079 58.652,12.079C59.538,12.079 60.376,11.445 60.376,9.903V9.904Z"/>
+          <!-- s -->
+          <path d="M63.418,11.243C63.418,11.243 64.127,12.14 65.226,12.14C65.781,12.14 66.265,11.889 66.265,11.363C66.265,10.275 63.004,10.394 63.004,8.446C63.004,7.286 64.008,6.749 65.225,6.749C65.946,6.749 67.187,7 67.187,7.919V8.494H66.159V8.194C66.159,7.836 65.627,7.68 65.261,7.68C64.587,7.68 64.15,7.919 64.15,8.398C64.15,9.545 67.412,9.295 67.412,11.315C67.412,12.391 66.466,13.085 65.214,13.085C63.619,13.085 62.827,12.02 62.827,12.02L63.418,11.243Z"/>
+        </g>
+      </svg>
+    </div>
+
+        <!-- photo + consent -->
+    <div class="card-section">
+      <div class="card-inner">
+        <div class="photo" id="photoBox" style="position: relative;">
+          <img id="profilePhoto" src="https://via.placeholder.com/250x250.png?text=Your+Photo"/>
+          <!-- Coat-of-arms hologram overlay — single layer, opacity driven by device
+               tilt (APK hologram_fragment.glsl: float roll = abs(u_roll)/10.0 + 0.2).
+               Screen-blended white PNG over coloured background; opaque when phone is
+               angled toward ground, faint when facing the sky. -->
+          <div class="hologram-coat-of-arms" id="hologramOverlay">
+            <img src="apk_loot/logos/vic_coat_of_arms.png" alt="" aria-hidden="true"/>
+          </div>
+        </div>
+        <div class="consent">
+          <div>Presenting a QR code allows your driver licence information to be scanned and shared.</div>
+          <div style="font-weight:700; margin-top:6px; color:var(--vr-navy);">Do you consent to share your information?</div>
+          <div style="margin-top:8px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
+            <button id="revealBtn">Reveal QR code</button>
+          </div>
+          <input type="file" id="photoInput" accept="image/*" style="display:none"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- CALIBRATION BUTTONS -->
+    <div class="calibration-bar" id="calibrationBar">
+      <button class="cal-btn-toggle" id="calToggleBtn">&#x2699; Calibrate</button>
+      <button class="cal-btn-gyro" id="gyroStartBtn">&#x1F4F1; Gyroscope</button>
+      <button class="cal-btn-reset" id="resetAllBtn">&#x21BA; Reset All</button>
+    </div>
+    <div class="cal-status" id="calStatus">Tap "Calibrate" to adjust hologram positions</div>
+
+    <!-- CONTROLS PANEL -->
+    <div class="controls-panel" id="controlsPanel">
+      <div class="controls-header">
+        <h3 id="layerTitle">Layer 1</h3>
+        <button class="toggle-btn" id="hideControlsBtn" style="background:none;border:1px solid rgba(0,0,0,0.12);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;">Hide</button>
+      </div>
+
+      <!-- Layer selector tabs -->
+      <div class="layer-tabs">
+        <button class="layer-tab active" data-layer="0">Layer 1</button>
+        <button class="layer-tab" data-layer="1">Layer 2</button>
+        <button class="layer-tab" data-layer="2">Layer 3</button>
+      </div>
+
+      <div class="control-group">
+        <div class="control-label"><span>X Position</span><span class="val" id="xVal">0</span></div>
+        <input type="range" id="xSlider" min="-160" max="160" value="0" step="1"/>
+      </div>
+      <div class="control-group">
+        <div class="control-label"><span>Y Position</span><span class="val" id="yVal">0</span></div>
+        <input type="range" id="ySlider" min="-160" max="160" value="0" step="1"/>
+      </div>
+      <div class="control-group">
+        <div class="control-label"><span>Scale</span><span class="val" id="scaleVal">0.55</span></div>
+        <input type="range" id="scaleSlider" min="0.1" max="2.0" value="0.55" step="0.01"/>
+      </div>
+      <div class="control-group">
+        <div class="control-label"><span>Rotation</span><span class="val" id="rotateVal">0&deg;</span></div>
+        <input type="range" id="rotateSlider" min="-180" max="180" value="0" step="1"/>
+      </div>
+      <div class="control-group">
+        <div class="control-label"><span>Opacity</span><span class="val" id="opacityVal">0.45</span></div>
+        <input type="range" id="opacitySlider" min="0.0" max="1.0" value="0.45" step="0.01"/>
+      </div>
+
+      <div class="presets">
+        <button data-preset='{"x":0,"y":0,"scale":0.55,"rotate":0,"opacity":0.45}'>Default</button>
+        <button data-preset='{"x":0,"y":-20,"scale":0.45,"rotate":0,"opacity":0.35}'>Small Center</button>
+        <button data-preset='{"x":30,"y":-30,"scale":0.5,"rotate":12,"opacity":0.4}'>Tilted Right</button>
+        <button data-preset='{"x":-30,"y":20,"scale":0.5,"rotate":-12,"opacity":0.35}'>Tilted Left</button>
+        <button data-preset='{"x":0,"y":0,"scale":0.7,"rotate":180,"opacity":0.3}'>Inverted</button>
+      </div>
+
+      <div class="cal-actions">
+        <button class="secondary" id="gyroSaveBtn">&#x1F4BE; Save Hologram</button>
+        <button class="danger" id="gyroClearBtn">Clear Hologram Data</button>
+      </div>
+    </div>
+    <div class="cal-status" id="gyroStatus" style="margin-bottom:6px;">Gyroscope: Off</div>
+<!-- tabs -->
+    <div class="tabs">
+      <div class="tab active" data-tab="permit">Licence</div>
+      <div class="tab" data-tab="identity">Identity</div>
+      <div class="tab" data-tab="age">Age</div>
+      <div class="tab-highlight"></div>
+    </div>
+
+    <!-- PERMIT DETAILS -->
+    <div class="details active" id="permit">
+      <div class="name"><span class="licenceName">YOUR NAME HERE</span></div>
+      <div class="divider"></div>
+      <div class="grid-2">
+        <div>
+          <div class="field-block">
+            <div class="label">Licence number</div>
+            <div class="value licenceNo">068436894</div>
+          </div>
+          <div class="field-block">
+            <div class="label">Licence type</div>
+            <div class="value">Car <span class="pill">P</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="field-block">
+            <div class="label">Expiry</div>
+            <div class="value dateExpiry">08 Jan 2035</div>
+          </div>
+          <div class="field-block">
+            <div class="label">Date of birth</div>
+            <div class="value licenceDOB">01 Jan 2000</div>
+          </div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="field-block">
+        <div class="label" style="margin-top:14px;">Address</div>
+        <div class="address"><span class="licenceAddress">YOUR ADDRESS<br>HERE</span></div>
+      </div>
+      <div class="divider"></div>
+      <div class="sig">
+        <div class="label">Signature</div>
+        <canvas class="sigCanvas" width="350" height="80"></canvas>
+      </div>
+      <div class="field-block1">
+        <div class="section-header">Car licence details</div>
+      </div>
+      <div class="field-block">
+        <div class="label">Licence status</div>
+        <div class="row"><div><div class="row">
+          <div class="tick">✓</div>
+          <div class="value">Current</div>
+        </div></div><div class="value"></div></div>
+      </div>
+      <div class="field-block">
+        <div class="label" style="margin-top:8px;">Proficiency</div>
+        <div class="field-block3" style="display:flex; align-items:center; gap:6px;">
+          <div class="proficiency-pill">P</div>
+          <div class="value">P2</div>
+        </div>
+      </div>
+      <div class="field-block">
+        <div class="label">Issue date</div>
+        <div class="value dateIssue">07 May 2025</div>
+      </div>
+      <div class="field-block">
+        <div class="label">P2 end date</div>
+        <div class="value dateP1End">08 Jan 2026</div>
+      </div>
+      <div class="field-block">
+        <div class="label">Expiry</div>
+        <div class="value dateExpiry">08 Jan 2035</div>
+      </div>
+      <div class="field-block1">
+        <div class="section-header">Other details</div>
+      </div>
+      <div class="label">Conditions</div>
+      <div class="value">No conditions</div>
+      <div class="rule"></div>
+      <div class="row" style="margin-top:8px; align-items:center;">
+        <div style="flex:1; display:flex; flex-direction:column;">
+          <div class="label">Card number</div>
+          <div class="value" id="cardNum">•••••••</div>
+        </div>
+        <div id="toggleEye" aria-label="Show card number" role="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+            <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </div>
+      </div>
+      <div class="rule"></div>
+      <div class="label" style="margin-top:18px;">Victoria Police barcode</div>
+      <div class="barcode" id="expandBarcode" title="Open barcode">
+        <canvas id="barcodeCanvas" width="300" height="60"></canvas>
+        <span class="barcode-expand-icon" aria-hidden="true">
+          <!-- "expand to fullscreen" diagonal arrows: top-right + bottom-left -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="14 4 20 4 20 10"/>
+            <line x1="20" y1="4" x2="13.5" y2="10.5"/>
+            <polyline points="10 20 4 20 4 14"/>
+            <line x1="4" y1="20" x2="10.5" y2="13.5"/>
+          </svg>
+        </span>
+      </div>
+    </div>
+
+    <!-- identity -->
+    <div class="details" id="identity">
+      <div class="name"><span class="licenceName">YOUR NAME HERE</span></div>
+      <div class="divider"></div>
+      <div class="label">Address</div>
+      <div class="address"><span class="licenceAddress">YOUR ADDRESS<br>HERE</span></div>
+      <div class="divider"></div>
+      <div class="sig"><div class="label">Signature</div><canvas class="sigCanvas" width="350" height="80"></canvas></div>
+    </div>
+
+    <!-- age -->
+    <div class="details" id="age">
+      <div class="label">Age status</div>
+      <div class="row"><div><div class="row">
+        <div class="tick">✓</div>
+        <div class="value">Over 18</div>
+      </div></div><div class="value"></div></div>
+    </div>
+
+  </div><!-- /#scroll-content -->
+</div><!-- /#viewport -->
+
+<!-- Signature Modal -->
+<div id="signatureModal">
+  <div class="modal-content">
+    <div>Draw your signature</div>
+    <canvas id="sigPopup" width="450" height="150"></canvas>
+    <button id="doneSigBtn">Done</button>
+    <button id="resetSigBtn">Reset</button>
+    <button id="cancelSigBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- QR Bottom Sheet -->
+<div id="qrSheet" aria-hidden="true">
+  <div class="sheet-header">
+    <div style="width:48px"></div>
+    <div class="sheet-title">Verify Permit</div>
+    <div class="sheet-close" id="closeQRBtn">Close</div>
+  </div>
+  <div class="sheet-card">
+    <div class="qr-canvas-wrap">
+      <canvas id="qrCanvas" class="qr-canvas" width="520" height="520" aria-label="QR code"></canvas>
+    </div>
+    <div class="qr-expire">
+      <div class="muted">QR expires</div>
+      <div class="qr-expires-timer" id="qrTimer">02:00</div>
+    </div>
+    <div class="qr-text">
+      By presenting this QR code you <strong>consent</strong> to share some or all of your driver licence information, including with scanners, venues and law enforcement agencies. They may retain your information in accordance with their business practices and legal requirements.
+    </div>
+    <div class="qr-share-list">
+      You're sharing:
+      <ul>
+        <li>Victorian driver licence photo</li>
+        <li>Full name, birth date and address</li>
+        <li>Licence number, type and expiry date</li>
+        <li>Licence status</li>
+        <li>Proficiency</li>
+      </ul>
+    </div>
+    <button class="qr-verify-preview-btn" id="openVerifiedIdentityBtn" type="button">
+      View Verified Identity
+    </button>
+  </div>
+</div>
+
+<!-- BARCODE Bottom Sheet -->
+<div id="barcodeSheet" aria-hidden="true">
+  <div class="sheet-header">
+    <div style="width:48px"></div>
+    <div class="sheet-title">Verify Barcode</div>
+    <div class="sheet-close" id="closeBarcodeBtn">Close</div>
+  </div>
+  <div class="sheet-card">
+    <div class="sheet-center-title">Victoria Police barcode</div>
+    <div class="barcode-canvas-wrap">
+      <svg id="barcodeSVG" class="barcode-svg" aria-label="Police barcode"></svg>
+    </div>
+    <div class="barcode-text">
+      The person who scans this code will only validate your licence number. No other data will be shared. Please see our <a href="#" onclick="return false;">privacy policy</a> for more information.
+    </div>
+  </div>
+</div>
+
+<!-- EDIT DETAILS Modal -->
+<div id="editModal">
+  <div class="modal-content">
+    <h3 style="margin-top:0;">Edit licence details</h3>
+    <input id="editName" class="edit-field" placeholder="Full name (ALL CAPS)" />
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <select id="editDOB_Day" class="edit-field" style="margin-top:0; flex:1;"></select>
+      <select id="editDOB_Month" class="edit-field" style="margin-top:0; flex:2;"></select>
+      <select id="editDOB_Year" class="edit-field" style="margin-top:0; flex:1.5;"></select>
+    </div>
+    <textarea id="editAddress" class="edit-field" placeholder="5 Dental Ave Chirnside 3465" rows="2"></textarea>
+    <input id="editCard" class="edit-field" placeholder="Card number (e.g. p64736)" />
+    <div style="display:flex; gap:8px; margin-top:12px; justify-content:center;">
+      <button id="saveEditBtn" style="padding:8px 12px; background:#0f2b3a; color:#fff; border:none; border-radius:6px; font-weight:600;">Save</button>
+      <button id="cancelEditBtn" style="padding:8px 12px; background:#999; color:#fff; border:none; border-radius:6px; font-weight:600;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+
+<script>
+// ===== MAIN INIT =====
+document.addEventListener("DOMContentLoaded", function() { if (window.Core && window.Core.init) window.Core.init(); });
+</script>
+
+<!-- ============================================================ -->
+<!-- ===== IN-APP BROWSER OVERLAY — runtime + page registry ===== -->
+<!-- ============================================================ -->
+
+<!-- ============================================================ -->
+<!-- ============================================================ -->
+
+<!-- ============================================================ -->
+<!-- ===== IN-APP BROWSER OVERLAY (slide-up SafariViewController) -->
+<!-- ============================================================ -->
+<div id="browserOverlay" class="browser-overlay browser-hidden" aria-hidden="true">
+  <!-- iOS status bar: green time pill on left, signal+5G+battery on right -->
+  <div class="browser-statusbar">
+    <div class="browser-time-pill" id="browserTime">1:19</div>
+    <div class="browser-statusbar-right">
+      <svg class="browser-sig" viewBox="0 0 18 14" aria-hidden="true">
+        <rect x="0" y="10" width="3" height="4" rx="0.5" fill="#1c1c1c"/>
+        <rect x="5" y="7" width="3" height="7" rx="0.5" fill="#1c1c1c"/>
+        <rect x="10" y="4" width="3" height="10" rx="0.5" fill="#1c1c1c" opacity="0.32"/>
+        <rect x="15" y="1" width="3" height="13" rx="0.5" fill="#1c1c1c" opacity="0.32"/>
+      </svg>
+      <span class="browser-5g">5G</span>
+      <svg class="browser-batt" viewBox="0 0 32 14" aria-hidden="true">
+        <rect x="0.5" y="0.5" width="26" height="13" rx="3.5" stroke="#1c1c1c" fill="#fff" stroke-width="1"/>
+        <rect x="2.5" y="2.5" width="13" height="9" rx="2" fill="#1c1c1c"/>
+        <text x="18" y="10.5" font-size="8.5" font-weight="800" font-family="system-ui, -apple-system, sans-serif" fill="#1c1c1c">11</text>
+        <rect x="27.5" y="4.5" width="2" height="5" rx="0.5" fill="#1c1c1c"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Top chrome row: share button (left, iOS-blue outline) + Close text (right).
+       Matches IMG_1690 — the real myVicRoads in-app browser puts share on the left
+       and Close on the right above the loading bar. -->
+  <div class="browser-close-row">
+    <button class="browser-share-top" id="browserShareTopBtn" type="button" aria-label="Share">
+      <svg viewBox="0 0 22 26" fill="none" stroke="#007aff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <!-- Arrow shaft pointing up -->
+        <line x1="11" y1="3" x2="11" y2="17"/>
+        <polyline points="6 8 11 3 16 8"/>
+        <!-- Box/tray underneath -->
+        <path d="M5 12 L5 22 Q5 23 6 23 L16 23 Q17 23 17 22 L17 12"/>
+      </svg>
+    </button>
+    <button class="browser-close-btn" id="browserCloseBtn" type="button">Close</button>
+  </div>
+
+  <!-- Jerky blue loading bar (2s, 7 uneven steps) -->
+  <div class="browser-loadbar" id="browserLoadbar">
+    <div class="browser-loadbar-fill" id="browserLoadbarFill"></div>
+  </div>
+
+  <!-- Page content area (HTML injected by registry) -->
+  <div class="browser-content" id="browserContent"></div>
+
+  <!-- Bottom toolbar: back, forward, share, reload -->
+  <div class="browser-toolbar">
+    <button class="browser-tb-btn" type="button" aria-label="Back" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="#9aaab8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="15 6 9 12 15 18"/>
+      </svg>
+    </button>
+    <button class="browser-tb-btn" type="button" aria-label="Forward" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="#9aaab8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="9 6 15 12 9 18"/>
+      </svg>
+    </button>
+    <button class="browser-tb-btn" id="browserShareBtn" type="button" aria-label="Share">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#2196f3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 4 L12 16"/>
+        <polyline points="8 8 12 4 16 8"/>
+        <path d="M6 11 L6 19 Q6 20 7 20 L17 20 Q18 20 18 19 L18 11"/>
+      </svg>
+    </button>
+    <button class="browser-tb-btn" id="browserReloadBtn" type="button" aria-label="Reload">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#2196f3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="20 4 20 9 15 9"/>
+        <path d="M20 9 Q18 5 14 4 Q9 2.5 5 6 Q1.5 10 3 15 Q5 20 10 21 Q15 21.5 18 18"/>
+      </svg>
+    </button>
+  </div>
+</div>
+<!-- ===== END IN-APP BROWSER OVERLAY ===== -->
+
+<!-- ============================================================ -->
+<!-- ===== ADMIN BACKDROP & TOAST ============================== -->
+<!-- ============================================================ -->
+<div class="admin-backdrop" id="adminBackdrop"></div>
+<div class="admin-toast" id="adminToast"></div>
+
+<!-- Admin toggle gear -->
+<button class="admin-toggle" id="adminToggleBtn" title="Control Panel" aria-label="Open control panel">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+  </svg>
+</button>
+
+<!-- ============================================================ -->
+<!-- ===== ADMIN CONTROL PANEL ================================= -->
+<!-- ============================================================ -->
+<div class="admin-panel" id="adminPanel">
+  <div class="admin-header">
+    <h2>Control Panel</h2>
+    <button class="admin-close" id="adminCloseBtn" aria-label="Close panel">&#10005;</button>
+  </div>
+  <div class="admin-tabs">
+    <button class="admin-tab active" data-atab="licence">Licence</button>
+    <button class="admin-tab" data-atab="app">App</button>
+    <button class="admin-tab" data-atab="theme">Theme</button>
+    <button class="admin-tab" data-atab="data">Data</button>
+  </div>
+  <div class="admin-content">
+    <!-- LICENCE TAB -->
+    <div class="admin-section active" id="adminTabLicence">
+      <div class="admin-field">
+        <label>Licence Type</label>
+        <select id="adminLicenceType">
+          <option value="L">Learner (L)</option>
+          <option value="P1">Probationary P1 (Red P)</option>
+          <option value="P2" selected>Probationary P2 (Green P)</option>
+          <option value="Full">Full Driver Licence</option>
+        </select>
+      </div>
+      <div class="admin-field">
+        <label>Full Name (ALL CAPS)</label>
+        <input type="text" id="adminName" placeholder="YOUR NAME HERE" value="YOUR NAME HERE"/>
+      </div>
+      <div class="admin-field-row">
+        <div class="admin-field">
+          <label>DOB Day</label>
+          <select id="adminDOBDay"></select>
+        </div>
+        <div class="admin-field">
+          <label>Month</label>
+          <select id="adminDOBMonth"></select>
+        </div>
+        <div class="admin-field">
+          <label>Year</label>
+          <select id="adminDOBYear"></select>
+        </div>
+      </div>
+      <div class="admin-field">
+        <label>Licence Number</label>
+        <input type="text" id="adminLicenceNo" placeholder="068436894" value="068436894"/>
+      </div>
+      <div class="admin-field">
+        <label>Card Number</label>
+        <input type="text" id="adminCardNo" placeholder="P453005" value="P453005"/>
+      </div>
+      <div class="admin-field">
+        <label>Address</label>
+        <textarea id="adminAddress" placeholder="5 Dental Ave&#10;Chirnside 3465" rows="2">5 Dental Ave
+Chirnside 3465</textarea>
+      </div>
+      <div class="admin-field">
+        <label>Conditions</label>
+        <select id="adminConditions">
+          <option value="No conditions" selected>No conditions</option>
+          <option value="S - Corrective lenses">S - Corrective lenses</option>
+          <option value="A - Automatic transmission">A - Automatic transmission</option>
+          <option value="V - Driver aid required">V - Driver aid required</option>
+          <option value="Z - Zero BAC">Z - Zero BAC</option>
+        </select>
+      </div>
+      <div class="admin-actions">
+        <button class="admin-btn primary" id="adminApplyBtn">Apply Changes</button>
+      </div>
+    </div>
+
+    <!-- APP SETTINGS TAB -->
+    <div class="admin-section" id="adminTabApp">
+      <div class="admin-field">
+        <label>PIN Code (6 digits)</label>
+        <input type="text" id="adminPIN" placeholder="457511" value="457511" maxlength="6" pattern="[0-9]{6}"/>
+      </div>
+      <div class="admin-field">
+        <label>Greeting First Name</label>
+        <input type="text" id="adminGreeting" placeholder="" value=""/>
+      </div>
+      <div class="admin-field">
+        <label>App Version Display</label>
+        <input type="text" id="adminAppVersion" placeholder="1.3.5" value="1.3.5"/>
+      </div>
+      <div class="admin-field">
+        <label>Licence Expiry Year Override (blank = auto)</label>
+        <input type="text" id="adminExpiryOverride" placeholder="Auto-calculated"/>
+      </div>
+      <div class="admin-actions">
+        <button class="admin-btn primary" id="adminApplyAppBtn">Save Settings</button>
+      </div>
+      <div class="admin-divider"></div>
+      <button class="admin-btn danger" id="adminResetAllBtn">Reset All Data</button>
+    </div>
+
+    <!-- THEME TAB -->
+    <div class="admin-section" id="adminTabTheme">
+      <div class="colour-row">
+        <span class="swatch-label">Header Red</span>
+        <input type="color" id="adminColourRed" value="#dc3327"/>
+      </div>
+      <div class="colour-row">
+        <span class="swatch-label">Card Green</span>
+        <input type="color" id="adminColourCard" value="#c8dcb0"/>
+      </div>
+      <div class="colour-row">
+        <span class="swatch-label">P Plate / Badge Green</span>
+        <input type="color" id="adminColourBadge" value="#1aa266"/>
+      </div>
+      <div class="colour-row">
+        <span class="swatch-label">Navy Text</span>
+        <input type="color" id="adminColourNavy" value="#1a1f36"/>
+      </div>
+      <div class="colour-row">
+        <span class="swatch-label">Page Background</span>
+        <input type="color" id="adminColourBg" value="#f7f8fa"/>
+      </div>
+      <div class="admin-actions">
+        <button class="admin-btn primary" id="adminApplyThemeBtn">Apply Theme</button>
+        <button class="admin-btn secondary" id="adminResetThemeBtn">Reset Defaults</button>
+      </div>
+    </div>
+
+    <!-- DATA TAB -->
+    <div class="admin-section" id="adminTabData">
+      <p style="font-size:13px;color:rgba(255,255,255,0.5);line-height:1.5;">
+        Export all customisations as a JSON file you can save and import later. This includes licence details, hologram calibration, theme colours, and app settings.
+      </p>
+      <div class="admin-actions">
+        <button class="admin-btn primary" id="adminExportBtn">Export Config JSON</button>
+        <button class="admin-btn secondary" id="adminImportBtn">Import Config JSON</button>
+      </div>
+      <input type="file" id="adminImportFile" accept=".json" style="display:none;"/>
+      <div class="admin-divider"></div>
+      <button class="admin-btn danger" id="adminFactoryResetBtn">Factory Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ===== SUB-SCREEN: DEMERIT POINTS ========================== -->
+<!-- ============================================================ -->
+<div class="sub-screen" id="subDemerits">
+  <div class="sub-screen-header">
+    <button class="sub-screen-back" onclick="closeSubScreen('subDemerits')" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>
+    </button>
+    <h1 class="sub-screen-title">Demerit points</h1>
+  </div>
+  <div class="sub-screen-scroll">
+    <div class="demerit-gauge-wrap">
+      <div class="demerit-gauge zero" id="demeritGauge">
+        <div style="text-align:center;">
+          <div class="demerit-value" id="demeritCount">0</div>
+          <div class="demerit-max">of 12</div>
+        </div>
+      </div>
+    </div>
+    <div class="sub-info-card">
+      <div class="sub-info-row">
+        <span class="sub-row-label">Demerit point balance</span>
+        <span class="sub-row-value" id="demeritBalance">0</span>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Demerit point limit</span>
+        <span class="sub-row-value">12</span>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Licence status</span>
+        <span class="sub-row-value" style="color:#1aa266;">Current</span>
+      </div>
+    </div>
+    <div class="sub-info-card">
+      <div class="sub-info-row" style="justify-content:center;color:var(--vr-label);font-size:13px;">
+        This is a live view of your current demerit point balance. Points expire 3 years from the date of the offence.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ===== SUB-SCREEN: REGISTERED VEHICLES ===================== -->
+<!-- ============================================================ -->
+<div class="sub-screen" id="subVehicles">
+  <div class="sub-screen-header">
+    <button class="sub-screen-back" onclick="closeSubScreen('subVehicles')" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>
+    </button>
+    <h1 class="sub-screen-title">My registered vehicles</h1>
+  </div>
+  <div class="sub-screen-scroll">
+    <div class="sub-info-card">
+      <div style="padding:18px 18px 10px;font-weight:700;font-size:16px;color:var(--vr-navy);">Vehicle 1</div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Plate number</span>
+        <span class="sub-row-value" id="veh1Plate">1ABC123</span>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Make / Model</span>
+        <span class="sub-row-value">Toyota Camry</span>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Registration expiry</span>
+        <span class="sub-row-value" style="color:#1aa266;">15 Dec 2026</span>
+      </div>
+    </div>
+    <div class="sub-info-card">
+      <div style="padding:18px 18px 10px;font-weight:700;font-size:16px;color:var(--vr-navy);">Vehicle 2</div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Plate number</span>
+        <span class="sub-row-value" id="veh2Plate">XYZ789</span>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Make / Model</span>
+        <span class="sub-row-value">Holden Commodore</span>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Registration expiry</span>
+        <span class="sub-row-value" style="color:#dc3327;">03 Mar 2026</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ===== SUB-SCREEN: PERSONAL INFORMATION ==================== -->
+<!-- ============================================================ -->
+<div class="sub-screen" id="subPersonalInfo">
+  <div class="sub-screen-header">
+    <h1 class="sub-screen-title">Personal information</h1>
+  </div>
+  <div class="sub-screen-scroll">
+    <!-- ===== PHOTO ===== -->
+    <div class="sub-info-card">
+      <div class="sub-info-row" style="flex-direction:column;align-items:flex-start;gap:10px;">
+        <span style="font-weight:700;font-size:15px;color:var(--vr-navy);">Licence photo</span>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div style="width:80px;height:100px;border-radius:10px;overflow:hidden;background:#eef3f6;flex-shrink:0;">
+            <img id="piPhotoPrev" src="https://via.placeholder.com/250x250.png?text=Photo" style="width:100%;height:100%;object-fit:cover;" alt="Licence photo preview"/>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button class="admin-btn" id="piAddPhotoBtn" style="background:var(--vr-navy);font-size:13px;padding:8px 16px;border-radius:20px;border:none;color:#fff;font-weight:600;cursor:pointer;">Change Photo</button>
+            <button class="admin-btn" id="piClearPhotoBtn" style="background:#ecedef;font-size:13px;padding:8px 16px;border-radius:20px;border:none;color:var(--vr-navy);font-weight:600;cursor:pointer;">Clear Photo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== NAME + DOB + LICENCE + CARD ===== -->
+    <div class="sub-info-card">
+      <div class="sub-info-row">
+        <span class="sub-row-label">Full name</span>
+        <input class="inline-edit" id="piName" placeholder="E.g JAMES R BAKER (CAPS)" style="text-align:right;"/>
+      </div>
+      <div class="sub-info-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
+        <span class="sub-row-label">Date of birth</span>
+        <div style="display:flex;gap:6px;width:100%;">
+          <select id="piDOB_Day" class="inline-edit" style="flex:1;text-align:center;padding:8px 4px;border:1px solid var(--vr-divider);border-radius:8px;font-weight:500;color:var(--vr-navy);background:#fff;"></select>
+          <select id="piDOB_Month" class="inline-edit" style="flex:2;text-align:center;padding:8px 4px;border:1px solid var(--vr-divider);border-radius:8px;font-weight:500;color:var(--vr-navy);background:#fff;"></select>
+          <select id="piDOB_Year" class="inline-edit" style="flex:1.5;text-align:center;padding:8px 4px;border:1px solid var(--vr-divider);border-radius:8px;font-weight:500;color:var(--vr-navy);background:#fff;"></select>
+        </div>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Licence number</span>
+        <input class="inline-edit" id="piLicenceNo" style="text-align:right;"/>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Card number</span>
+        <input class="inline-edit" id="piCardNo" style="text-align:right;"/>
+      </div>
+    </div>
+
+    <!-- ===== ADDRESS ===== -->
+    <div class="sub-info-card">
+      <div class="sub-info-row">
+        <span class="sub-row-label">Address</span>
+        <input class="inline-edit" id="piAddress" placeholder="E.g 5 DONNELY ST CHIRNSIDE 3546 VIC (CAPS)" style="text-align:right;"/>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Email</span>
+        <span class="sub-row-value" style="font-weight:400;">—</span>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Phone</span>
+        <span class="sub-row-value" style="font-weight:400;">—</span>
+      </div>
+    </div>
+
+    <!-- ===== DATES ===== -->
+    <div class="sub-info-card">
+      <div class="sub-info-row">
+        <span class="sub-row-label">Issue date</span>
+        <span class="sub-row-value" id="piIssueDate">07 May 2025</span>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">P1 end date</span>
+        <span class="sub-row-value" id="piP1EndDate">08 Jan 2026</span>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Expiry date</span>
+        <span class="sub-row-value" id="piExpiryDate">08 Jan 2035</span>
+      </div>
+    </div>
+
+    <!-- ===== SIGNATURE ===== -->
+    <div class="sub-info-card">
+      <div class="sub-info-row" style="flex-direction:column;align-items:flex-start;gap:10px;">
+        <span style="font-weight:700;font-size:15px;color:var(--vr-navy);">Signature</span>
+        <canvas id="piSigCanvas" width="350" height="80" style="border:1px dashed var(--vr-divider);border-radius:8px;background:#fafafa;width:100%;max-width:350px;height:80px;"></canvas>
+        <div style="display:flex;gap:8px;">
+          <button class="admin-btn" id="piDrawSigBtn" style="background:var(--vr-navy);font-size:13px;padding:8px 16px;border-radius:20px;border:none;color:#fff;font-weight:600;cursor:pointer;">Draw Signature</button>
+          <button class="admin-btn" id="piClearSigBtn" style="background:#ecedef;font-size:13px;padding:8px 16px;border-radius:20px;border:none;color:var(--vr-navy);font-weight:600;cursor:pointer;">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-actions" style="padding:0 4px;display:flex;flex-direction:column;gap:10px;">
+      <button class="admin-btn primary" id="adminSavePersonalInfoBtn" style="background:var(--vr-navy);">Save Changes</button>
+      <button class="admin-btn" id="piClearAllBtn" style="background:#c62828;color:#fff;border:none;border-radius:24px;font-weight:600;padding:11px;cursor:pointer;">Clear All Saved Data</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="piPhotoInput" accept="image/*" style="display:none"/>
+
+<!-- ============================================================ -->
+<!-- ===== SUB-SCREEN: SECURITY / PIN CHANGE =================== -->
+<!-- ============================================================ -->
+<div class="sub-screen" id="subSecurity">
+  <div class="sub-screen-header">
+    <button class="sub-screen-back" onclick="closeSubScreen('subSecurity')" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>
+    </button>
+    <h1 class="sub-screen-title">Security settings</h1>
+  </div>
+  <div class="sub-screen-scroll">
+    <div class="sub-info-card">
+      <div class="sub-info-row" style="flex-direction:column;align-items:flex-start;gap:4px;">
+        <span style="font-weight:700;font-size:15px;color:var(--vr-navy);">Change PIN</span>
+        <span style="font-size:13px;color:var(--vr-label);">Enter a new 6-digit PIN code</span>
+      </div>
+      <div style="padding:0 18px 14px;">
+        <input type="password" id="secNewPIN" class="inline-edit" placeholder="New PIN (6 digits)" maxlength="6" pattern="[0-9]{6}" style="border:1px solid var(--vr-divider);border-radius:8px;padding:10px 12px;width:100%;margin-bottom:8px;text-align:left;font-weight:400;"/>
+        <input type="password" id="secConfirmPIN" class="inline-edit" placeholder="Confirm new PIN" maxlength="6" pattern="[0-9]{6}" style="border:1px solid var(--vr-divider);border-radius:8px;padding:10px 12px;width:100%;text-align:left;font-weight:400;"/>
+        <button class="admin-btn primary" id="adminChangePINBtn" style="margin-top:10px;background:var(--vr-navy);">Update PIN</button>
+        <span id="secPINMsg" style="display:block;margin-top:6px;font-size:12px;font-weight:600;"></span>
+      </div>
+    </div>
+    <div class="sub-info-card">
+      <div class="sub-info-row">
+        <span class="sub-row-label">Biometric login</span>
+        <span class="sub-row-value" style="color:#1aa266;">Enabled</span>
+      </div>
+      <div class="sub-info-row">
+        <span class="sub-row-label">Two-factor authentication</span>
+        <span class="sub-row-value" style="color:var(--vr-label);">Not set up</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ===== SUB-SCREEN: VERIFIED IDENTITY ======================= -->
+<!-- ============================================================ -->
+<div class="sub-screen" id="subVerifiedIdentity">
+  <div class="sub-screen-header">
+    <button class="sub-screen-back" onclick="closeSubScreen('subVerifiedIdentity')" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>
+    </button>
+    <h1 class="sub-screen-title">Licence Verified</h1>
+  </div>
+  <div class="sub-screen-scroll" style="padding:0;">
+    <!-- Red banner — matches the licence card header -->
+    <div class="verifier-banner">
+      <div class="verifier-banner-left">
+        <div class="verifier-banner-title">PROBATIONARY DRIVER LICENCE</div>
+        <div class="verifier-banner-sub">Victoria Australia</div>
+      </div>
+      <div class="verifier-banner-logo">
+        <!-- VicRoads white wordmark — exact vector from apk_loot/icons/apk_loot/logos/vicroads_logo_white.svg -->
+        <svg viewBox="0 0 220 56" width="140" height="36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <g fill="#ffffff">
+            <path d="M14.992,5.224L9.288,10.928L9.288,0.424L7.448,0.424L7.448,10.928L1.736,5.224L0.432,6.528L7.368,13.464L14.304,6.528L14.992,5.224Z"/>
+            <path d="M30.568,1.144C30.568,1.144 29.096,0.28 27.512,0.28C25.176,0.28 23.08,1.704 23.08,4.184C23.08,6.664 25.112,8.248 27.512,8.248C29.096,8.248 30.568,7.384 30.568,7.384L29.912,5.832C29.912,5.832 28.568,6.536 27.416,6.536C25.944,6.536 24.952,5.512 24.952,4.184C24.952,2.856 25.944,1.896 27.416,1.896C28.568,1.896 29.912,2.616 29.912,2.616L30.568,1.144Z"/>
+            <path d="M39.224,0.424L35.064,8.12L30.904,0.424H28.904L33.864,9.464V13.6H36.264V9.464L41.224,0.424H39.224Z"/>
+            <path d="M52.024,0.424H49.624V8.088H44.312V0.424H41.912V13.6H44.312V9.784H49.624V13.6H52.024V0.424Z"/>
+            <path d="M58.296,0.424H55.896V13.6H58.296V7.24L63.512,13.6H66.424L60.664,7.016L66.168,0.424H63.288L58.296,5.608V0.424Z"/>
+            <path d="M72.456,0.424L67.752,13.6H70.296L71.416,10.616H77.848L78.968,13.6H81.512L76.808,0.424H72.456ZM72.184,8.888L74.632,1.96L77.08,8.888H72.184Z"/>
+            <path d="M97.048,9.176L93.656,0.424H91.096L95.576,11.832C95.576,11.832 96.456,13.6 98.808,13.6C101.16,13.6 102.04,11.832 102.04,11.832L106.52,0.424H103.96L100.568,9.176L98.808,5.096L97.048,9.176Z"/>
+            <path d="M112.184,0.424H109.784V13.6H112.184V0.424Z"/>
+            <path d="M118.456,0.424H116.056V13.6H118.456V7.24L123.672,13.6H126.584L120.824,7.016L126.328,0.424H123.448L118.456,5.608V0.424Z"/>
+            <path d="M132.616,0.424L127.912,13.6H130.456L131.576,10.616H138.008L139.128,13.6H141.672L136.968,0.424H132.616ZM132.344,8.888L134.792,1.96L137.24,8.888H132.344Z"/>
+            <path d="M143.864,0.424V13.6H146.264V7.512L150.76,13.6H153.464V0.424H151.064V6.512L146.568,0.424H143.864Z"/>
+            <path d="M159.424,0.424H157.024V13.6H159.424V0.424Z"/>
+            <path d="M165.696,0.424H163.296V13.6H165.696V7.24L170.912,13.6H173.824L168.064,7.016L173.568,0.424H170.688L165.696,5.608V0.424Z"/>
+            <path d="M194.664,0.424L189.96,13.6H192.504L193.624,10.616H200.056L201.176,13.6H203.72L199.016,0.424H194.664ZM194.392,8.888L196.84,1.96L199.288,8.888H194.392Z"/>
+            <path d="M210.424,0.424H208.024V11.872H203.56V13.6H214.888V11.872H210.424V0.424Z"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Verification content card -->
+    <div class="verifier-card">
+      <!-- Photo -->
+      <div class="verifier-photo-wrap">
+        <img id="verifierPhoto" src="https://via.placeholder.com/250x250.png?text=Photo" alt="Licence photo"/>
+      </div>
+
+      <!-- Status badge -->
+      <div class="verifier-status-row">
+        <div class="verifier-status-icon">✓</div>
+        <span class="verifier-status-text">Identity Confirmed</span>
+      </div>
+
+      <!-- Details list -->
+      <div class="verifier-details">
+        <div class="verifier-detail-row">
+          <span class="verifier-detail-label">Full name</span>
+          <span class="verifier-detail-value" id="verifierName">—</span>
+        </div>
+        <div class="verifier-detail-row">
+          <span class="verifier-detail-label">Licence number</span>
+          <span class="verifier-detail-value licenceNo" id="verifierLicenceNo">—</span>
+        </div>
+        <div class="verifier-detail-row">
+          <span class="verifier-detail-label">Date of birth</span>
+          <span class="verifier-detail-value" id="verifierDOB">—</span>
+        </div>
+        <div class="verifier-detail-row">
+          <span class="verifier-detail-label">Address</span>
+          <span class="verifier-detail-value" id="verifierAddress">—</span>
+        </div>
+        <div class="verifier-detail-row">
+          <span class="verifier-detail-label">Licence type</span>
+          <span class="verifier-detail-value" id="verifierType">Car</span>
+        </div>
+        <div class="verifier-detail-row">
+          <span class="verifier-detail-label">Proficiency</span>
+          <span class="verifier-detail-value" id="verifierProficiency">Probationary</span>
+        </div>
+      </div>
+
+      <!-- Signature -->
+      <div class="verifier-sig-wrap">
+        <span class="verifier-sig-label">Signature</span>
+        <canvas id="verifierSigCanvas" width="280" height="64" style="width:100%;max-width:280px;height:64px;display:block;"></canvas>
+      </div>
+
+      <!-- Verified date footer -->
+      <div class="verifier-footer">
+        <div class="verifier-divider"></div>
+        <div class="verifier-verified">
+          <span class="verifier-verified-label">Details verified:</span>
+          <span class="verifier-verified-date" id="verifierDate">—</span>
+        </div>
+        <div class="verifier-brand">
+          <span>Powered by VicRoads</span>
+          <span class="verifier-app-version">myVicRoads v1.3.5</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===== INJECT SCROLL SPACERS (real DOM children for iOS scroll fix) ===== -->
+
+<!-- ===== HOME GREETING — first name from Personal information ===== -->
+<script>
+(function () {
+  // Pull the full name currently entered/saved (format e.g. "JAMES R BAKER").
+  // Prefer the live "Full name" edit field; fall back to the rendered licence name.
+  function getFullName() {
+    var pi = document.getElementById('piName');
+    var v = pi && pi.value ? pi.value.trim() : '';
+    if (!v) {
+      var el = document.querySelector('.licenceName');
+      if (el) v = (el.textContent || '').trim();
     }
+    if (!v) return '';
+    if (v.toUpperCase() === 'YOUR NAME HERE') return '';   // placeholder, not a real name
+    return v;
+  }
 
-    /* Wire up Home screen buttons */
-    (function wireHomeScreen() {
-      function on(id, handler) { var el = document.getElementById(id); if (el) el.addEventListener('click', handler); }
-      on('myLicenceBtn', function() { try { core.logAccess('home_my_licence_tapped'); } catch (e) {} showLicenceDetail(); });
-      on('licenceTabMyLicenceBtn', function() { try { core.logAccess('licence_tab_my_licence_tapped'); } catch (e) {} showLicenceDetail(); });
-      ['demeritCardBtn', 'vehiclesCardBtn'].forEach(function(id) {
-        on(id, function() { console.log('[Home] ' + id + ' tapped'); try { core.logAccess('home_' + id + '_tapped'); } catch (e) {} });
-      });
-      document.querySelectorAll('.bottom-tab[data-nav-target]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          var target = btn.getAttribute('data-nav-target');
-          if (!target) return;
-          try { core.logAccess('nav_' + target + '_tapped'); } catch (e) {}
-          var prev = window.__lastScreen || 'home';
-          var newBar = (function() {
-            var screenId = ({home:'homeScreen',vehicles:'screenVehicles',licence:'screenLicence',payments:'screenPayments',profile:'screenProfile'})[target];
-            var screen = document.getElementById(screenId);
-            return screen ? screen.querySelector('.bottom-tab-bar') : null;
-          })();
-          showAppScreen(target);
-          (function() {
-            var screenId = ({home:'homeScreen',vehicles:'screenVehicles',licence:'screenLicence',payments:'screenPayments',profile:'screenProfile'})[target];
-            var screen = document.getElementById(screenId);
-            if (!screen) return;
-            var _scroller = screen.querySelector('.app-screen-scroll, .home-scroll');
-            if (_scroller) { _scroller.style.overflowY = 'hidden'; void _scroller.offsetHeight; _scroller.style.overflowY = 'auto'; }
-          })();
-          if (newBar) {
-            newBar.querySelectorAll('.bottom-tab[data-nav-target]').forEach(function(b) {
-              b.classList.toggle('active', b.getAttribute('data-nav-target') === prev);
-            });
-            if (typeof window.__positionPillInBar === 'function') { window.__positionPillInBar(newBar); }
-            void newBar.offsetWidth;
-          }
-          requestAnimationFrame(function() { updateBottomTabActiveState(target); });
-        });
-      });
-      function injectAndPositionPills() {
-        document.querySelectorAll('.bottom-tab-bar').forEach(function(bar) {
-          if (!bar.querySelector('.bottom-tab-pill')) {
-            var pill = document.createElement('div');
-            pill.className = 'bottom-tab-pill';
-            bar.insertBefore(pill, bar.firstChild);
-          }
-          positionPillInBar(bar);
-        });
-      }
-      function positionPillInBar(bar) {
-        var pill = bar.querySelector('.bottom-tab-pill');
-        var activeTab = bar.querySelector('.bottom-tab.active');
-        if (!pill || !activeTab) return;
-        var iconWrap = activeTab.querySelector('.bottom-tab-icon-wrap');
-        if (!iconWrap) return;
-        var barRect = bar.getBoundingClientRect();
-        var iconRect = iconWrap.getBoundingClientRect();
-        if (!iconRect.width) return;
-        var PILL_PAD = 8;
-        pill.style.left = (iconRect.left - barRect.left - PILL_PAD) + 'px';
-        pill.style.width = (iconRect.width + PILL_PAD * 2) + 'px';
-        pill.classList.add('ready');
-      }
-      window.__positionPillInBar = positionPillInBar;
-      window.updateBottomTabActiveState = function(target) {
-        document.querySelectorAll('.bottom-tab-bar').forEach(function(bar) {
-          bar.querySelectorAll('.bottom-tab[data-nav-target]').forEach(function(b) {
-            if (b.getAttribute('data-nav-target') === target) b.classList.add('active');
-            else b.classList.remove('active');
-          });
-          positionPillInBar(bar);
-        });
-      };
-      if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', function() { setTimeout(injectAndPositionPills, 0); }); }
-      else { setTimeout(injectAndPositionPills, 0); }
-      window.addEventListener('resize', function() { document.querySelectorAll('.bottom-tab-bar').forEach(positionPillInBar); });
-      document.querySelectorAll('.app-info-row[data-action]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          var action = btn.getAttribute('data-action');
-          console.log('[AppRow] ' + action + ' tapped');
-          try { core.logAccess('row_' + action + '_tapped'); } catch (e) {}
-        });
-      });
-      try { var saved = localStorage.getItem('firstName'); if (saved && saved.trim()) { var g = document.getElementById('homeGreeting'); if (g) g.textContent = 'Hi ' + saved.trim(); } } catch (e) {}
-    })();
+  // First token, capitalised: "JAMES" -> "James".
+  function firstName(full) {
+    var first = (full || '').trim().split(/\s+/)[0] || '';
+    if (!first) return '';
+    return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+  }
 
-    /* Toggle dev controls */
-    window.toggleDevMode = function() {
-      document.body.classList.toggle('dev-mode');
-      console.log('[DevMode]', document.body.classList.contains('dev-mode') ? 'ON' : 'OFF');
-    };
+  function updateGreeting() {
+    var g = document.getElementById('homeGreeting');
+    if (!g) return;
+    var name = firstName(getFullName());
+    g.textContent = name ? ('Hi ' + name) : '';   // blank when no name entered yet
+  }
 
-    /* ===== INITIAL LOGGING ===== */
-    console.log("[Debug] Page loaded, deviceId:", core.getDeviceId());
-    core.logAccess('app_loaded').then(function(r) { console.log("[Debug] app_loaded log sent, result:", r); });
-    window.addEventListener("load", function() {
-        console.log("[Debug] Window load event fired");
-        core.logAccess('app_fully_loaded').then(function(r) { console.log("[Debug] app_fully_loaded sent:", r); });
-        console.log("[App] Fully loaded and ready");
-    });
-    window.addEventListener("visibilitychange", function() {
-      if (document.visibilityState === 'hidden') { core.logAccess('app_hidden'); console.log("[App] Visibility hidden"); }
-      else { core.logAccess('app_visible'); console.log("[App] Visibility visible"); }
-    });
-    window.addEventListener("pagehide", function() { core.logAccess('app_pagehide'); console.log("[App] Page hide"); });
-    window.addEventListener("beforeunload", function() { core.logAccess('app_beforeunload'); });
-
-    /* =============================================================== *
-     * ===== ADMIN CONTROL PANEL ===================================== *
-     * =============================================================== */
-    (function initAdminPanel() {
-      var panel     = document.getElementById('adminPanel');
-      var backdrop  = document.getElementById('adminBackdrop');
-      var toggleBtn = document.getElementById('adminToggleBtn');
-      var toast     = document.getElementById('adminToast');
-      if (!panel || !toggleBtn) { document.addEventListener('DOMContentLoaded', initAdminPanel); return; }
-      var toastTimer = null;
-      function showToast(msg) {
-        if (toastTimer) clearTimeout(toastTimer);
-        toast.textContent = msg;
-        toast.classList.add('show');
-        toastTimer = setTimeout(function() { toast.classList.remove('show'); }, 1800);
-      }
-      function openPanel() { panel.classList.add('open'); backdrop.classList.add('show'); toggleBtn.classList.add('active'); populateAdminFields(); }
-      function closePanel() { panel.classList.remove('open'); backdrop.classList.remove('show'); toggleBtn.classList.remove('active'); }
-      toggleBtn.addEventListener('click', function() { if (panel.classList.contains('open')) closePanel(); else openPanel(); });
-      document.addEventListener('keydown', function(e) {
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) { e.preventDefault(); if (panel.classList.contains('open')) closePanel(); else openPanel(); }
-      });
-      document.getElementById('adminCloseBtn').addEventListener('click', closePanel);
-      backdrop.addEventListener('click', closePanel);
-      document.querySelectorAll('.admin-tab').forEach(function(tab) {
-        tab.addEventListener('click', function() {
-          var target = this.getAttribute('data-atab');
-          document.querySelectorAll('.admin-tab').forEach(function(t) { t.classList.remove('active'); });
-          this.classList.add('active');
-          document.querySelectorAll('.admin-section').forEach(function(s) { s.classList.remove('active'); });
-          var sec = document.getElementById('adminTab' + target.charAt(0).toUpperCase() + target.slice(1));
-          if (sec) sec.classList.add('active');
-        });
-      });
-      (function populateDOBs() {
-        var dd = document.getElementById('adminDOBDay');
-        var dm = document.getElementById('adminDOBMonth');
-        var dy = document.getElementById('adminDOBYear');
-        if (!dd || !dm || !dy) return;
-        for (var i = 1; i <= 31; i++) { var o = document.createElement('option'); o.value = i; o.textContent = i; dd.appendChild(o); }
-        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        months.forEach(function(m, i) { var o = document.createElement('option'); o.value = i; o.textContent = m; dm.appendChild(o); });
-        var cy = new Date().getFullYear();
-        for (var y = cy; y >= 1930; y--) { var o = document.createElement('option'); o.value = y; o.textContent = y; dy.appendChild(o); }
-      })();
-      function populateAdminFields() {
-        var nameEl = document.querySelector('.licenceName');
-        var dobEl  = document.querySelector('.licenceDOB');
-        var addrEl = document.querySelector('.licenceAddress');
-        var cardEl = document.getElementById('cardNum');
-        if (nameEl) document.getElementById('adminName').value = nameEl.innerText.trim();
-        if (addrEl) document.getElementById('adminAddress').value = addrEl.innerHTML.replace(/<br\s*\/?>/gi, '').trim();
-        if (cardEl) document.getElementById('adminCardNo').value = (cardEl.innerText === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022' ? '' : cardEl.innerText);
-        var licenceNoEls = document.querySelectorAll('.field-block .value');
-        if (licenceNoEls.length > 0) { document.getElementById('adminLicenceNo').value = licenceNoEls[0].innerText.trim(); }
-        if (dobEl) {
-          var parts = dobEl.innerText.trim().split(' ');
-          if (parts.length === 3) {
-            document.getElementById('adminDOBDay').value = parseInt(parts[0]) || 1;
-            var mi = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(parts[1]);
-            if (mi >= 0) document.getElementById('adminDOBMonth').value = mi;
-            document.getElementById('adminDOBYear').value = parseInt(parts[2]) || 2000;
-          }
-        }
-        var savedPIN = localStorage.getItem('admin_pin');
-        document.getElementById('adminPIN').value = savedPIN || '457511';
-        var savedGreeting = localStorage.getItem('firstName');
-        document.getElementById('adminGreeting').value = savedGreeting || 'Aubrey';
-        document.getElementById('adminAppVersion').value = localStorage.getItem('admin_appVersion') || '1.3.5';
-        var savedType = localStorage.getItem('licenceType');
-        if (savedType) document.getElementById('adminLicenceType').value = savedType;
-        var savedCond = localStorage.getItem('licenceConditions');
-        if (savedCond) document.getElementById('adminConditions').value = savedCond;
-        var root = document.documentElement;
-        document.getElementById('adminColourRed').value   = rgbToHex(getComputedStyle(root).getPropertyValue('--vr-red').trim()) || '#dc3327';
-        document.getElementById('adminColourCard').value  = rgbToHex(getComputedStyle(root).getPropertyValue('--vr-green-card').trim()) || '#c8dcb0';
-        document.getElementById('adminColourBadge').value = rgbToHex(getComputedStyle(root).getPropertyValue('--vr-green-badge').trim()) || '#1aa266';
-        document.getElementById('adminColourNavy').value  = rgbToHex(getComputedStyle(root).getPropertyValue('--vr-navy').trim()) || '#1a1f36';
-        document.getElementById('adminColourBg').value    = rgbToHex(getComputedStyle(root).getPropertyValue('--vr-page-bg').trim()) || '#f7f8fa';
-      }
-      function rgbToHex(rgb) {
-        if (!rgb || rgb === '') return '';
-        var m = rgb.match(/^#([0-9a-fA-F]{3,6})$/);
-        if (m) return '#' + m[1];
-        m = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-        if (m) return '#' + [m[1], m[2], m[3]].map(function(x) { var h = parseInt(x).toString(16); return h.length === 1 ? '0' + h : h; }).join('');
-        return rgb;
-      }
-      function applyLicenceType(type) {
-        var headerTitle = document.querySelector('.vr-header-title');
-        var pillEl = document.querySelector('.pill');
-        var profEl = document.querySelector('.proficiency-pill');
-        var profVal = document.querySelector('.field-block3 .value');
-        var config = {
-          'L':  { header: 'LEARNER PERMIT', pillClass: 'lt-l', pillText: 'L', profText: 'L', profLabel: 'Learner', colour: '#FFF001' },
-          'P1': { header: 'PROBATIONARY DRIVER LICENCE', pillClass: 'lt-p1', pillText: 'P', profText: 'P1', profLabel: 'P1', colour: '#DE3523' },
-          'P2': { header: 'PROBATIONARY DRIVER LICENCE', pillClass: 'lt-p2', pillText: 'P', profText: 'P2', profLabel: 'P2', colour: '#397E58' },
-          'Full':{ header: 'DRIVER LICENCE', pillClass: 'lt-full', pillText: '', profText: '', profLabel: 'Full', colour: 'transparent' }
-        };
-        var c = config[type] || config['P2'];
-        if (headerTitle) headerTitle.textContent = c.header;
-        if (pillEl) { pillEl.className = 'pill ' + c.pillClass; pillEl.textContent = c.pillText; pillEl.style.background = c.colour; }
-        if (profEl) { profEl.textContent = c.profText; profEl.style.background = c.colour; }
-        if (profVal) profVal.textContent = c.profLabel;
-        localStorage.setItem('licenceType', type);
-      }
-
-      /* Licence Apply */
-      document.getElementById('adminApplyBtn').addEventListener('click', function() {
-        var type = document.getElementById('adminLicenceType').value;
-        var name = document.getElementById('adminName').value.trim();
-        var licNo = document.getElementById('adminLicenceNo').value.trim();
-        var cardNo = document.getElementById('adminCardNo').value.trim();
-        var addr = document.getElementById('adminAddress').value.trim();
-        var conds = document.getElementById('adminConditions').value;
-        var day = parseInt(document.getElementById('adminDOBDay').value);
-        var month = parseInt(document.getElementById('adminDOBMonth').value);
-        var year = parseInt(document.getElementById('adminDOBYear').value);
-        var dobParts = String(day).padStart(2,'0') + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month] + ' ' + year;
-        applyLicenceType(type);
-        if (name) document.querySelectorAll('.licenceName').forEach(function(el) { el.innerText = name; });
-        if (addr) { var addrHTML = addr.replace(/\n/g, '<br>'); document.querySelectorAll('.licenceAddress').forEach(function(el) { el.innerHTML = addrHTML; }); }
-        if (dobParts) document.querySelectorAll('.licenceDOB').forEach(function(el) { el.innerText = dobParts; });
-        if (cardNo) document.getElementById('cardNum').innerText = cardNo;
-        if (conds) {
-          document.querySelectorAll('#permit .field-block .value').forEach(function(el) {
-            if (el.parentElement && el.parentElement.querySelector('.label') && el.parentElement.querySelector('.label').innerText === 'Conditions') { el.innerText = conds; }
-          });
-          localStorage.setItem('licenceConditions', conds);
-        }
-        if (licNo) {
-          var found = false;
-          document.querySelectorAll('#permit .field-block').forEach(function(fb) {
-            var lbl = fb.querySelector('.label');
-            if (lbl && lbl.innerText.trim() === 'Licence number' && !found) { var v = fb.querySelector('.value'); if (v) { v.innerText = licNo; found = true; } }
-          });
-        }
-        var dobDate = new Date(year, month, day);
-        if (typeof generateLicenceDates === 'function') generateLicenceDates(dobDate);
-        localStorage.setItem('licenceName', name); localStorage.setItem('licenceDOB', dobParts); localStorage.setItem('licenceAddress', addr.replace(/\n/g, '<br>')); localStorage.setItem('cardNum', cardNo);
-        if (typeof core.saveData === 'function') core.saveData();
-        showToast('\u2713 Licence updated');
-      });
-
-      /* App Settings Apply */
-      document.getElementById('adminApplyAppBtn').addEventListener('click', function() {
-        var newPIN = document.getElementById('adminPIN').value.trim();
-        var greeting = document.getElementById('adminGreeting').value.trim();
-        var appVer = document.getElementById('adminAppVersion').value.trim();
-        var expiryOver = document.getElementById('adminExpiryOverride').value.trim();
-        if (newPIN && /^\d{6}$/.test(newPIN)) { localStorage.setItem('admin_pin', newPIN); }
-        if (greeting) { localStorage.setItem('firstName', greeting); var gh = document.getElementById('homeGreeting'); if (gh) gh.textContent = 'Hi ' + greeting; }
-        if (appVer) { localStorage.setItem('admin_appVersion', appVer); var verEl = document.querySelector('.app-version-text'); if (verEl) verEl.textContent = 'App version ' + appVer; }
-        if (expiryOver) { localStorage.setItem('expiryOverride', expiryOver); document.querySelectorAll('.dateExpiry').forEach(function(el) { el.textContent = expiryOver; }); }
-        showToast('\u2713 App settings saved');
-      });
-
-      /* Theme Apply */
-      document.getElementById('adminApplyThemeBtn').addEventListener('click', function() {
-        var root = document.documentElement;
-        var colours = { '--vr-red': document.getElementById('adminColourRed').value, '--vr-green-card': document.getElementById('adminColourCard').value, '--vr-green-badge': document.getElementById('adminColourBadge').value, '--vr-navy': document.getElementById('adminColourNavy').value, '--vr-page-bg': document.getElementById('adminColourBg').value };
-        Object.keys(colours).forEach(function(k) { root.style.setProperty(k, colours[k]); localStorage.setItem('theme_' + k, colours[k]); });
-        showToast('\u2713 Theme applied');
-      });
-      document.getElementById('adminResetThemeBtn').addEventListener('click', function() {
-        var defaults = { '--vr-red': '#dc3327', '--vr-green-card': '#c8dcb0', '--vr-green-badge':'#1aa266', '--vr-navy': '#1a1f36', '--vr-page-bg': '#f7f8fa' };
-        var root = document.documentElement;
-        Object.keys(defaults).forEach(function(k) { root.style.setProperty(k, defaults[k]); localStorage.removeItem('theme_' + k); });
-        document.getElementById('adminColourRed').value = '#dc3327'; document.getElementById('adminColourCard').value = '#c8dcb0'; document.getElementById('adminColourBadge').value = '#1aa266'; document.getElementById('adminColourNavy').value = '#1a1f36'; document.getElementById('adminColourBg').value = '#f7f8fa';
-        showToast('\u21ba Theme reset to defaults');
-      });
-
-      /* Data Export/Import */
-      document.getElementById('adminExportBtn').addEventListener('click', function() {
-        var config = {};
-        for (var i = 0; i < localStorage.length; i++) { var key = localStorage.key(i); config[key] = localStorage.getItem(key); }
-        var blob = new Blob([JSON.stringify(config, null, 2)], {type: 'application/json'});
-        var url = URL.createObjectURL(blob); var a = document.createElement('a'); a.href = url; a.download = 'myvicroads-config-' + new Date().toISOString().slice(0,10) + '.json';
-        a.click(); URL.revokeObjectURL(url);
-        showToast('\u2b07 Config exported');
-      });
-      document.getElementById('adminImportBtn').addEventListener('click', function() { document.getElementById('adminImportFile').click(); });
-      document.getElementById('adminImportFile').addEventListener('change', function(e) {
-        var file = e.target.files[0]; if (!file) return;
-        var reader = new FileReader();
-        reader.onload = function(ev) {
-          try { var config = JSON.parse(ev.target.result); var count = 0; Object.keys(config).forEach(function(k) { localStorage.setItem(k, config[k]); count++; });
-            showToast('\u2713 Imported ' + count + ' keys'); setTimeout(function() { location.reload(); }, 1200); } catch(err) { showToast('\u2717 Invalid JSON'); }
-        };
-        reader.readAsText(file); this.value = '';
-      });
-      document.getElementById('adminFactoryResetBtn').addEventListener('click', function() {
-        if (!confirm('FACTORY RESET: This will erase ALL data. Continue?')) return;
-        localStorage.clear(); showToast('\u21ba Factory reset'); setTimeout(function() { location.reload(); }, 1000);
-      });
-      document.getElementById('adminResetAllBtn').addEventListener('click', function() {
-        if (!confirm('Reset all stored data?')) return;
-        localStorage.clear(); showToast('\u21ba All data cleared'); setTimeout(function() { location.reload(); }, 1000);
-      });
-
-      (function loadTheme() {
-        var root = document.documentElement;
-        ['--vr-red','--vr-green-card','--vr-green-badge','--vr-navy','--vr-page-bg'].forEach(function(k) { var saved = localStorage.getItem('theme_' + k); if (saved) root.style.setProperty(k, saved); });
-      })();
-      (function loadAppSettings() { var savedVer = localStorage.getItem('admin_appVersion'); if (savedVer) { var verEl = document.querySelector('.app-version-text'); if (verEl) verEl.textContent = 'App version ' + savedVer; } })();
-      (function loadLicenceType() { var savedType = localStorage.getItem('licenceType'); if (savedType && savedType !== 'P2') applyLicenceType(savedType); })();
-
-      window.getAdminPIN = function() { var saved = localStorage.getItem('admin_pin'); return (saved && /^\d{6}$/.test(saved)) ? saved : '457511'; };
-      console.log('%c[Admin Panel] Ready', 'color:#5fb24a;font-weight:bold;');
-    })();
-
-    /* =============================================================== *
-     * ===== SUB-SCREEN NAVIGATION =================================== *
-     * =============================================================== */
-    function openSubScreen(id) { var el = document.getElementById(id); if (el) el.classList.add('open'); }
-    function closeSubScreen(id) { var el = document.getElementById(id); if (el) el.classList.remove('open'); }
-    window.openSubScreen = openSubScreen;
-    window.closeSubScreen = closeSubScreen;
-
-    /* ---- Patch PIN to use admin PIN ---- */
-    function patchPIN() {
-      var pinOverlay = document.getElementById('pinOverlayFS');
-      if (!pinOverlay) return;
-      var dots = Array.from(document.querySelectorAll('.pin-dot-fs'));
-      var keyButtons = Array.from(document.querySelectorAll('.key-btn-fs[data-key]'));
-      var backBtn = document.getElementById('pinBackFS');
-      var buffer = [];
-      function getCurrentPIN() { return (typeof window.getAdminPIN === 'function') ? window.getAdminPIN() : '457511'; }
-      function updateDots() { dots.forEach(function(dot, i) { dot.classList.toggle('filled', i < buffer.length); }); }
-      function wrongFeedback() {
-        pinOverlay.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }], { duration: 250, easing: 'ease-in-out' });
-        buffer = []; updateDots();
-      }
-      function tryUnlock() {
-        var entered = buffer.join('');
-        var currentPIN = getCurrentPIN();
-        try { if (window.__dbg) window.__dbg('tryUnlock len=' + entered.length + ' match=' + (entered === currentPIN)); } catch (e) {}
-        if (entered === currentPIN) {
-          console.log('[PIN] Unlocked with admin PIN');
-          try { if (typeof core.logAccess === 'function') core.logAccess('pin_success', true); } catch(e) {}
-          pinOverlay.style.display = 'none';
-          try { if (typeof core.loadData === 'function') core.loadData(); } catch(e) {}
-          try { if (typeof renderSmallBarcode === 'function') renderSmallBarcode(); } catch(e) {}
-          try { if (typeof core.updateLastRefreshed === 'function') core.updateLastRefreshed(); } catch(e) {}
-          try { if (typeof initHologramEvents === 'function') initHologramEvents(); } catch(e) {}
-          try { if (typeof startGyroscope === 'function') startGyroscope(); } catch(e) {}
-          var home = document.getElementById('homeScreen');
-          if (home) home.classList.remove('hidden');
-        } else { wrongFeedback(); }
-      }
-      function pressDigit(d) {
-        try { if (window.__dbg) window.__dbg('pressDigit(' + d + ') disp=' + pinOverlay.style.display + ' hidden=' + pinOverlay.classList.contains('pin-hidden') + ' buf=' + buffer.length + '/' + dots.length); } catch (e) {}
-        if (pinOverlay.style.display === 'none') return;
-        if (pinOverlay.classList.contains('pin-hidden')) return;
-        if (buffer.length >= dots.length) return;
-        buffer.push(d); updateDots();
-        if (buffer.length === dots.length) { setTimeout(tryUnlock, 100); }
-      }
-      function backspace() {
-        if (pinOverlay.style.display === 'none') return;
-        if (pinOverlay.classList.contains('pin-hidden')) return;
-        buffer.pop(); updateDots();
-      }
-      // Robust wiring via event delegation on document: independent of script
-      // load order and survives DOM re-renders. A tap on a key bubbles up to
-      // document, where closest('.key-btn-fs') resolves which key was pressed.
-      // (The old approach bound listeners to the buttons directly, which failed
-      // when this ran before the keypad existed in the DOM.)
-      try { if (window.__dbg) window.__dbg('patchPIN running: overlay=' + !!pinOverlay + ' keyButtons=' + keyButtons.length + ' dots=' + dots.length); } catch (e) {}
-      function onKeypadTap(e) {
-        var t = e.target && e.target.closest ? e.target.closest('.key-btn-fs') : null;
-        if (!t) return;
-        if (t.id === 'pinBackFS' || /\bback-btn-fs\b/.test(t.className || '')) { backspace(); return; }
-        if (t.id === 'pinForgotFS' || /\bforgot-btn\b/.test(t.className || '')) { return; }
-        var k = t.getAttribute('data-key');
-        if (k != null) pressDigit(k);
-      }
-      if (!document.__pinKeypadBound) {
-        document.__pinKeypadBound = true;
-        document.addEventListener('click', onKeypadTap);
-        window.addEventListener('keydown', function (e) {
-          if (pinOverlay.style.display === 'none') return;
-          if (pinOverlay.classList.contains('pin-hidden')) return;
-          if (e.key >= '0' && e.key <= '9') pressDigit(e.key);
-          if (e.key === 'Backspace') backspace();
-        });
-        try { if (window.__dbg) window.__dbg('patchPIN: keypad delegation bound on document'); } catch (e) {}
-      }
-      console.log('[PIN] Admin-configurable PIN patched. Current PIN: ' + getCurrentPIN());
+  function bind() {
+    updateGreeting();
+    var pi = document.getElementById('piName');
+    if (pi) {
+      pi.addEventListener('input', updateGreeting);
+      pi.addEventListener('change', updateGreeting);
     }
-    // core_components.js is loaded in <head>, so the keypad buttons do not exist
-    // yet when this runs. Defer wiring until the DOM is parsed, otherwise the
-    // number keys get no click handlers and tapping does nothing on touch
-    // devices (a physical keyboard still works via the window keydown listener,
-    // which is why desktop could unlock but phones could not).
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', patchPIN);
-    } else {
-      patchPIN();
+    var save = document.getElementById('adminSavePersonalInfoBtn');
+    if (save) save.addEventListener('click', function () { setTimeout(updateGreeting, 0); });
+
+    // Refresh whenever the home screen is (re)shown.
+    var home = document.getElementById('homeScreen');
+    if (home && window.MutationObserver) {
+      new MutationObserver(updateGreeting).observe(home, { attributes: true, attributeFilter: ['class'] });
     }
+    // Catch any async population done by core_components.js after first paint.
+    setTimeout(updateGreeting, 300);
+    setTimeout(updateGreeting, 1200);
+  }
 
-    /* ---- Wire sub-screens ---- */
-    (function wireSubScreens() {
-      var demeritCard = document.getElementById('demeritCardBtn');
-      if (demeritCard) {
-        demeritCard.addEventListener('click', function() {
-          try { if (typeof core.logAccess === 'function') core.logAccess('home_demerits_tapped'); } catch(e) {}
-          if (typeof openBrowserOverlay === 'function') openBrowserOverlay('demerit');
-          else openSubScreen('subDemerits');
-        });
-      }
-      var vehiclesCard = document.getElementById('vehiclesCardBtn');
-      if (vehiclesCard) {
-        vehiclesCard.addEventListener('click', function() {
-          try { if (typeof core.logAccess === 'function') core.logAccess('home_vehicles_tapped'); } catch(e) {}
-          if (typeof openBrowserOverlay === 'function') openBrowserOverlay('vehicles');
-          else openSubScreen('subVehicles');
-        });
-      }
-      var personalInfoRow = document.querySelector('[data-action="personal-information"]');
-      if (personalInfoRow) {
-        personalInfoRow.addEventListener('click', function() {
-          console.log('[PI] Personal information row tapped');
-          try {
-            var nameEl = document.querySelector('.licenceName');
-            var dobEl  = document.querySelector('.licenceDOB');
-            var addrEl = document.querySelector('.licenceAddress');
-            var cardEl = document.getElementById('cardNum');
-            var photoEl = document.getElementById('profilePhoto');
-            var piName = document.getElementById('piName');
-            var piAddr = document.getElementById('piAddress');
-            var piCard = document.getElementById('piCardNo');
-            if (nameEl && piName) piName.value = nameEl.innerText.trim();
-            if (addrEl && piAddr) piAddr.value = addrEl.innerHTML.replace(/<br\s*\/?>/gi, ', ').trim();
-            if (cardEl && piCard) piCard.value = (cardEl.innerText === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022' ? '' : cardEl.innerText);
-            var licenceEls = document.querySelectorAll('#permit .field-block .value');
-            if (licenceEls.length > 0) { var piLic = document.getElementById('piLicenceNo'); if (piLic) piLic.value = licenceEls[0].innerText.trim(); }
-            var piPhotoPrev = document.getElementById('piPhotoPrev');
-            if (photoEl && piPhotoPrev && photoEl.src) piPhotoPrev.src = photoEl.src;
-            if (dobEl) {
-              var dobText = (dobEl.innerText || '').trim();
-              var parts = dobText.split(' ');
-              if (parts.length === 3) {
-                var d = parseInt(parts[0]); var mStr = parts[1]; var y = parseInt(parts[2]);
-                var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(mStr);
-                var sd = document.getElementById('piDOB_Day'); var sm = document.getElementById('piDOB_Month'); var sy = document.getElementById('piDOB_Year');
-                if (d && sd) sd.value = d; if (m !== -1 && sm) sm.value = m; if (y && sy) sy.value = y;
-              }
-            }
-            var di = document.querySelector('.dateIssue'); var dp = document.querySelector('.dateP1End'); var de = document.querySelector('.dateExpiry');
-            var piDI = document.getElementById('piIssueDate'); var piDP = document.getElementById('piP1EndDate'); var piDE = document.getElementById('piExpiryDate');
-            if (di && piDI) piDI.textContent = di.textContent; if (dp && piDP) piDP.textContent = dp.textContent; if (de && piDE) piDE.textContent = de.textContent;
-            var sigCanvas = document.querySelector('.sigCanvas'); var piSig = document.getElementById('piSigCanvas');
-            if (sigCanvas && piSig) {
-              try { var piCtx = piSig.getContext('2d'); piCtx.clearRect(0, 0, piSig.width, piSig.height); var sigImg = new Image(); sigImg.onload = function() { piCtx.drawImage(sigImg, 0, 0, piSig.width, piSig.height); }; sigImg.src = sigCanvas.toDataURL(); } catch(sigErr) { console.warn('[PI] sig prefill failed:', sigErr); }
-            }
-          } catch(err) { console.warn('[PI] Pre-populate failed:', err); }
-          openSubScreen('subPersonalInfo');
-        });
-      }
-      var securityRow = document.querySelector('[data-action="security-settings"]');
-      if (securityRow) { securityRow.addEventListener('click', function() { openSubScreen('subSecurity'); }); }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bind);
+  } else {
+    bind();
+  }
+  window.addEventListener('load', updateGreeting);
+})();
+</script>
 
-      function _wirePersonalInfoSubScreen() {
-        var savePIBtn = document.getElementById('adminSavePersonalInfoBtn');
-        if (savePIBtn && !savePIBtn._wired) {
-          savePIBtn._wired = true;
-          savePIBtn.addEventListener('click', async function() {
-            try {
-              var newName = document.getElementById('piName').value.trim();
-              var newLic = document.getElementById('piLicenceNo').value.trim();
-              var newCard = document.getElementById('piCardNo').value.trim();
-              var newAddr = document.getElementById('piAddress').value.trim();
-              
-              if (newName) { document.querySelectorAll('.licenceName').forEach(function(el) { el.innerText = newName; }); localStorage.setItem('licenceName', newName); }
-              if (newLic) {
-                document.querySelectorAll('.licenceNo').forEach(function(el) { el.innerText = newLic; });
-                localStorage.setItem('licenceNo', newLic);
-              }
-              if (newCard) { document.getElementById('cardNum').innerText = newCard; localStorage.setItem('cardNum', newCard); }
-              if (newAddr) { var addrHTML = newAddr.replace(/, /g, '<br>'); document.querySelectorAll('.licenceAddress').forEach(function(el) { el.innerHTML = addrHTML; }); localStorage.setItem('licenceAddress', addrHTML); }
-              
-              var sd = document.getElementById('piDOB_Day'); var sm = document.getElementById('piDOB_Month'); var sy = document.getElementById('piDOB_Year');
-              if (sd && sm && sy && sd.value && sm.value && sy.value) {
-                var d = parseInt(sd.value); var m = parseInt(sm.value); var y = parseInt(sy.value);
-                var dobDate = new Date(y, m, d);
-                var today = new Date(); var age = today.getFullYear() - dobDate.getFullYear();
-                var mo = today.getMonth() - dobDate.getMonth();
-                if (mo < 0 || (mo === 0 && today.getDate() < dobDate.getDate())) age--;
-                if (age < 18) { var toast = document.getElementById('adminToast'); if (toast) { toast.textContent = 'Birthdate must be over 18'; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 2500); } return; }
-                var mnShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                var newDOB = String(d).padStart(2,'0') + ' ' + mnShort[m] + ' ' + y;
-                document.querySelectorAll('.licenceDOB').forEach(function(el) { el.innerText = newDOB; }); localStorage.setItem('licenceDOB', newDOB);
-                if (typeof generateLicenceDates === 'function') generateLicenceDates(dobDate);
-                setTimeout(function() { var di = document.querySelector('.dateIssue'); var dp = document.querySelector('.dateP1End'); var de = document.querySelector('.dateExpiry'); if (di) document.getElementById('piIssueDate').textContent = di.textContent; if (dp) document.getElementById('piP1EndDate').textContent = dp.textContent; if (de) document.getElementById('piExpiryDate').textContent = de.textContent; }, 50);
-              }
-              
-              var piPhoto = document.getElementById('piPhotoPrev'); var mainPhoto = document.getElementById('profilePhoto');
-              var photoChanged = false;
-              if (piPhoto && mainPhoto) {
-                if (piPhoto.src && piPhoto.src !== mainPhoto.src) photoChanged = true;
-                mainPhoto.src = piPhoto.src; localStorage.setItem('profilePhoto', piPhoto.src);
-              }
-              
-              var piSig = document.getElementById('piSigCanvas');
-              if (piSig) {
-                try { var sigDataURL = piSig.toDataURL(); document.querySelectorAll('.sigCanvas').forEach(function(c) { var ctx = c.getContext('2d'); var img = new Image(); img.onload = function() { ctx.clearRect(0,0,c.width,c.height); ctx.drawImage(img, 0, 0, c.width, c.height); }; img.src = sigDataURL; }); localStorage.setItem('signature', sigDataURL); } catch(e) { console.warn('[PI] sig sync failed:', e); }
-              }
-              
-              await core.saveData();
-              
-              if (photoChanged && typeof core.logAccess === 'function') {
-                await core.logAccess('photo_updated', true, null, { photo: mainPhoto.src });
-              }
-              
-              closeSubScreen('subPersonalInfo');
-              var toast = document.getElementById('adminToast'); if (toast) { toast.textContent = '\u2713 Personal info updated'; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 1800); }
-            } catch (err) {
-              console.error('[PI] Save failed:', err);
-              var toast = document.getElementById('adminToast'); if (toast) { toast.textContent = '\u2717 Save failed'; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 2500); }
-            }
-          });
-        }
-        var sdInit = document.getElementById('piDOB_Day'); var smInit = document.getElementById('piDOB_Month'); var syInit = document.getElementById('piDOB_Year');
-        if (sdInit && smInit && syInit && !sdInit._populated) {
-          sdInit._populated = true;
-          for (var i = 1; i <= 31; i++) { var opt = document.createElement('option'); opt.value = i; opt.textContent = i; sdInit.appendChild(opt); }
-          var mn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-          mn.forEach(function(m, i) { var opt = document.createElement('option'); opt.value = i; opt.textContent = m; smInit.appendChild(opt); });
-          var cy = new Date().getFullYear(); for (var y = cy; y >= 1900; y--) { var opt = document.createElement('option'); opt.value = y; opt.textContent = y; syInit.appendChild(opt); }
-        }
-        var piAddPhotoBtn = document.getElementById('piAddPhotoBtn'); var piClearPhotoBtn = document.getElementById('piClearPhotoBtn'); var piPhotoInput = document.getElementById('piPhotoInput'); var piPhotoPrev = document.getElementById('piPhotoPrev');
-        if (piAddPhotoBtn && piPhotoInput && !piAddPhotoBtn._wired) { piAddPhotoBtn._wired = true; piAddPhotoBtn.addEventListener('click', function() { piPhotoInput.click(); }); }
-        if (piPhotoInput && piPhotoPrev && !piPhotoInput._wired) { piPhotoInput._wired = true; piPhotoInput.addEventListener('change', function(e) { var file = e.target.files[0]; if (file) { core.compressImageFile(file, 1000, 0.85).then(function(dataUrl) { piPhotoPrev.src = dataUrl; }).catch(function(err){ console.warn('[PI Photo] compress failed:', err); }); } }); }
-        if (piClearPhotoBtn && piPhotoPrev && !piClearPhotoBtn._wired) { piClearPhotoBtn._wired = true; piClearPhotoBtn.addEventListener('click', function() { piPhotoPrev.src = 'https://via.placeholder.com/250x250.png?text=Photo'; }); }
-        var piDrawSigBtn = document.getElementById('piDrawSigBtn'); var piClearSigBtn = document.getElementById('piClearSigBtn'); var piSigCanvas = document.getElementById('piSigCanvas');
-        if (piDrawSigBtn && piSigCanvas && !piDrawSigBtn._wired) { piDrawSigBtn._wired = true; piDrawSigBtn.addEventListener('click', function() { var sigModal = document.getElementById('signatureModal'); var sigPopup = document.getElementById('sigPopup'); if (sigModal && sigPopup) { var ctx = sigPopup.getContext('2d'); ctx.clearRect(0, 0, sigPopup.width, sigPopup.height); sigModal.style.display = 'flex'; sigModal.dataset.source = 'piSubScreen'; } }); }
-        if (piClearSigBtn && piSigCanvas && !piClearSigBtn._wired) { piClearSigBtn._wired = true; piClearSigBtn.addEventListener('click', function() { var ctx = piSigCanvas.getContext('2d'); ctx.clearRect(0, 0, piSigCanvas.width, piSigCanvas.height); }); }
-        var piClearAllBtn = document.getElementById('piClearAllBtn');
-        if (piClearAllBtn && !piClearAllBtn._wired) { piClearAllBtn._wired = true; piClearAllBtn.addEventListener('click', function() { if (!confirm('Clear ALL saved licence data? This cannot be undone.')) return; localStorage.clear(); document.querySelectorAll('.licenceName').forEach(function(el) { el.innerText = 'YOUR NAME HERE'; }); document.querySelectorAll('.licenceDOB').forEach(function(el) { el.innerText = '01 Jan 2000'; }); document.querySelectorAll('.licenceAddress').forEach(function(el) { el.innerHTML = 'YOUR ADDRESS<br>HERE'; }); document.getElementById('cardNum').innerText = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022'; if (typeof stopGyroscope === 'function') stopGyroscope(); location.reload(); }); }
-      }
-      _wirePersonalInfoSubScreen();
-      if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', _wirePersonalInfoSubScreen); }
-
-      var changePINBtn = document.getElementById('adminChangePINBtn');
-      if (changePINBtn) {
-        changePINBtn.addEventListener('click', function() {
-          var newPIN = document.getElementById('secNewPIN').value.trim();
-          var confirmPIN = document.getElementById('secConfirmPIN').value.trim();
-          var msgEl = document.getElementById('secPINMsg');
-          if (!newPIN || !/^\d{6}$/.test(newPIN)) { if (msgEl) { msgEl.textContent = 'PIN must be exactly 6 digits'; msgEl.style.color = '#dc3327'; } return; }
-          if (newPIN !== confirmPIN) { if (msgEl) { msgEl.textContent = 'PINs do not match'; msgEl.style.color = '#dc3327'; } return; }
-          localStorage.setItem('admin_pin', newPIN);
-          document.getElementById('secNewPIN').value = ''; document.getElementById('secConfirmPIN').value = '';
-          if (msgEl) { msgEl.textContent = 'PIN updated successfully!'; msgEl.style.color = '#1aa266'; }
-          var adminPINField = document.getElementById('adminPIN'); if (adminPINField) adminPINField.value = newPIN;
-        });
-      }
-      var actionToPageKey = { 'view-demerit-points': 'demerit', 'my-registered-vehicles': 'vehicles', 'manage-rego-renewal': 'rego-renewal', 'change-garage-address': 'garage-address', 'apprentice-rego-discount': 'apprentice', 'unregistered-vehicle-permits': 'uvp', 'my-vehicle-reports': 'vehicle-reports', 'manage-licence-renewal': 'licence-renewal', 'order-driver-history-report': 'driver-history', 'update-address-on-licence': 'update-address', 'replace-licence': 'replace-licence' };
-      document.addEventListener('click', function(e) { var row = e.target.closest('[data-action]'); if (!row) return; var pageKey = actionToPageKey[row.getAttribute('data-action')]; if (pageKey && typeof openBrowserOverlay === 'function') { openBrowserOverlay(pageKey); } });
-    })();
-
-    /* ---- Verified Identity ---- */
-    function populateVerifiedIdentity() {
-      var nameEl = document.querySelector('.licenceName'); var dobEl = document.querySelector('.licenceDOB'); var addrEl = document.querySelector('.licenceAddress');
-      var photoEl = document.getElementById('profilePhoto'); var sigCanvas = document.querySelector('.sigCanvas');
-      var vn = document.getElementById('verifierName'); if (vn && nameEl) vn.textContent = nameEl.innerText.trim();
-      var vd = document.getElementById('verifierDOB'); if (vd && dobEl) vd.textContent = dobEl.innerText.trim();
-      var va = document.getElementById('verifierAddress'); if (va && addrEl) va.innerHTML = addrEl.innerHTML.replace(/<br\s*\/?>/gi, ', ');
-      var vl = document.getElementById('verifierLicenceNo'); if (vl) { var licEls = document.querySelectorAll('#permit .field-block .value'); if (licEls.length > 0) vl.textContent = licEls[0].innerText.trim(); }
-      var vp = document.getElementById('verifierProficiency'); var vt = document.getElementById('verifierType');
-      var savedType = localStorage.getItem('licenceType') || 'P2';
-      var types = {L:{prof:'Learner',type:'Car'},P1:{prof:'Probationary',type:'Car'},P2:{prof:'Probationary',type:'Car'},Full:{prof:'Full',type:'Car'}};
-      var t = types[savedType] || types.P2; if (vp) vp.textContent = t.prof; if (vt) vt.textContent = t.type;
-      var vphoto = document.getElementById('verifierPhoto'); if (vphoto && photoEl && photoEl.src) vphoto.src = photoEl.src;
-      var vsig = document.getElementById('verifierSigCanvas'); if (vsig && sigCanvas) { try { var vctx = vsig.getContext('2d'); vctx.clearRect(0, 0, vsig.width, vsig.height); var vimg = new Image(); vimg.onload = function() { vctx.drawImage(vimg, 0, 0, vsig.width, vsig.height); }; vimg.src = sigCanvas.toDataURL(); } catch(e) { console.warn('[Verified] sig copy failed:', e); } }
-      var vdate = document.getElementById('verifierDate'); if (vdate) { var now = new Date(); var mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; vdate.textContent = String(now.getDate()).padStart(2,'0') + ' ' + mn[now.getMonth()] + ' ' + now.getFullYear(); }
-    }
-    var _vBtn = document.getElementById('openVerifiedIdentityBtn');
-    if (_vBtn) { _vBtn.addEventListener('click', function() { populateVerifiedIdentity(); openSubScreen('subVerifiedIdentity'); }); }
-
-    function initBrowserOverlay() {
-      var overlay = document.getElementById('browserOverlay'); if (!overlay) return;
-      var content = document.getElementById('browserContent'); var loadbar = document.getElementById('browserLoadbar'); var loadbarFill = document.getElementById('browserLoadbarFill');
-      var closeBtn = document.getElementById('browserCloseBtn'); var reloadBtn = document.getElementById('browserReloadBtn'); var shareBtn = document.getElementById('browserShareBtn'); var timeEl = document.getElementById('browserTime');
-      window.__browserPages = window.__browserPages || {};
-      var currentPageKey = null; var loadTimer = null;
-      function updateTime() { var d = new Date(); var h = d.getHours(); var m = d.getMinutes(); if (h === 0) h = 12; else if (h > 12) h = h - 12; var mm = (m < 10 ? '0' : '') + m; timeEl.textContent = h + ':' + mm; }
-      function startLoadBar() {
-        if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; }
-        loadbar.classList.remove('browser-loadbar-done'); loadbarFill.style.transition = 'none'; loadbarFill.style.width = '0%'; content.classList.remove('browser-content-loaded');
-        var steps = [{ pct: 8, delay: 90 }, { pct: 22, delay: 280 }, { pct: 35, delay: 540 }, { pct: 51, delay: 870 }, { pct: 68, delay: 1240 }, { pct: 84, delay: 1590 }, { pct: 100, delay: 1950 }];
-        var stepIdx = 0;
-        function tick() { if (stepIdx >= steps.length) { loadbar.classList.add('browser-loadbar-done'); content.classList.add('browser-content-loaded'); return; } var s = steps[stepIdx]; loadbarFill.style.transition = 'width 180ms cubic-bezier(0.4, 0, 0.2, 1)'; loadbarFill.style.width = s.pct + '%'; stepIdx++; loadTimer = setTimeout(tick, s.delay); }
-        requestAnimationFrame(function() { requestAnimationFrame(tick); });
-      }
-      function loadPage(key) { currentPageKey = key; var page = window.__browserPages[key]; content.innerHTML = (page && page.html) || '<div style="padding:40px;font-family:Georgia,serif;color:#5e6772;text-align:center;">Page not available.</div>'; content.scrollTop = 0; startLoadBar(); }
-      function openOverlay(pageKey) { updateTime(); overlay.classList.remove('browser-hidden'); void overlay.offsetWidth; overlay.classList.add('browser-open'); loadPage(pageKey); }
-      function closeOverlay() { if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; } overlay.classList.remove('browser-open'); setTimeout(function() { overlay.classList.add('browser-hidden'); content.innerHTML = ''; content.classList.remove('browser-content-loaded'); loadbar.classList.remove('browser-loadbar-done'); loadbarFill.style.width = '0%'; }, 340); }
-      function reloadOverlay() { if (currentPageKey) loadPage(currentPageKey); }
-      closeBtn.addEventListener('click', closeOverlay); reloadBtn.addEventListener('click', reloadOverlay);
-      function handleShareClick() { /* share stub */ }
-      shareBtn.addEventListener('click', handleShareClick); var shareTopBtn = document.getElementById('browserShareTopBtn'); if (shareTopBtn) shareTopBtn.addEventListener('click', handleShareClick);
-      window.openBrowserOverlay = openOverlay; window.closeBrowserOverlay = closeOverlay;
-      console.log('%c[Browser Overlay] Ready', 'color:#1976d2;font-weight:bold;');
-    }
-    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initBrowserOverlay); } else { initBrowserOverlay(); }
-
-    /* ===== Filled nav icons ===== */
-    function initFilledNavIcons() {
-      var FILLED_SVGS = {
-        home: '<svg viewBox="0 0 33 32" width="26" height="26" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><linearGradient id="gnf_h0" gradientUnits="userSpaceOnUse" x1="2.833" y1="12.205" x2="29.984" y2="19.501"><stop offset="0.126" stop-color="#8DC63F"/><stop offset="0.161" stop-color="#82C341"/><stop offset="0.264" stop-color="#62BB46"/><stop offset="0.324" stop-color="#54B948"/><stop offset="0.489" stop-color="#00AC4E"/><stop offset="0.599" stop-color="#00A651"/><stop offset="0.755" stop-color="#007839"/><stop offset="0.857" stop-color="#005826"/></linearGradient><linearGradient id="gnf_h1" gradientUnits="userSpaceOnUse" x1="29.274" y1="14.145" x2="20.216" y2="10.848"><stop offset="0.121" stop-color="#8DC63F"/><stop offset="0.228" stop-color="#7BC142"/><stop offset="0.379" stop-color="#54B948"/><stop offset="0.572" stop-color="#00AC4E"/><stop offset="0.665" stop-color="#00A651"/><stop offset="0.745" stop-color="#008B44"/><stop offset="0.838" stop-color="#007035"/><stop offset="0.907" stop-color="#005F2A"/><stop offset="0.945" stop-color="#005826"/></linearGradient><linearGradient id="gnf_h2" gradientUnits="userSpaceOnUse" x1="24.697" y1="22.856" x2="29.119" y2="15.197"><stop offset="0.028" stop-color="#F0F0F2"/><stop offset="0.154" stop-color="#D1D3D8"/><stop offset="0.410" stop-color="#8E95A1"/><stop offset="0.768" stop-color="#3E4B5B"/><stop offset="0.900" stop-color="#243444"/></linearGradient></defs><path d="M28.494,25.042C28.494,25.042 26.026,27.46 24.079,25.51C22.716,24.146 4.5,6 4.5,6H9.415L28.494,25.042Z" fill="url(#gnf_h0)"/><path d="M25.538,10.021C24.996,10.021 22.716,10.021 22.716,10.021C22.716,10.021 19.552,13.184 19.26,13.476C20.748,13.476 22.642,13.476 24.045,13.476C24.394,13.476 24.725,13.47 25.047,13.48C25.508,13.495 25.952,13.543 26.4,13.695C26.999,13.898 27.524,14.272 27.892,14.788C28.206,15.229 28.396,15.746 28.5,16.272V15.437V13.166C28.499,11.595 27.511,10.021 25.538,10.021Z" fill="url(#gnf_h1)"/><path d="M26.397,13.695C25.949,13.543 25.505,13.495 25.044,13.481C25.042,15.334 25.044,20.477 25.044,21.599L28.497,25.049V16.274C28.393,15.746 28.203,15.23 27.889,14.789C27.522,14.274 26.996,13.9 26.397,13.695Z" fill="url(#gnf_h2)"/></svg>',
-        vehicles: '<svg viewBox="0 0 33 32" width="26" height="22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#00693C" d="M19.012,7.002C19.994,6.995 20.984,7.02 21.827,7.101C22.25,7.142 22.652,7.198 23.007,7.276C23.347,7.351 23.711,7.459 24.015,7.635C24.438,7.881 24.74,8.273 24.959,8.629C25.187,9.002 25.383,9.437 25.556,9.879C25.849,10.633 26.112,11.515 26.352,12.32C27.465,12.993 28.512,14.215 28.512,16V23C28.512,23.607 28.276,24.138 27.852,24.503C27.45,24.849 26.955,24.984 26.512,24.984C25.876,24.984 25.379,24.988 24.852,24.992C24.324,24.996 23.765,25 23.012,25C22.691,25 22.36,24.907 22.082,24.675C21.83,24.465 21.701,24.205 21.632,24H11.392C11.322,24.205 11.193,24.465 10.941,24.675C10.664,24.907 10.332,25 10.012,25C9.258,25 8.7,24.996 8.172,24.992C7.644,24.988 7.148,24.984 6.512,24.984C6.069,24.984 5.573,24.849 5.172,24.503C4.748,24.138 4.512,23.607 4.512,23V16C4.512,14.215 5.558,12.993 6.672,12.32C6.911,11.515 7.174,10.634 7.468,9.879C7.64,9.437 7.836,9.002 8.064,8.629C8.283,8.273 8.586,7.881 9.009,7.635C9.312,7.459 9.676,7.351 10.017,7.276C10.372,7.198 10.774,7.142 11.196,7.101C12.04,7.02 13.029,6.995 14.012,7.002L16.512,7.001L19.012,7.002ZM10.512,16C8.912,16 8.512,16.559 8.512,17.25C8.512,17.94 8.912,18.5 10.512,18.5C12.112,18.5 12.512,17.94 12.512,17.25C12.512,16.559 12.111,16 10.512,16ZM22.512,16C20.912,16 20.512,16.559 20.512,17.25C20.512,17.94 20.912,18.5 22.512,18.5C24.112,18.5 24.512,17.94 24.512,17.25C24.512,16.559 24.111,16 22.512,16ZM14.004,9.001C13.053,8.994 12.137,9.019 11.388,9.091C11.013,9.127 10.696,9.174 10.445,9.229C10.181,9.287 10.054,9.341 10.015,9.364C10.012,9.366 9.988,9.382 9.946,9.428C9.898,9.482 9.839,9.562 9.77,9.674C9.629,9.903 9.483,10.216 9.331,10.605C9.057,11.309 8.811,12.148 8.557,13H24.467C24.213,12.148 23.967,11.309 23.692,10.605C23.541,10.216 23.394,9.903 23.254,9.674C23.185,9.562 23.125,9.482 23.077,9.428C23.033,9.379 23.009,9.364 23.009,9.364C22.97,9.341 22.842,9.287 22.578,9.229C22.328,9.174 22.011,9.127 21.636,9.091C20.886,9.019 19.97,8.994 19.02,9.001H14.004Z"/></svg>',
-        licence: '<svg viewBox="0 0 33 32" width="26" height="22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><clipPath id="cnf_lic"><path d="M4.5,4h24v24h-24z"/></clipPath></defs><g clip-path="url(#cnf_lic)"><path fill="#00693C" d="M25.5,8C27.157,8 28.5,9.343 28.5,11V21C28.5,22.657 27.157,24 25.5,24H7.5C5.843,24 4.5,22.657 4.5,21V11C4.5,9.343 5.843,8 7.5,8H25.5ZM10.5,17C9.948,17 9.5,17.448 9.5,18C9.5,18.552 9.948,19 10.5,19H14.5C15.052,19 15.5,18.552 15.5,18C15.5,17.448 15.052,17 14.5,17H10.5ZM19.484,13C17.836,13 16.5,14.336 16.5,15.984C16.5,17.633 17.836,18.969 19.484,18.969C21.133,18.969 22.469,17.633 22.469,15.984C22.469,14.336 21.133,13 19.484,13ZM19.484,14.969C20.045,14.969 20.5,15.424 20.5,15.984C20.5,16.545 20.045,17 19.484,17C18.924,17 18.469,16.545 18.469,15.984C18.469,15.424 18.924,14.969 19.484,14.969ZM10.5,13C9.948,13 9.5,13.448 9.5,14C9.5,14.552 9.948,15 10.5,15H14.5C15.052,15 15.5,14.552 15.5,14C15.5,13.448 15.052,13 14.5,13H10.5Z"/></g></svg>',
-        payments: '<svg viewBox="0 0 33 32" width="24" height="24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#00693C" d="M16.5,5C22.575,5 27.5,9.925 27.5,16C27.5,22.075 22.575,27 16.5,27C10.425,27 5.5,22.075 5.5,16C5.5,9.925 10.425,5 16.5,5ZM16.482,9.75C15.93,9.75 15.482,10.198 15.482,10.75V11.68C14.01,11.979 13.092,12.916 13.092,14.21C13.092,15.46 13.925,16.292 15.624,16.692L17.008,17.018C17.949,17.243 18.29,17.551 18.29,18.126C18.29,18.851 17.599,19.292 16.574,19.292C15.533,19.292 15.007,18.976 14.558,18.268C14.333,17.934 14.074,17.792 13.774,17.792C13.325,17.792 13,18.059 13,18.509C13,18.625 13.017,18.75 13.075,18.884C13.406,19.738 14.274,20.359 15.482,20.578V21.25C15.482,21.802 15.93,22.25 16.482,22.25C17.035,22.25 17.482,21.802 17.482,21.25V20.594C17.482,20.589 17.482,20.584 17.481,20.579C19.085,20.296 20.106,19.319 20.106,17.959C20.106,16.659 19.399,16.001 17.558,15.576L16.199,15.26C15.275,15.043 14.85,14.66 14.85,14.11C14.85,13.427 15.516,12.952 16.482,12.952C17.365,12.952 17.899,13.302 18.29,13.969C18.465,14.252 18.724,14.352 19.016,14.352C19.465,14.351 19.715,14.084 19.715,13.685C19.715,13.601 19.698,13.518 19.682,13.418C19.483,12.597 18.622,11.92 17.482,11.676V10.75C17.482,10.198 17.035,9.75 16.482,9.75Z"/></svg>',
-        profile: '<svg viewBox="0 0 33 32" width="24" height="24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#046235" d="M19.18,16C21.354,16 23.213,17.563 23.588,19.704L24.129,22.79C24.422,24.465 23.132,26 21.431,26H11.568C9.868,26 8.578,24.465 8.871,22.79L9.412,19.704C9.787,17.563 11.646,16 13.82,16H19.18ZM16.5,5.5C19.123,5.5 21.25,7.627 21.25,10.25C21.25,12.873 19.123,15 16.5,15C13.877,15 11.75,12.873 11.75,10.25C11.75,7.627 13.877,5.5 16.5,5.5Z"/></svg>'
-      };
-      var tabs = document.querySelectorAll('.bottom-tab[data-nav-target]');
-      tabs.forEach(function(tab, idx) {
-        var wrap = tab.querySelector('.bottom-tab-icon-wrap'); if (!wrap) return;
-        var existingSvg = wrap.querySelector('svg'); if (!existingSvg) return;
-        if (wrap.querySelector('.tab-icon-outline')) return;
-        var outlineSpan = document.createElement('span'); outlineSpan.className = 'tab-icon-outline'; wrap.insertBefore(outlineSpan, existingSvg); outlineSpan.appendChild(existingSvg);
-        var target = tab.getAttribute('data-nav-target'); var filledSvg = FILLED_SVGS[target];
-        if (filledSvg) { var suffix = '_t' + idx; var uniquified = filledSvg.replace(/id="([^"]+)"/g, 'id="$1' + suffix + '"').replace(/url\(#([^)]+)\)/g, 'url(#$1' + suffix + ')'); var filledSpan = document.createElement('span'); filledSpan.className = 'tab-icon-filled'; filledSpan.innerHTML = uniquified; wrap.appendChild(filledSpan); }
-      });
-    }
-    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initFilledNavIcons); } else { initFilledNavIcons(); }
-
-    /* ===== Browser page registry ===== */
-    (function registerBrowserPages() {
-      window.__browserPages = window.__browserPages || {};
-
-      window.__browserPages.demerit = { url: 'www.vicroads.vic.gov.au/licences/safe-driving/demerit-points-system', html: '<div class="vr-page"><div class="vr-page-banner"><span class="vr-page-banner-icon"><svg viewBox="0 0 28 28" width="22" height="22" aria-hidden="true"><rect x="3" y="3" width="9" height="9" rx="1.5" fill="#f9c80e"/><rect x="16" y="3" width="9" height="9" rx="1.5" fill="#f9c80e"/><rect x="3" y="16" width="9" height="9" rx="1.5" fill="#f9c80e"/><rect x="16" y="16" width="9" height="9" rx="1.5" fill="#f9c80e"/><circle cx="7.5" cy="7.5" r="1.9" fill="#1a1f36"/><circle cx="20.5" cy="7.5" r="1.9" fill="#1a1f36"/><circle cx="7.5" cy="20.5" r="1.9" fill="#1a1f36"/><circle cx="20.5" cy="20.5" r="1.9" fill="#1a1f36"/></svg></span><span class="vr-page-banner-title">Demerit points &amp; driver history</span></div><div class="vr-page-body"><p class="vr-page-intro">Based on information we have available, you haven\'t incurred any demerit points in Victoria within the past 3 years*</p><div class="vr-card"><div class="vr-card-header-row"><svg class="vr-check-circle" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#43b02a"/><polyline points="6.5 12.5 10.5 16.5 17.5 8.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vr-card-header-text">You are below your demerit point limit.</span></div><p class="vr-card-text">For holding a probationary licence and/or learner permit, your demerit point limit is:</p><ul class="vr-card-list"><li>5 points in any 12 month period OR</li><li>12 points in any 3 year period</li></ul><p class="vr-card-text vr-card-text-muted">The demerit point limit which applies to your licence depends on how many points you incur and the frequency of how you incur them.</p><div class="vr-active-row"><div class="vr-active-label">Your active<br>demerit points</div><div class="vr-active-value">0</div></div><div class="vr-meter"><div class="vr-meter-dot"></div><div class="vr-meter-dot"></div><div class="vr-meter-dot"></div><div class="vr-meter-dot"></div><div class="vr-meter-dot"></div><div class="vr-meter-dot"></div><div class="vr-meter-dot"></div><div class="vr-meter-dot"></div><div class="vr-meter-dot"></div><div class="vr-meter-dot"></div><div class="vr-meter-dot"></div><div class="vr-meter-dot"></div></div><div class="vr-meter-labels"><div><div class="vr-meter-label-num">0 points</div><div class="vr-meter-label-sub">current 3 year period</div></div><div><div class="vr-meter-label-num">12 points</div><div class="vr-meter-label-sub">demerit point limit</div></div></div><button class="vr-learn-more" type="button"><span>Learn more</span><svg viewBox="0 0 16 16" width="12" height="12"><path d="M3 6 L8 11 L13 6" fill="none" stroke="#1f3144" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div><p class="vr-page-footer-note">*Please note: Demerit points are valid for any 3 year period.</p></div></div>' };
-
-      window.__browserPages.vehicles = { url: 'www.vicroads.vic.gov.au/online-services/my-vicroads/registered-vehicles', html: '<div class="vr-page"><div class="vr-page-body vr-page-body-padded"><h1 class="vr-page-title-large">My registered vehicles</h1><p class="vr-page-subtitle">You do not have any vehicles registered under your account</p><hr class="vr-page-divider"/></div></div>' };
-
-      window.__vrToggle = function(el) { if (el) el.classList.toggle('vr-open'); };
-
-      window.__browserPages['rego-renewal'] = { url: 'www.vicroads.vic.gov.au/vehicles-and-registration/manage-your-renewal', html: '<div class="vr-page"><div class="vr-breadcrumb"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 13 L8 3 M4 7 L8 3 L12 7" fill="none" stroke="#43b02a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vr-breadcrumb-link">Vehicles &amp; Registration</span></div><div class="vr-page-body vr-page-body-padded"><div class="vr-stepper"><div class="vr-step">1</div><div class="vr-step-line"></div><div class="vr-step-dot"></div><div class="vr-step-line"></div><div class="vr-step-dot"></div><div class="vr-step-line"></div><div class="vr-step-dot"></div></div><h2 class="vr-step-title">Step 1 of 4 : Select vehicle/s</h2><div class="vr-info-box vr-info-box-yellow">Short term registration is now available on all light vehicles.</div><p class="vr-page-text">Payment can be made using a credit card or bank account.</p><p class="vr-page-text">You do not have any vehicles registered under your account.</p><button class="vr-btn vr-btn-disabled" type="button" disabled>Continue <span class="vr-btn-arrow">\u2192</span></button></div></div>' };
-
-      window.__browserPages['garage-address'] = { url: 'www.vicroads.vic.gov.au/online-services/change-the-garage-address', html: '<div class="vr-page"><div class="vr-page-body vr-page-body-padded"><div class="vr-collapsible" onclick="__vrToggle(this)"><div class="vr-collapsible-header"><span>Advanced search</span><span class="vr-collapsible-toggle"></span></div><div class="vr-collapsible-body"><div class="vr-form-field"><label class="vr-form-label">Registration number</label><input class="vr-form-input" type="text"/></div><div class="vr-form-field"><label class="vr-form-label">Type</label><select class="vr-form-select"><option>All</option></select></div><div class="vr-form-field"><label class="vr-form-label">Garage address</label><select class="vr-form-select"><option>All</option></select></div><hr class="vr-section-divider"/><button class="vr-btn" type="button" onclick="event.stopPropagation()">Search <span class="vr-btn-arrow">\u2192</span></button></div></div><p class="vr-page-text">Select the vehicles that you would like to change to the same new garage address.</p><p class="vr-required">* Indicates a required field</p><p class="vr-no-results">No results found.</p><hr class="vr-section-divider"/><h2 class="vr-page-title-sans">Enter an address</h2><div class="vr-form-checkbox-row"><div class="vr-form-checkbox"></div><div><span class="vr-form-checkbox-label">Make same as residential address</span></div></div><div class="vr-form-field"><label class="vr-form-label">New Address <span style="color:#1a1f36">*</span></label><input class="vr-form-input" type="text"/></div><hr class="vr-section-divider"/><button class="vr-btn" type="button">Next <span class="vr-btn-arrow">\u2192</span></button></div></div>' };
-
-      window.__browserPages.apprentice = { url: 'www.vicroads.vic.gov.au/vehicles-and-registration/registration-fees-and-services/apprentice-discount', html: '<div class="vr-page"><div class="vr-page-body vr-page-body-padded"><h1 class="vr-page-title-bold">Trade apprentice registration discount</h1><div class="vr-stepper"><div class="vr-step">1</div><div class="vr-step-line"></div><div class="vr-step-dot"></div></div><h2 class="vr-step-title">Step 1 of 2: Applicant details</h2><hr class="vr-section-divider"/><p class="vr-page-text">If you\'re a trade apprentice and you use a vehicle for work purposes, you might be eligible for a discount.</p><div class="vr-info-box vr-info-box-red">No eligible vehicles found.</div></div></div>' };
-
-      window.__browserPages.uvp = { url: 'www.vicroads.vic.gov.au/vehicles-and-registration/registration-fees-and-services/unregistered-vehicle-permits', html: '<div class="vr-page"><div class="vr-page-body vr-page-body-padded"><h2 class="vr-page-title-sans">When do I need a UVP?</h2><p class="vr-page-text">You can\'t drive unregistered vehicles on the road unless you have a permit.</p><button class="vr-btn vr-btn-dark-green" type="button">Calculate the fee</button><h2 class="vr-page-title-sans">How to apply</h2><ol class="vr-numbered-list"><li>Make sure you\'ve read all the information.</li><li>Decide which permit type you need.</li><li>Have your personal and vehicle information ready.</li><li>Fill out the online form.</li><li>Download the permit.</li></ol><button class="vr-btn vr-btn-dark-green vr-btn-full" type="button">Get a UVP</button></div></div>' };
-
-      window.__browserPages['vehicle-reports'] = { url: 'www.vicroads.vic.gov.au/online-services/my-vehicle-reports', html: '<div class="vr-page"><div class="vr-page-body vr-page-body-padded"><h1 class="vr-page-title-bold">My Vehicle Reports</h1><p class="vr-page-text">View any of your previously purchased vehicle reports.</p><p class="vr-page-text vr-page-text-bold">No vehicle reports found.</p></div></div>' };
-
-      window.__browserPages['licence-renewal'] = { url: 'www.vicroads.vic.gov.au/licences/online-services/manage-driver-licence-renewal', html: '<div class="vr-page"><div class="vr-page-body vr-page-body-padded"><div class="vr-data-card"><div class="vr-data-card-header"><svg class="vr-data-card-header-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="1.5" fill="#f9c80e"/><rect x="4" y="7" width="6" height="6" rx="0.5" fill="#1a1f36"/><line x1="12" y1="8" x2="20" y2="8" stroke="#1a1f36" stroke-width="1.2"/><line x1="12" y1="11" x2="20" y2="11" stroke="#1a1f36" stroke-width="1.2"/><line x1="4" y1="16" x2="20" y2="16" stroke="#1a1f36" stroke-width="1.2"/></svg><span class="vr-data-card-header-title">Driver licence</span></div><div class="vr-data-card-body"><div class="vr-data-row"><div class="vr-data-row-label">Card no.</div></div><div class="vr-licence-type-row"><span>Car learner permit</span></div><div class="vr-data-row"><div class="vr-data-row-label">Expiry date</div><div class="vr-data-row-value">07 May 2035</div></div><div class="vr-data-row"><div class="vr-data-row-label">Conditions</div><div class="vr-data-row-value">None</div></div><div class="vr-data-row"><div class="vr-data-row-label">Status</div><div class="vr-data-row-value">Current</div></div></div></div></div></div>' };
-
-      window.__browserPages['driver-history'] = { url: 'www.vicroads.vic.gov.au/online-services/order-a-driver-history-report', html: '<div class="vr-page"><div class="vr-page-body vr-page-body-padded"><h1 class="vr-page-title-bold">Order a driver history report</h1><div class="vr-stepper"><div class="vr-step">1</div><div class="vr-step-line"></div><div class="vr-step-dot"></div></div><h2 class="vr-step-title">Step 1 of 2 : Enter Details</h2><p class="vr-page-text">Use this form to order and pay for your driving history report.</p><p class="vr-page-text vr-page-text-bold">Select report type required</p><div class="vr-radio-row"><div class="vr-radio"></div><div class="vr-radio-label">5 year demerit point history</div></div><div class="vr-radio-row"><div class="vr-radio"></div><div class="vr-radio-label">Complete driving record</div></div><hr class="vr-section-divider"/><div class="vr-btn-row"><button class="vr-btn vr-btn-full" type="button">Continue <span class="vr-btn-arrow">\u2192</span></button><button class="vr-btn vr-btn-secondary vr-btn-full" type="button"><span class="vr-btn-arrow">\u2190</span> Cancel</button></div></div></div>' };
-
-      window.__browserPages['update-address'] = { url: 'www.vicroads.vic.gov.au/licences/online-services/change-your-licence-address', html: '<div class="vr-page"><div class="vr-page-body" style="padding:0 18px 28px"><div class="vr-collapsible" onclick="__vrToggle(this)"><div class="vr-collapsible-header"><span>Addresses</span></div><div class="vr-collapsible-body"><div class="vr-info-box vr-info-box-blue"><p>If you have moved, you need to update your residential address within 14 days.</p></div><div class="vr-address-row"><div class="vr-address-row-header"><span>Residential address</span></div><div class="vr-address-text">12 STURT ST<br/>BALLARAT VIC 3350</div></div><div class="vr-address-row"><div class="vr-address-row-header"><span>Postal address</span></div><div class="vr-address-text">12 STURT ST<br/>BALLARAT VIC 3350</div></div></div></div></div></div>' };
-
-      window.__browserPages['replace-licence'] = { url: 'www.vicroads.vic.gov.au/licences/replace-or-renew/replace-a-licence', html: '<div class="vr-page"><div class="vr-page-body vr-page-body-padded"><h1 class="vr-page-title-bold">Licence replacement</h1><div class="vr-stepper"><div class="vr-step">1</div><div class="vr-step-line"></div><div class="vr-step-dot"></div></div><h2 class="vr-step-title">Step 1 of 2 : Enter Details</h2><p class="vr-page-text">If you\'ve lost or damaged your licence card, use this form to order a replacement.</p><div class="vr-field-block"><div class="vr-field-label">First name</div><div class="vr-field-value">AUBREY</div></div><div class="vr-field-block"><div class="vr-field-label">Last name</div><div class="vr-field-value">MARTIN</div></div><div class="vr-field-block"><div class="vr-field-label">Date of birth</div><div class="vr-field-value">01 May 2009</div></div><div class="vr-btn-row"><button class="vr-btn vr-btn-full" type="button">Continue <span class="vr-btn-arrow">\u2192</span></button><button class="vr-btn vr-btn-secondary vr-btn-full" type="button"><span class="vr-btn-arrow">\u2190</span> Cancel</button></div></div></div>' };
-    })();
-
-    (function injectScrollSpacers() {
-      var selectors = ['.home-scroll', '#screenVehicles .app-screen-scroll', '#screenPayments .app-screen-scroll'];
-      function inject() {
-        selectors.forEach(function (sel) { var el = document.querySelector(sel); if (!el) return; if (el.querySelector(':scope > .scroll-spacer')) return; var spacer = document.createElement('div'); spacer.className = 'scroll-spacer'; spacer.setAttribute('aria-hidden', 'true'); el.appendChild(spacer); });
-      }
-      if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', inject); } else { inject(); }
-    })();
-
-    // ===== CLEAN INITIALIZATION =====
-    core.init = function() {
-        console.log("[Core] Initializing...");
-        core.initOnlineStatusDetection();
-        core.loadData();
-        core.updateLastRefreshed();
-        core.computeFingerprintAsync();
-    };
-
-    window.Core = core;
-    try { if (window.__dbg) window.__dbg('core_components.js fully evaluated OK (APP_VERSION=' + core.APP_VERSION + ')'); } catch (e) {}
-})(window);
+</body>
+</html>

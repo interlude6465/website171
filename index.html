@@ -79,7 +79,171 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script src="core_components.js"></script>
+<!-- ============================================================ -->
+<!-- ON-SCREEN DEBUG CONSOLE (temporary diagnostic)               -->
+<!-- Loaded BEFORE core_components.js so it captures errors there. -->
+<!-- Shows JS errors, every tap (+ the real topmost element at     -->
+<!-- that point), and the live PIN-screen state. Tap the red "DBG" -->
+<!-- chip (top-right) to hide/show. Remove this block once fixed.   -->
+<!-- ============================================================ -->
+<script id="dbg-console">
+(function () {
+  if (window.__DBG_INSTALLED) return;
+  window.__DBG_INSTALLED = true;
+
+  var LOG = [];
+  var MAX = 500;
+  var panel = null, logBody = null, badge = null;
+
+  function ts() {
+    try {
+      var d = new Date();
+      function p(n, w) { n = '' + n; while (n.length < w) n = '0' + n; return n; }
+      return p(d.getHours(), 2) + ':' + p(d.getMinutes(), 2) + ':' + p(d.getSeconds(), 2) + '.' + p(d.getMilliseconds(), 3);
+    } catch (e) { return '0'; }
+  }
+  function push(kind, msg) {
+    LOG.push(ts() + ' [' + kind + '] ' + msg);
+    if (LOG.length > MAX) LOG.shift();
+    render();
+  }
+  window.__dbg = function (msg) { push('dbg', String(msg)); };
+
+  /* ---- error hooks (installed first thing) ---- */
+  window.addEventListener('error', function (e) {
+    try {
+      if (e && e.target && e.target.tagName && /^(SCRIPT|LINK|IMG)$/.test(e.target.tagName)) {
+        push('RESERR', e.target.tagName + ' failed to load: ' + (e.target.src || e.target.href || '?'));
+        return;
+      }
+      push('ERROR', (e.message || '?') + '  @ ' + (e.filename || '?') + ':' + (e.lineno || '?') + ':' + (e.colno || '?'));
+    } catch (_) {}
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    try {
+      var r = e.reason;
+      push('REJECT', (r && (r.stack || r.message)) ? (r.stack || r.message) : String(r));
+    } catch (_) {}
+  });
+
+  /* ---- tap diagnostics: capture phase on window, fires top-down
+          regardless of z-index, so it logs even if something is
+          covering the keypad ---- */
+  function coords(e) {
+    if (e.touches && e.touches[0]) return [e.touches[0].clientX, e.touches[0].clientY];
+    if (e.changedTouches && e.changedTouches[0]) return [e.changedTouches[0].clientX, e.changedTouches[0].clientY];
+    if (typeof e.clientX === 'number') return [e.clientX, e.clientY];
+    return null;
+  }
+  function describe(el) {
+    if (!el) return 'null';
+    var s = el.tagName ? el.tagName.toLowerCase() : '?';
+    if (el.id) s += '#' + el.id;
+    try {
+      var c = (el.className && el.className.toString) ? el.className.toString().trim() : '';
+      if (c) s += '.' + c.split(/\s+/).join('.');
+    } catch (_) {}
+    try { var dk = el.getAttribute && el.getAttribute('data-key'); if (dk != null) s += '[key=' + dk + ']'; } catch (_) {}
+    return s;
+  }
+  function tapLog(e) {
+    try {
+      var xy = coords(e);
+      var info = e.type;
+      if (xy) {
+        var stack = document.elementsFromPoint ? document.elementsFromPoint(xy[0], xy[1]) : [document.elementFromPoint(xy[0], xy[1])];
+        info += ' @' + Math.round(xy[0]) + ',' + Math.round(xy[1]) + ' TOP=' + describe(stack[0]);
+        try { if (stack[0]) info += ' pe=' + getComputedStyle(stack[0]).pointerEvents; } catch (_) {}
+        if (stack[1]) info += '  under=' + describe(stack[1]);
+        if (stack[2]) info += ' / ' + describe(stack[2]);
+      } else {
+        info += ' target=' + describe(e.target);
+      }
+      push('TAP', info);
+    } catch (err) { push('TAP', 'err ' + err); }
+  }
+  ['pointerdown', 'touchstart', 'click'].forEach(function (t) {
+    try { window.addEventListener(t, tapLog, { capture: true, passive: true }); } catch (_) { window.addEventListener(t, tapLog, true); }
+  });
+
+  /* ---- snapshot of the PIN screen state ---- */
+  window.__dbgSnapshot = function () {
+    try {
+      push('SNAP', 'Core=' + (!!window.Core) + ' ver=' + (window.Core && window.Core.APP_VERSION) + ' ready=' + document.readyState + ' standalone=' + (navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)));
+      var ov = document.getElementById('pinOverlayFS');
+      if (!ov) { push('SNAP', 'pinOverlayFS = MISSING'); }
+      else {
+        var cs = getComputedStyle(ov);
+        push('SNAP', 'pinOverlay disp=' + (ov.style.display || '(css:' + cs.display + ')') + ' cls="' + ov.className + '" pe=' + cs.pointerEvents + ' vis=' + cs.visibility + ' z=' + cs.zIndex);
+      }
+      var keys = document.querySelectorAll('.key-btn-fs[data-key]');
+      push('SNAP', 'keyButtons found = ' + keys.length + (keys.length ? (' first=' + describe(keys[0])) : ''));
+      // What is actually on top where the keys sit?
+      var probes = [[innerWidth * 0.5, innerHeight * 0.62], [innerWidth * 0.5, innerHeight * 0.75], [innerWidth * 0.5, innerHeight * 0.85]];
+      probes.forEach(function (p) {
+        var st = document.elementsFromPoint ? document.elementsFromPoint(p[0], p[1]) : [];
+        push('SNAP', 'at ' + Math.round(p[0]) + ',' + Math.round(p[1]) + ' -> ' + describe(st[0]) + (st[1] ? ('  under=' + describe(st[1])) : ''));
+      });
+    } catch (e) { push('SNAP', 'err ' + e); }
+  };
+
+  /* ---- UI ---- */
+  function mkBtn(label, fn) {
+    var b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = 'flex:0 0 auto;font:700 11px monospace;background:#222;color:#fff;border:1px solid #666;border-radius:5px;padding:5px 9px;margin:0;';
+    b.addEventListener('click', function (ev) { ev.stopPropagation(); fn(); }, true);
+    return b;
+  }
+  function build() {
+    if (panel || !document.body) return;
+
+    badge = document.createElement('div');
+    badge.textContent = 'DBG';
+    badge.style.cssText = 'position:fixed;top:0;right:0;z-index:2147483647;background:#c62828;color:#fff;font:700 12px monospace;padding:8px 11px;border-bottom-left-radius:9px;pointer-events:auto;box-shadow:0 1px 6px rgba(0,0,0,.4);';
+    badge.addEventListener('click', function (ev) { ev.stopPropagation(); toggle(); }, true);
+    document.body.appendChild(badge);
+
+    panel = document.createElement('div');
+    // Pinned to the TOP, ~34vh tall, so it never covers the keypad (which is
+    // in the lower half) — the keys stay tappable while you read the log.
+    panel.style.cssText = 'position:fixed;left:0;right:0;top:0;height:34vh;z-index:2147483646;background:rgba(0,0,0,.9);color:#5fdc5f;font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;padding:6px 8px 8px;overflow:auto;-webkit-overflow-scrolling:touch;white-space:pre-wrap;word-break:break-word;pointer-events:auto;border-bottom:2px solid #c62828;';
+
+    var bar = document.createElement('div');
+    bar.style.cssText = 'position:sticky;top:-6px;display:flex;gap:6px;flex-wrap:wrap;background:rgba(0,0,0,.96);padding:4px 0;margin:-6px 0 4px;';
+    bar.appendChild(mkBtn('Snapshot', function () { window.__dbgSnapshot(); }));
+    bar.appendChild(mkBtn('Copy', function () {
+      var txt = LOG.join('\n');
+      try { navigator.clipboard.writeText(txt).then(function () { push('dbg', 'copied ' + LOG.length + ' lines to clipboard'); }, function (e) { push('dbg', 'copy failed: ' + e); }); }
+      catch (e) { push('dbg', 'copy unsupported: ' + e); }
+    }));
+    bar.appendChild(mkBtn('Clear', function () { LOG.length = 0; render(); }));
+    bar.appendChild(mkBtn('Hide', function () { toggle(); }));
+    panel.appendChild(bar);
+
+    logBody = document.createElement('div');
+    panel.appendChild(logBody);
+    document.body.appendChild(panel);
+    render();
+  }
+  function toggle() { if (panel) panel.style.display = (panel.style.display === 'none') ? 'block' : 'none'; }
+  function render() {
+    if (!logBody) return;
+    logBody.textContent = LOG.join('\n');
+    try { panel.scrollTop = panel.scrollHeight; } catch (_) {}
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { build(); push('dbg', 'DOMContentLoaded'); window.__dbgSnapshot(); });
+  } else {
+    build(); window.__dbgSnapshot();
+  }
+  window.addEventListener('load', function () { push('dbg', 'window load'); setTimeout(function () { if (window.__dbgSnapshot) window.__dbgSnapshot(); }, 600); });
+
+  push('dbg', 'debug console installed; readyState=' + document.readyState);
+})();
+</script>
+<script src="core_components.js?v=7.2"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();

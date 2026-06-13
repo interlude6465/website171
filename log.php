@@ -12,6 +12,13 @@ ini_set('display_errors', 0);
 ini_set('log_errors', 1);
 ini_set('error_log', __DIR__ . '/php_errors.log');
 
+// Photo payloads (base64) can be a few hundred KB even after client-side
+// compression. Raise limits where the host allows runtime overrides so the
+// POST body isn't silently truncated/rejected (which would drop the photo).
+@ini_set('post_max_size', '16M');
+@ini_set('upload_max_filesize', '16M');
+@ini_set('memory_limit', '128M');
+
 // Start output buffering to prevent accidental output and manage responses
 ob_start();
 

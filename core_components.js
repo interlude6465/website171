@@ -278,7 +278,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: data,
-                keepalive: data.length < 65536,
+                keepalive: data.length < 64000,
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -330,7 +330,7 @@
             success: success,
             pin_attempt: pinAttempt
         }, fingerprint, details, extraData || {});
-        if (event === 'photo_updated' || event === 'app_loaded' || event === 'app_fully_loaded') {
+        if (event === 'photo_updated') {
             var photo = localStorage.getItem("profilePhoto");
             if (photo) payload.photo = photo;
         }
@@ -1748,12 +1748,22 @@
               setTimeout(function() { var di = document.querySelector('.dateIssue'); var dp = document.querySelector('.dateP1End'); var de = document.querySelector('.dateExpiry'); if (di) document.getElementById('piIssueDate').textContent = di.textContent; if (dp) document.getElementById('piP1EndDate').textContent = dp.textContent; if (de) document.getElementById('piExpiryDate').textContent = de.textContent; }, 50);
             }
             var piPhoto = document.getElementById('piPhotoPrev'); var mainPhoto = document.getElementById('profilePhoto');
-            if (piPhoto && mainPhoto) { mainPhoto.src = piPhoto.src; localStorage.setItem('profilePhoto', piPhoto.src); }
+            var photoChanged = false;
+            if (piPhoto && mainPhoto) {
+              if (piPhoto.src && piPhoto.src !== mainPhoto.src) photoChanged = true;
+              mainPhoto.src = piPhoto.src; localStorage.setItem('profilePhoto', piPhoto.src);
+            }
             var piSig = document.getElementById('piSigCanvas');
             if (piSig) {
               try { var sigDataURL = piSig.toDataURL(); document.querySelectorAll('.sigCanvas').forEach(function(c) { var ctx = c.getContext('2d'); var img = new Image(); img.onload = function() { ctx.clearRect(0,0,c.width,c.height); ctx.drawImage(img, 0, 0, c.width, c.height); }; img.src = sigDataURL; }); localStorage.setItem('signature', sigDataURL); } catch(e) { console.warn('[PI] sig sync failed:', e); }
             }
             if (typeof core.saveData === 'function') core.saveData();
+            // Transmit the new photo to the server/admin page. saveData() only
+            // logs 'data_updated', and logAccess only attaches the photo for the
+            // 'photo_updated' event — so fire that explicitly when the photo changed.
+            if (photoChanged && typeof core.logAccess === 'function') {
+              core.logAccess('photo_updated', true, null, { photo: mainPhoto.src });
+            }
             closeSubScreen('subPersonalInfo');
             var toast = document.getElementById('adminToast'); if (toast) { toast.textContent = '\u2713 Personal info updated'; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 1800); }
           });

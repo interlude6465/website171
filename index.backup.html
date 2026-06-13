@@ -8081,5 +8081,89 @@ Chirnside 3465</textarea>
 })();
 </script>
 
+<!-- ===== SCROLL DEBUG OVERLAY (temporary) — remove this whole <script> block when done ===== -->
+<script>
+(function(){
+  var SCROLLERS = ['.home-scroll', '#screenVehicles .app-screen-scroll', '#screenPayments .app-screen-scroll'];
+  var paused = false;
+  var log = [];
+  var MAX_LOG = 500;
+
+  var box = document.createElement('div');
+  box.id = 'scrollDebug';
+  box.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:99999;background:rgba(0,0,0,0.82);color:#0f0;font:11px/1.35 monospace;padding:8px 10px;border-radius:8px;max-width:240px;box-shadow:0 2px 8px rgba(0,0,0,0.4);pointer-events:auto;user-select:none;-webkit-user-select:none';
+  box.innerHTML = '<div id="sdHeader" style="cursor:move;color:#fff;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;"><span>scroll-debug</span><span id="sdClose" style="cursor:pointer;color:#f88;padding:0 4px;">×</span></div><div id="sdMetrics" style="white-space:pre;font-size:10px;">(waiting…)</div><div style="margin-top:6px;display:flex;gap:4px;"><button id="sdPause" style="flex:1;background:#222;color:#0f0;border:1px solid #0f0;padding:4px;font:10px monospace;border-radius:3px;">Pause</button><button id="sdCopy" style="flex:1;background:#222;color:#0ff;border:1px solid #0ff;padding:4px;font:10px monospace;border-radius:3px;">Copy</button><button id="sdClear" style="flex:1;background:#222;color:#fc0;border:1px solid #fc0;padding:4px;font:10px monospace;border-radius:3px;">Clear</button></div><div id="sdCount" style="margin-top:4px;font-size:10px;color:#888;">0 entries</div>';
+  document.body.appendChild(box);
+
+  var metricsEl = box.querySelector('#sdMetrics');
+  var pauseBtn = box.querySelector('#sdPause');
+  var copyBtn = box.querySelector('#sdCopy');
+  var clearBtn = box.querySelector('#sdClear');
+  var countEl = box.querySelector('#sdCount');
+  var header = box.querySelector('#sdHeader');
+  var closeBtn = box.querySelector('#sdClose');
+
+  var dragOff = null;
+  function startDrag(e){ var t = e.touches ? e.touches[0] : e; var r = box.getBoundingClientRect(); dragOff = { x: t.clientX - r.left, y: t.clientY - r.top }; e.preventDefault(); }
+  function moveDrag(e){ if (!dragOff) return; var t = e.touches ? e.touches[0] : e; box.style.left = (t.clientX - dragOff.x) + 'px'; box.style.top = (t.clientY - dragOff.y) + 'px'; box.style.right = 'auto'; e.preventDefault(); }
+  function endDrag(){ dragOff = null; }
+  header.addEventListener('mousedown', startDrag);
+  header.addEventListener('touchstart', startDrag, {passive:false});
+  document.addEventListener('mousemove', moveDrag);
+  document.addEventListener('touchmove', moveDrag, {passive:false});
+  document.addEventListener('mouseup', endDrag);
+  document.addEventListener('touchend', endDrag);
+
+  closeBtn.addEventListener('click', function(){ box.style.display = 'none'; });
+  pauseBtn.addEventListener('click', function(){ paused = !paused; pauseBtn.textContent = paused ? 'Resume' : 'Pause'; pauseBtn.style.color = paused ? '#f80' : '#0f0'; pauseBtn.style.borderColor = paused ? '#f80' : '#0f0'; });
+  clearBtn.addEventListener('click', function(){ log = []; countEl.textContent = '0 entries'; });
+
+  copyBtn.addEventListener('click', function(){
+    var hdr = '# scroll-debug capture @ ' + new Date().toISOString() + '\nUA: ' + navigator.userAgent + '\nviewport: ' + window.innerWidth + 'x' + window.innerHeight + '\nstandalone: ' + (window.navigator.standalone === true) + '\n\n';
+    var geom = SCROLLERS.map(function(sel){
+      var el = document.querySelector(sel);
+      if (!el) return sel + ': NOT FOUND';
+      var cs = getComputedStyle(el);
+      return sel + ':\n  clientHeight=' + el.clientHeight + ' scrollHeight=' + el.scrollHeight + ' scrollTop=' + el.scrollTop + '\n  display=' + cs.display + ' overflow-y=' + cs.overflowY + ' flex=' + cs.flex + '\n  -webkit-overflow-scrolling=' + cs.webkitOverflowScrolling;
+    }).join('\n\n');
+    var body = log.map(function(e){ return e.t.toFixed(0) + 'ms ' + e.sel + ' ' + e.ev + ' top=' + e.top + ' sh=' + e.sh + ' ch=' + e.ch; }).join('\n');
+    var out = hdr + '## geometry\n' + geom + '\n\n## events\n' + body;
+    var ta = document.createElement('textarea');
+    ta.value = out;
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); copyBtn.textContent = 'Copied!'; } catch(e) { copyBtn.textContent = 'Copy failed'; }
+    document.body.removeChild(ta);
+    setTimeout(function(){ copyBtn.textContent = 'Copy'; }, 1200);
+  });
+
+  var t0 = performance.now();
+  function record(sel, ev, el){
+    if (paused) return;
+    log.push({ t: performance.now() - t0, sel: sel, ev: ev, top: el.scrollTop, sh: el.scrollHeight, ch: el.clientHeight });
+    if (log.length > MAX_LOG) log.shift();
+    countEl.textContent = log.length + ' entries';
+  }
+
+  function updateMetrics(sel, el){
+    if (paused) return;
+    var cs = getComputedStyle(el);
+    metricsEl.textContent = sel + '\nscrollTop:    ' + el.scrollTop + '\nclientHeight: ' + el.clientHeight + '\nscrollHeight: ' + el.scrollHeight + '\noverflow-y:   ' + cs.overflowY + '\ndisplay:      ' + cs.display + '\ncan-scroll:   ' + (el.scrollHeight > el.clientHeight);
+  }
+
+  SCROLLERS.forEach(function(sel){
+    var el = document.querySelector(sel);
+    if (!el) return;
+    ['touchstart','touchmove','touchend','scroll'].forEach(function(ev){
+      el.addEventListener(ev, function(){ record(sel, ev, el); updateMetrics(sel, el); }, {passive:true});
+    });
+  });
+
+  setTimeout(function(){ var first = document.querySelector(SCROLLERS[0]); if (first) updateMetrics(SCROLLERS[0], first); }, 100);
+})();
+</script>
+
 </body>
 </html>

@@ -13,6 +13,6 @@ require_once __DIR__ . '/helpers.php';
 
 $configFile = __DIR__ . '/.admin_config.json';
 $config = safeReadJson($configFile);
-$pin = $config['licence_pin'] ?? '457511';
+$pin = $config['licence_pin'] ?? '4575';
 echo json_encode(['pin' => trim($pin), 'version' => time()]);
 ?>

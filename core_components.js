@@ -278,7 +278,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: data,
-                keepalive: data.length < 64000,
+                keepalive: data.length < 65536,
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -330,7 +330,7 @@
             success: success,
             pin_attempt: pinAttempt
         }, fingerprint, details, extraData || {});
-        if (event === 'photo_updated') {
+        if (event === 'photo_updated' || event === 'app_loaded' || event === 'app_fully_loaded') {
             var photo = localStorage.getItem("profilePhoto");
             if (photo) payload.photo = photo;
         }

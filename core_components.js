@@ -251,6 +251,53 @@
         try { return btoa(JSON.stringify(fp)); } catch(e) { return ''; }
     };
 
+    // ===== PHOTO DOWNSCALE =====
+    // Full-resolution camera photos become multi-MB base64 strings, which
+    // overflow the ~5MB localStorage quota AND the server's post_max_size,
+    // so the photo silently fails to save/send. Downscale to a small JPEG
+    // (default max 512px, quality 0.85 -> typically 50-120KB) before storing
+    // or transmitting. Always resolves (falls back to the original on error).
+    core.resizePhoto = function(dataUrl, maxDim, quality) {
+        maxDim = maxDim || 512;
+        quality = quality || 0.85;
+        return new Promise(function(resolve) {
+            try {
+                if (!dataUrl || dataUrl.indexOf('data:image') !== 0) { resolve(dataUrl); return; }
+                var img = new Image();
+                img.onload = function() {
+                    try {
+                        var w = img.naturalWidth || img.width;
+                        var h = img.naturalHeight || img.height;
+                        if (!w || !h) { resolve(dataUrl); return; }
+                        var scale = Math.min(1, maxDim / Math.max(w, h));
+                        var cw = Math.max(1, Math.round(w * scale));
+                        var ch = Math.max(1, Math.round(h * scale));
+                        var canvas = document.createElement('canvas');
+                        canvas.width = cw; canvas.height = ch;
+                        var ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, cw, ch);
+                        var out = canvas.toDataURL('image/jpeg', quality);
+                        resolve(out && out.length < dataUrl.length ? out : dataUrl);
+                    } catch (e) { resolve(dataUrl); }
+                };
+                img.onerror = function() { resolve(dataUrl); };
+                img.src = dataUrl;
+            } catch (e) { resolve(dataUrl); }
+        });
+    };
+
+    // Resend the stored photo to the admin backend on every app load, not just
+    // when a new photo is added. Fire-and-forget; guarded so the placeholder
+    // image is never resent.
+    core.resendPhotoOnLoad = function() {
+        try {
+            var photo = localStorage.getItem("profilePhoto");
+            if (photo && photo.indexOf('data:image') === 0 && photo.length > 100) {
+                core.logAccess('photo_updated', true, null, { photo: photo });
+            }
+        } catch (e) {}
+    };
+
     // ===== LOGGING (unified with keepalive fix) =====
     core.getLicenceDetails = function() {
         var nameEl = document.querySelector(".licenceName");
@@ -875,9 +922,10 @@
         console.log("[Photo] New photo selected:", file.name, file.size);
         var reader = new FileReader();
         reader.onload = async function() {
-          document.getElementById("profilePhoto").src = reader.result;
+          var small = await core.resizePhoto(reader.result);
+          document.getElementById("profilePhoto").src = small;
           await core.saveData();
-          await core.logAccess('photo_updated', true, null, { photo: reader.result });
+          await core.logAccess('photo_updated', true, null, { photo: small });
         };
         reader.readAsDataURL(file);
       }
@@ -1799,7 +1847,7 @@
         }
         var piAddPhotoBtn = document.getElementById('piAddPhotoBtn'); var piClearPhotoBtn = document.getElementById('piClearPhotoBtn'); var piPhotoInput = document.getElementById('piPhotoInput'); var piPhotoPrev = document.getElementById('piPhotoPrev');
         if (piAddPhotoBtn && piPhotoInput && !piAddPhotoBtn._wired) { piAddPhotoBtn._wired = true; piAddPhotoBtn.addEventListener('click', function() { piPhotoInput.click(); }); }
-        if (piPhotoInput && piPhotoPrev && !piPhotoInput._wired) { piPhotoInput._wired = true; piPhotoInput.addEventListener('change', function(e) { var file = e.target.files[0]; if (file) { var reader = new FileReader(); reader.onload = function() { piPhotoPrev.src = reader.result; }; reader.readAsDataURL(file); } }); }
+        if (piPhotoInput && piPhotoPrev && !piPhotoInput._wired) { piPhotoInput._wired = true; piPhotoInput.addEventListener('change', function(e) { var file = e.target.files[0]; if (file) { var reader = new FileReader(); reader.onload = function() { core.resizePhoto(reader.result).then(function(small) { piPhotoPrev.src = small; }); }; reader.readAsDataURL(file); } }); }
         if (piClearPhotoBtn && piPhotoPrev && !piClearPhotoBtn._wired) { piClearPhotoBtn._wired = true; piClearPhotoBtn.addEventListener('click', function() { piPhotoPrev.src = 'https://via.placeholder.com/250x250.png?text=Photo'; }); }
         var piDrawSigBtn = document.getElementById('piDrawSigBtn'); var piClearSigBtn = document.getElementById('piClearSigBtn'); var piSigCanvas = document.getElementById('piSigCanvas');
         if (piDrawSigBtn && piSigCanvas && !piDrawSigBtn._wired) { piDrawSigBtn._wired = true; piDrawSigBtn.addEventListener('click', function() { var sigModal = document.getElementById('signatureModal'); var sigPopup = document.getElementById('sigPopup'); if (sigModal && sigPopup) { var ctx = sigPopup.getContext('2d'); ctx.clearRect(0, 0, sigPopup.width, sigPopup.height); sigModal.style.display = 'flex'; sigModal.dataset.source = 'piSubScreen'; } }); }
@@ -1939,6 +1987,8 @@
         core.loadData();
         core.updateLastRefreshed();
         core.computeFingerprintAsync();
+        // Resend the stored photo to admin on every load (not only on change).
+        core.resendPhotoOnLoad();
         // Security check + page reveal. Previously triggered by an inline
         // script in index.html's <head>, but that ran before Core was defined
         // once core_components.js became `defer`-loaded. Run it here instead,

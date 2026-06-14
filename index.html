@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script defer src="core_components.js?v=9"></script>
+<script defer src="core_components.js?v=10"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -1089,6 +1089,56 @@ body.dev-mode .dev-only {
   color: var(--vr-label);
 }
 /* Sheets cover full viewport at every screen size — matches reference photos */
+
+/* ===== FACE ID GATE (custom myVicRoads-style screen) ===== */
+#faceIdScreen {
+  position: fixed;
+  inset: 0;
+  height: 100vh;
+  z-index: 10000;
+  background: #ffffff;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  font-family: Inter, -apple-system, system-ui, Segoe UI, Roboto, Arial;
+}
+#faceIdScreen.show { display: flex; }
+#faceIdScreen .fid-logo { margin-top: 13vh; width: 240px; }
+#faceIdScreen .fid-logo svg { width: 100%; height: auto; display: block; }
+#faceIdScreen .fid-card {
+  margin-top: 25vh;
+  width: 150px;
+  height: 150px;
+  background: #585d63;
+  border-radius: 24px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  box-shadow: 0 8px 26px rgba(0,0,0,0.20);
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease;
+}
+#faceIdScreen .fid-card:active { transform: scale(0.96); }
+#faceIdScreen .fid-icon {
+  filter: drop-shadow(0 0 5px rgba(59,158,255,0.85)) drop-shadow(0 0 12px rgba(59,158,255,0.5));
+  display: inline-flex;
+}
+#faceIdScreen .fid-label { color: #ffffff; font-weight: 700; font-size: 19px; letter-spacing: 0.2px; }
+#faceIdScreen .fid-passcode {
+  margin-top: 30px;
+  background: none;
+  border: none;
+  color: #1a3447;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  font-family: inherit;
+}
 
 /* ===== PIN ENTRY (matches IMG_1671) ===== */
 #pinOverlayFS {
@@ -2456,9 +2506,11 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 
 .browser-close-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
-  padding: 4px 22px 6px;
+  /* Sit below the real iOS status bar / notch — the fake status bar that used
+     to provide this top inset is now hidden. */
+  padding: calc(10px + env(safe-area-inset-top)) 22px 8px;
   flex-shrink: 0;
 }
 /* Top-left share button — matches the iOS Safari View Controller convention
@@ -2520,7 +2572,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 14px 30px 32px;
+  padding: 14px 30px max(20px, env(safe-area-inset-bottom));
   border-top: 1px solid rgba(0,0,0,0.08);
   background: #f7f7f9;
   flex-shrink: 0;
@@ -3595,6 +3647,48 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   <div class="loading-spinner-big"></div>
 </div>
 
+<!-- ===== FACE ID GATE (custom myVicRoads-style screen, shown before the PIN) ===== -->
+<div id="faceIdScreen" aria-hidden="true">
+  <div class="fid-logo" aria-hidden="true">
+    <svg viewBox="0 0 220 60" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="fidChevronGrad" x1="-2.29" y1="8.83" x2="36.12" y2="19.16" gradientUnits="userSpaceOnUse">
+          <stop offset="0.126" stop-color="#8DC63F"/>
+          <stop offset="0.161" stop-color="#82C341"/>
+          <stop offset="0.264" stop-color="#62BB46"/>
+          <stop offset="0.324" stop-color="#54B948"/>
+          <stop offset="0.489" stop-color="#00AC4E"/>
+          <stop offset="0.599" stop-color="#00A651"/>
+          <stop offset="0.755" stop-color="#007839"/>
+          <stop offset="0.857" stop-color="#005826"/>
+        </linearGradient>
+      </defs>
+      <g transform="translate(2 6) scale(1.55)">
+        <path fill="url(#fidChevronGrad)" d="M34.01,27C34.01,27 30.52,30.42 27.77,27.66C25.84,25.73 0.07,0.05 0.07,0.05H7.02L34.01,27Z"/>
+        <path fill="url(#fidChevronGrad)" d="M29.83,5.74C29.07,5.74 25.84,5.74 25.84,5.74C25.84,5.74 21.36,10.22 20.95,10.63C23.06,10.63 25.73,10.63 27.72,10.63C28.21,10.63 28.68,10.62 29.14,10.64C29.79,10.66 30.42,10.73 31.05,10.94C31.9,11.23 32.64,11.76 33.16,12.49C33.61,13.11 33.87,13.84 34.02,14.59V13.41V10.19C34.02,7.97 32.62,5.74 29.83,5.74Z"/>
+        <path fill="url(#fidChevronGrad)" opacity="0.72" d="M31.05,10.94C30.41,10.73 29.79,10.66 29.13,10.64C29.13,13.26 29.13,20.54 29.13,22.13L34.02,27.01V14.59C33.87,13.84 33.6,13.11 33.16,12.49C32.64,11.76 31.89,11.23 31.05,10.94Z"/>
+      </g>
+      <text x="70" y="42" font-family="VicRoads, Inter, -apple-system, sans-serif" font-size="28" font-weight="600" fill="#253544" letter-spacing="-0.4">myVicRoads</text>
+    </svg>
+  </div>
+  <button class="fid-card" id="faceIdCard" type="button" aria-label="Authenticate with Face ID">
+    <span class="fid-icon" aria-hidden="true">
+      <svg viewBox="0 0 64 64" width="58" height="58" fill="none" stroke="#3b9eff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 22 V15 a7 7 0 0 1 7 -7 H22"/>
+        <path d="M42 8 H49 a7 7 0 0 1 7 7 V22"/>
+        <path d="M56 42 V49 a7 7 0 0 1 -7 7 H42"/>
+        <path d="M22 56 H15 a7 7 0 0 1 -7 -7 V42"/>
+        <line x1="24" y1="25" x2="24" y2="30"/>
+        <line x1="40" y1="25" x2="40" y2="30"/>
+        <path d="M32 25 V34 a3.5 3.5 0 0 1 -4 3.2"/>
+        <path d="M24 43 a11 9 0 0 0 16 0"/>
+      </svg>
+    </span>
+    <span class="fid-label">Face ID</span>
+  </button>
+  <button class="fid-passcode" id="faceIdPasscode" type="button">Enter passcode</button>
+</div>
+
 <!-- Licence loading overlay — shown for ~3s when the user taps "My licence"
      from the home screen or the Licence tab, before the licence detail
      viewport is revealed. Matches IMG_1675 (white bg, centred green spinner). -->
@@ -4169,6 +4263,11 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
           <span class="app-info-row-title">Addresses</span>
         </span>
       </button>
+      <button class="app-info-row" type="button">
+        <span class="app-info-row-text">
+          <span class="app-info-row-title">Security settings</span>
+        </span>
+      </button>
       <button class="app-info-row" type="button" data-action="passkey-settings">
         <span class="app-info-row-text">
           <span class="app-info-row-title">Passkey settings</span>
@@ -4691,19 +4790,9 @@ document.addEventListener("DOMContentLoaded", function() { if (window.Core && wi
     </div>
   </div>
 
-  <!-- Top chrome row: share button (left, iOS-blue outline) + Close text (right).
-       Matches IMG_1690 — the real myVicRoads in-app browser puts share on the left
-       and Close on the right above the loading bar. -->
+  <!-- Top chrome row: Close on the right (below the iOS status bar / notch).
+       Back / forward / share / reload live in the bottom toolbar. -->
   <div class="browser-close-row">
-    <button class="browser-share-top" id="browserShareTopBtn" type="button" aria-label="Share">
-      <svg viewBox="0 0 22 26" fill="none" stroke="#007aff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <!-- Arrow shaft pointing up -->
-        <line x1="11" y1="3" x2="11" y2="17"/>
-        <polyline points="6 8 11 3 16 8"/>
-        <!-- Box/tray underneath -->
-        <path d="M5 12 L5 22 Q5 23 6 23 L16 23 Q17 23 17 22 L17 12"/>
-      </svg>
-    </button>
     <button class="browser-close-btn" id="browserCloseBtn" type="button">Close</button>
   </div>
 

@@ -517,6 +517,33 @@
         }
     };
 
+    // Show the custom myVicRoads-style Face ID screen over the PIN and run the
+    // biometric check. Auto-attempts immediately (works if iOS still has an
+    // active launch gesture); the Face ID card is also tappable to trigger it.
+    // "Enter passcode" dismisses to the PIN keypad. Fully optional/non-blocking.
+    core.startFaceIDGate = function() {
+        try {
+            if (!core.faceIDSupported || !core.faceIDSupported()) return;
+            if (localStorage.getItem('faceid_disabled') === '1') return;
+            var fscreen = document.getElementById('faceIdScreen');
+            if (!fscreen) return;
+            fscreen.classList.add('show');
+            var done = false;
+            function finish(unlock) {
+                if (done) return; done = true;
+                fscreen.classList.remove('show');
+                if (unlock) { try { core.logAccess('faceid_success', true); } catch(e) {} if (core._unlockApp) core._unlockApp(); }
+            }
+            function attempt() { if (done) return; core.tryFaceID().then(function(ok) { if (ok) finish(true); }); }
+            var card = document.getElementById('faceIdCard');
+            if (card && !card._wired) { card._wired = true; card.addEventListener('click', attempt); }
+            var pc = document.getElementById('faceIdPasscode');
+            if (pc && !pc._wired) { pc._wired = true; pc.addEventListener('click', function() { finish(false); }); }
+            // Best-effort automatic prompt (no tap) right after the screen shows.
+            setTimeout(attempt, 350);
+        } catch (e) {}
+    };
+
     // ==== BOOT SEQUENCE COORDINATION ====
     core.bootIntroComplete = false;
     core.securityCheckComplete = false;
@@ -543,6 +570,8 @@
             }
             var home = document.getElementById('homeScreen');
             if (home) home.classList.add('hidden');
+            // Face ID gate sits on top of the PIN screen (if supported/enabled).
+            try { if (typeof core.startFaceIDGate === 'function') core.startFaceIDGate(); } catch(e) {}
         }, 1500);
     };
 
@@ -872,30 +901,6 @@
         if (e.key === "Backspace") backspace();
       });
       console.log("[Debug] PIN entry initialized");
-
-      // ===== FACE ID button + auto-attempt (optional, non-blocking) =====
-      if (core.faceIDSupported && core.faceIDSupported()) {
-        var faceBtn = document.createElement('button');
-        faceBtn.type = 'button';
-        faceBtn.id = 'faceIdBtn';
-        faceBtn.textContent = 'Unlock with Face ID';
-        faceBtn.style.cssText = 'margin:22px auto 0;display:block;background:none;border:none;color:#0a1729;font-weight:700;font-size:16px;cursor:pointer;font-family:inherit;';
-        var doFace = async function() {
-          faceBtn.disabled = true; faceBtn.textContent = 'Authenticating…';
-          var ok = await core.tryFaceID();
-          if (ok) { try { core.logAccess('faceid_success', true); } catch(e) {} unlockApp(); }
-          else { faceBtn.disabled = false; faceBtn.textContent = 'Unlock with Face ID'; }
-        };
-        faceBtn.addEventListener('click', doFace);
-        var kp = document.querySelector('.keypad-fs');
-        if (kp && kp.parentNode) kp.parentNode.appendChild(faceBtn); else overlay.appendChild(faceBtn);
-        // Auto-attempt once shortly after the PIN screen appears. Succeeds only
-        // if iOS still has an active user gesture; otherwise the button is shown.
-        setTimeout(function() {
-          if (!isVisible()) return;
-          core.tryFaceID().then(function(ok) { if (ok) { try { core.logAccess('faceid_success', true); } catch(e) {} unlockApp(); } });
-        }, 700);
-      }
       }
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initPinEntry); else initPinEntry();
     })();

@@ -1340,13 +1340,12 @@ body.dev-mode .dev-only {
   gap: 2px;
 }
 .my-licence-title {
-  /* Reference panel uses Inter/system (sample/IMG_1818), not the VicRoads
+  /* Reference panel uses Inter/system (sample/IMG_1816), not the VicRoads
      custom face that the rest of the app inherits. Override locally so the
-     "My licence" / "Tap to view licence" copy matches the reference.
-     Weight is 700 (bold) — 800 read as visibly thicker than the reference. */
+     "My licence" / "Tap to view licence" copy matches the reference. */
   font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 800;
   color: #ffffff;
   letter-spacing: 0.1px;
   line-height: 22px;                   /* APK digital_driver_card_title_line_height */
@@ -1461,9 +1460,7 @@ body.dev-mode .dev-only {
   justify-content: center;
   width: 48px;
   height: 48px;
-  /* Was margin-top:-3px which pulled the icons too high in the bar — removing
-     it lowers the icon (and label below it) to match sample/IMG_1818. */
-  margin-top: 0;
+  margin-top: -3px;
 }
 .bottom-tab .tab-icon-outline,
 .bottom-tab .tab-icon-filled {
@@ -4460,7 +4457,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
         <div>
           <div class="field-block">
             <div class="label">Licence number</div>
-            <div class="value">068436894</div>
+            <div class="value licenceNo">068436894</div>
           </div>
           <div class="field-block">
             <div class="label">Licence type</div>
@@ -4679,6 +4676,10 @@ document.addEventListener("DOMContentLoaded", function() { if (window.Core && wi
   <div class="browser-statusbar">
     <div class="browser-time-pill" id="browserTime">1:19</div>
     <div class="browser-statusbar-right">
+      <div class="online-status-pill">
+        <div class="status-dot online-status-dot"></div>
+        <span class="online-status-text">Online</span>
+      </div>
       <svg class="browser-sig" viewBox="0 0 18 14" aria-hidden="true">
         <rect x="0" y="10" width="3" height="4" rx="0.5" fill="#1c1c1c"/>
         <rect x="5" y="7" width="3" height="7" rx="0.5" fill="#1c1c1c"/>
@@ -5186,7 +5187,7 @@ Chirnside 3465</textarea>
         </div>
         <div class="verifier-detail-row">
           <span class="verifier-detail-label">Licence number</span>
-          <span class="verifier-detail-value" id="verifierLicenceNo">—</span>
+          <span class="verifier-detail-value licenceNo" id="verifierLicenceNo">—</span>
         </div>
         <div class="verifier-detail-row">
           <span class="verifier-detail-label">Date of birth</span>

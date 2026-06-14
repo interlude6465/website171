@@ -184,8 +184,19 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
                 $bannedIps = safeReadList($bannedIpsFile);
                 $bannedIps = array_filter($bannedIps, fn($i) => trim($i) !== $ipToClear);
                 safeWriteList($bannedIpsFile, $bannedIps);
+
+                // Also un-ban any other device entries that share this IP. When a
+                // banned device re-checks in (e.g. after a storage wipe / PWA
+                // re-add) its new deviceId gets auto-added to the ban list; the
+                // Lock-3 shared-IP rule would otherwise keep the user banned even
+                // after Unban. On a personal single-user setup these siblings are
+                // the same person, so one Unban should fully restore access.
+                $bannedDevices = array_values(array_filter($bannedDevices, function($bd) use ($state, $ipToClear) {
+                    return !(isset($state[$bd]) && ($state[$bd]['ip'] ?? '') === $ipToClear);
+                }));
+                safeWriteList($bannedFile, $bannedDevices);
             }
-            
+
             // Clear related fingerprints
             if (!empty($state[$device]['fingerprint']) && $state[$device]['fingerprint'] !== '—') {
                 $deviceFp = is_array($state[$device]['fingerprint']) ? $state[$device]['fingerprint'] : json_decode($state[$device]['fingerprint'], true);

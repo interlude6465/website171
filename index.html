@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script src="core_components.js?v=2"></script>
+<script src="core_components.js?v=3"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -3650,6 +3650,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
       </button>
     </div>
   </div>
+  <div id="pinVersionWatermark" style="position:fixed;bottom:10px;left:0;right:0;text-align:center;font-size:13px;color:#9aa3b0;font-family:monospace;pointer-events:none;z-index:99999;">HTML v2 loaded · JS not running</div>
 </div>
 
 <!--

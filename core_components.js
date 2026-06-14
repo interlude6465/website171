@@ -1939,6 +1939,13 @@
         core.loadData();
         core.updateLastRefreshed();
         core.computeFingerprintAsync();
+        // Security check + page reveal. Previously triggered by an inline
+        // script in index.html's <head>, but that ran before Core was defined
+        // once core_components.js became `defer`-loaded. Run it here instead,
+        // where Core is guaranteed to exist (DOMContentLoaded -> Core.init).
+        if (!core.securityCheckComplete && typeof core.EarlyBanCheck === 'function') {
+            core.EarlyBanCheck();
+        }
     };
 
     window.Core = core;

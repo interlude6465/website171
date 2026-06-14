@@ -45,6 +45,8 @@ if (!is_array($state)) $state = [];
 $approvedDevices = safeReadList($approvedDevicesFile);
 $bannedDevices = safeReadList($bannedFile);
 $bannedIps = safeReadList($bannedIpsFile);
+$deletedFile = __DIR__ . '/deleted_devices.txt';
+$deletedDevices = safeReadList($deletedFile);
 
 // Handle Actions - must check before any output
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
@@ -103,6 +105,29 @@ if ($action === 'toggle_whitelist') {
     $config['whitelist_mode'] = !($config['whitelist_mode'] ?? false);
     safeWriteJson($configFile, $config, true);
     header("Location: admin.php?key=" . urlencode($key) . "&section=" . ($section ?: 'banned'));
+    exit;
+}
+
+// ---- Delete / Restore profile (soft-delete) ----
+if ($action === 'delete_profile') {
+    $device = trim($device);
+    if ($device) {
+        $deletedDevices = safeReadList($deletedFile);
+        if (!in_array($device, $deletedDevices, true)) {
+            $deletedDevices[] = $device;
+            safeWriteList($deletedFile, $deletedDevices);
+        }
+    }
+    header("Location: admin.php?key=" . urlencode($key) . "&section=deleted");
+    exit;
+}
+if ($action === 'restore_profile') {
+    $device = trim($device);
+    if ($device) {
+        $deletedDevices = array_values(array_filter(safeReadList($deletedFile), fn($d) => trim($d) !== $device));
+        safeWriteList($deletedFile, $deletedDevices);
+    }
+    header("Location: admin.php?key=" . urlencode($key));
     exit;
 }
 
@@ -354,6 +379,7 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
 // Check if viewing sections
 $isPasswordView = $section === 'passwords';
 $isBannedView = $section === 'banned';
+$isDeletedView = $section === 'deleted';
 
 ?>
 <!DOCTYPE html>
@@ -827,7 +853,17 @@ $isBannedView = $section === 'banned';
                         <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=ban" class="btn btn-danger btn-sm">Ban Device</a>
                     <?php endif; ?>
                 </div>
-                
+
+                <div style="margin-bottom:10px;">
+                    <div class="lbl" style="font-size:10px;text-transform:uppercase;margin-bottom:4px;">Profile</div>
+                    <?php if (in_array($viewDevice, $deletedDevices, true)): ?>
+                        <span class="badge badge-warning">DELETED</span>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=restore_profile" class="btn btn-success btn-sm">↩ Restore Profile</a>
+                    <?php else: ?>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=delete_profile" class="btn btn-danger btn-sm" onclick="return confirm('Move this profile to the Deleted section?');">🗑 Delete Profile</a>
+                    <?php endif; ?>
+                </div>
+
                 <?php if ($currentIp): ?>
                 <div>
                     <div class="lbl" style="font-size:10px;text-transform:uppercase;margin-bottom:4px;">IP Control (<?=$currentIp?>)</div>
@@ -1168,7 +1204,54 @@ $isBannedView = $section === 'banned';
             </table>
         </div>
 
-    <?php else: 
+    <?php elseif ($isDeletedView):
+        // Deleted profiles that are currently inactive. A deleted profile that
+        // is active right now intentionally appears on the dashboard's Active
+        // list instead, and falls back here once it goes offline.
+        $deletedInactive = [];
+        foreach ($deletedDevices as $delId) {
+            $delId = trim($delId);
+            if ($delId === '' || !isset($state[$delId])) continue;
+            if (getDeviceStatus($delId, $state, $visits) === 'active') continue;
+            $deletedInactive[$delId] = $state[$delId];
+        }
+        uasort($deletedInactive, fn($a, $b) => strcmp($b['last_seen'] ?? '', $a['last_seen'] ?? ''));
+    ?>
+        <header>
+            <h1>Deleted Profiles</h1>
+            <div class="header-actions">
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-outline">← Back to Dashboard</a>
+            </div>
+        </header>
+
+        <div class="stats-bar">
+            <div class="stat-card"><div class="num"><?=count($deletedInactive)?></div><div class="label">Deleted (inactive)</div></div>
+        </div>
+
+        <div class="section-header-bar"><div class="indicator offline"></div><h2>🗑 Deleted</h2></div>
+        <?php if (empty($deletedInactive)): ?>
+            <p style="color:var(--text-secondary); padding:8px 2px;">No deleted profiles. A deleted profile that is currently active stays on the dashboard until it goes offline, then appears here.</p>
+        <?php else: ?>
+        <div class="device-grid">
+            <?php foreach ($deletedInactive as $id => $d):
+                $photo = getDevicePhoto($id);
+            ?>
+            <div class="device-card offline">
+                <?php if($photo): ?><img src="<?=$photo?>" class="photo-thumb" style="filter:grayscale(0.5)"><?php else: ?><div class="photo-thumb"></div><?php endif; ?>
+                <div class="info">
+                    <div class="name"><?=htmlspecialchars($d['name'] ?? 'Unknown')?></div>
+                    <div class="sub"><?=truncateDeviceId($id)?></div>
+                    <div style="margin-top:6px; display:flex; gap:6px;">
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($id)?>" class="btn btn-outline btn-sm">View</a>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($id)?>&action=restore_profile" class="btn btn-success btn-sm">↩ Restore</a>
+                    </div>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
+    <?php else:
         $devices = $state;
         uasort($devices, fn($a, $b) => strcmp($b['last_seen'] ?? '', $a['last_seen'] ?? ''));
 
@@ -1176,7 +1259,10 @@ $isBannedView = $section === 'banned';
         $offlineDevices = [];
         foreach ($devices as $id => $data) {
             $status = getDeviceStatus($id, $state, $visits);
+            // A deleted profile lives in the Deleted section while inactive, but
+            // resurfaces in the Active list the moment it becomes active again.
             if ($status === 'active') $activeDevices[$id] = $data;
+            elseif (in_array($id, $deletedDevices, true)) continue;
             else $offlineDevices[$id] = $data;
         }
     ?>
@@ -1185,6 +1271,7 @@ $isBannedView = $section === 'banned';
             <div class="header-actions">
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=banned" class="btn btn-danger btn-sm">🚫 Banned Mgmt</a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=passwords" class="btn btn-warning btn-sm">⚙ Passwords</a>
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=deleted" class="btn btn-sm" style="background:#6e6e73;color:#fff;">🗑 Deleted</a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-primary btn-sm">Refresh</a>
             </div>
         </header>

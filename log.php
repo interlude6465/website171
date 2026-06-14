@@ -6,6 +6,13 @@
 
 require_once __DIR__ . '/helpers.php';
 
+// Serialize all state read-modify-write across concurrent requests so rapid
+// events (photo resend on load + pin/visibility events firing close together)
+// can't clobber each other's writes — this is what caused blank / mixed-up
+// profiles in the admin panel. Held for the whole request; auto-released when
+// the script terminates.
+$GLOBALS['__stateLock'] = acquireExclusiveLock(__DIR__ . '/state.lock');
+
 // Enable internal error logging but suppress display to client
 error_reporting(E_ALL);
 ini_set('display_errors', 0);

@@ -41,11 +41,22 @@ function safeWriteJson($path, $data, $backup = false) {
     return true;
 }
 
+// Acquire a held exclusive lock for serializing read-modify-write sequences
+// (e.g. the shared latest_state.json). Returns the open handle (keep it in
+// scope; the lock releases when the handle is closed or the script ends), or
+// null if the lock could not be taken.
+function acquireExclusiveLock($lockPath) {
+    $fp = @fopen($lockPath, 'c');
+    if (!$fp) return null;
+    if (!@flock($fp, LOCK_EX)) { @fclose($fp); return null; }
+    return $fp;
+}
+
 function safeReadRaw($path) {
     if (!file_exists($path)) return null;
     $fp = @fopen($path, 'r');
     if (!$fp) return null;
-    
+
     flock($fp, LOCK_SH);
     $content = '';
     while (!feof($fp)) {

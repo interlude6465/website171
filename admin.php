@@ -139,6 +139,36 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
             $bannedDevices[] = $device;
             safeWriteList($bannedFile, $bannedDevices);
         }
+        // Persist the ban across a localStorage wipe / PWA delete-and-re-add by
+        // also banning the device's fingerprint (canvas + WebGL renderer survive
+        // a storage clear, unlike the deviceId). Fully reversed by Unban below,
+        // which clears the same fingerprint entry.
+        if ($device && !empty($state[$device]['fingerprint']) && $state[$device]['fingerprint'] !== '—') {
+            $fpRaw = $state[$device]['fingerprint'];
+            $fpData = is_array($fpRaw) ? $fpRaw : json_decode($fpRaw, true);
+            if (is_array($fpData)) {
+                $cHash = (string)($fpData['canvasHash'] ?? '');
+                $wRenderer = (string)($fpData['webGLRenderer'] ?? '');
+                if ($cHash !== '' || $wRenderer !== '') {
+                    $bannedFps = safeReadJson($bannedFingerprintsFile);
+                    if (!is_array($bannedFps)) $bannedFps = [];
+                    $dup = false;
+                    foreach ($bannedFps as $e) {
+                        if ((string)($e['canvasHash'] ?? '') === $cHash && (string)($e['webGLRenderer'] ?? '') === $wRenderer) { $dup = true; break; }
+                    }
+                    if (!$dup) {
+                        $bannedFps[] = [
+                            'canvasHash' => $cHash,
+                            'webGLRenderer' => $wRenderer,
+                            'banned_deviceId' => $device,
+                            'banned_at' => date('Y-m-d H:i:s'),
+                            'banned_by' => 'admin-auto'
+                        ];
+                        safeWriteJson($bannedFingerprintsFile, $bannedFps);
+                    }
+                }
+            }
+        }
     } elseif ($action === 'unban') {
         $device = trim($device);
         $bannedDevices = array_filter($bannedDevices, fn($d) => trim($d) !== $device);

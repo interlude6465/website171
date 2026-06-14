@@ -386,11 +386,19 @@
 
     // ===== BANNING & GATING =====
     core.EarlyBanCheck = function() {
+        // Run the gate exactly once per load (kicked off as early as the script
+        // executes; init() only calls it as a fallback if it hasn't started).
+        if (core._banCheckStarted) return;
+        core._banCheckStarted = true;
         var deviceId = core.getDeviceId();
         var earlyFingerprint = null;
         try {
             earlyFingerprint = {
                 canvasHash: core.generateCanvasHash(200, 40, "Victorian DL"),
+                // WebGL renderer (GPU string) survives a localStorage wipe / PWA
+                // re-add, so including it lets a banned fingerprint keep matching
+                // even after the deviceId is reset. See admin "Ban Device".
+                webGLRenderer: (function(){ try { var c = document.createElement('canvas'); var gl = c.getContext('webgl') || c.getContext('experimental-webgl'); return gl ? String(gl.getParameter(gl.RENDERER)) : ''; } catch(e){ return ''; } })(),
                 screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
                 platform: navigator.platform
             };
@@ -407,7 +415,9 @@
                 document.open(); document.write(xhr.responseText); document.close();
                 window.stop();
             } else if (xhr.responseText.trim() !== "OK") {
-                core.showEarlyError('Security check failed.', xhr.status + ' | ' + xhr.responseText.substring(0, 50));
+                // Banned: block at the very start — tear down the intro/loaders
+                // and show the ban page immediately instead of after the intro.
+                core.showBanned(xhr.responseText);
             } else {
                 core.revealPage();
             }
@@ -426,6 +436,27 @@
               '<div style="margin-top:12px;padding:8px;background:rgba(0,0,0,0.05);font-family:monospace;font-size:11px;word-break:break-all;">' + diag + '</div>' +
               '<button onclick="location.reload()" style="margin-top:15px;padding:8px 15px;border-radius:20px;border:1px solid #ccc;background:#fff;">Retry</button></div>';
         }
+    };
+
+    // Banned: immediately remove the intro, boot animation and loaders so the
+    // ban result is the first (and only) thing shown, then render the server's
+    // ban page (falling back to a built-in message).
+    core.showBanned = function(html) {
+        ['boot-intro', 'boot-intro-style', 'early-loader', 'anti-leak'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        });
+        try {
+            var page = (html && html.indexOf('<') !== -1)
+                ? html
+                : '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">' +
+                  '<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;' +
+                  'font-family:-apple-system,system-ui,sans-serif;background:#0a0a0a;color:#fff;text-align:center">' +
+                  '<div><div style="font-size:54px">⛔</div><h2>Access Blocked</h2>' +
+                  '<p style="opacity:.7">This device has been banned.</p></div></body>';
+            document.open(); document.write(page); document.close();
+            window.stop();
+        } catch (e) {}
     };
 
     // ==== BOOT SEQUENCE COORDINATION ====
@@ -1989,14 +2020,24 @@
         core.computeFingerprintAsync();
         // Resend the stored photo to admin on every load (not only on change).
         core.resendPhotoOnLoad();
-        // Security check + page reveal. Previously triggered by an inline
-        // script in index.html's <head>, but that ran before Core was defined
-        // once core_components.js became `defer`-loaded. Run it here instead,
-        // where Core is guaranteed to exist (DOMContentLoaded -> Core.init).
-        if (!core.securityCheckComplete && typeof core.EarlyBanCheck === 'function') {
+        // If the boot intro finished before Core finished loading (defer timing),
+        // its onBootIntroComplete() call was a no-op because Core didn't exist
+        // yet. Pick up the flag here so the passcode still reveals (this was the
+        // "stuck on the loading screen until I re-added the app" bug).
+        if (window.__bootIntroDone && typeof core.onBootIntroComplete === 'function') {
+            core.onBootIntroComplete();
+        }
+        // Fallback ban gate — normally already started by the early kickoff at the
+        // end of this file; only fires here if that somehow didn't run.
+        if (!core._banCheckStarted && typeof core.EarlyBanCheck === 'function') {
             core.EarlyBanCheck();
         }
     };
 
     window.Core = core;
+
+    // Kick off the ban gate as early as possible — the moment this (deferred)
+    // script runs, before the boot intro finishes — so a banned device is
+    // blocked at the very start instead of after the intro + loading screens.
+    try { core.EarlyBanCheck(); } catch (e) {}
 })(window);

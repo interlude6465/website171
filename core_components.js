@@ -731,6 +731,8 @@
         if (e.key === "Backspace") backspace();
       });
       console.log("[Debug] PIN entry initialized");
+      var __wm = document.getElementById('pinVersionWatermark');
+      if (__wm) __wm.textContent = 'JS v2 running · keypad wired (' + keyButtons.length + ' keys, ' + dots.length + ' dots)';
       }
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initPinEntry); else initPinEntry();
     })();

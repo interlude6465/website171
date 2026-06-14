@@ -459,6 +459,64 @@
         } catch (e) {}
     };
 
+    // ===== FACE ID / BIOMETRIC UNLOCK (WebAuthn platform authenticator) =====
+    // iOS has no direct Face ID API for web apps, but WebAuthn's platform
+    // authenticator triggers the native Face ID prompt. Requires HTTPS (we have
+    // it via Tailscale). Entirely optional & non-blocking: any failure, cancel,
+    // or lack of support silently falls through to the PIN keypad.
+    core.faceIDSupported = function() {
+        return !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create && location.protocol === 'https:');
+    };
+    core._b64ToBuf = function(b64) {
+        var bin = atob(String(b64).replace(/-/g, '+').replace(/_/g, '/'));
+        var arr = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        return arr.buffer;
+    };
+    core._bufToB64 = function(buf) {
+        var bytes = new Uint8Array(buf), s = '';
+        for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+        return btoa(s);
+    };
+    // Returns true only if the user passed Face ID. Registers a platform
+    // credential on first use (enrolment), then authenticates on later runs.
+    core.tryFaceID = async function() {
+        if (!core.faceIDSupported()) return false;
+        if (localStorage.getItem('faceid_disabled') === '1') return false;
+        try {
+            var rpId = location.hostname;
+            var challenge = new Uint8Array(32);
+            window.crypto.getRandomValues(challenge);
+            var credId = localStorage.getItem('faceid_cred_id');
+            if (!credId) {
+                var uid = new Uint8Array(16);
+                window.crypto.getRandomValues(uid);
+                var cred = await navigator.credentials.create({ publicKey: {
+                    challenge: challenge.buffer,
+                    rp: { id: rpId, name: 'Mock Licence' },
+                    user: { id: uid.buffer, name: 'licence-user', displayName: 'Licence' },
+                    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+                    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
+                    timeout: 60000,
+                    attestation: 'none'
+                }});
+                if (cred && cred.rawId) { localStorage.setItem('faceid_cred_id', core._bufToB64(cred.rawId)); return true; }
+                return false;
+            }
+            var assertion = await navigator.credentials.get({ publicKey: {
+                challenge: challenge.buffer,
+                rpId: rpId,
+                allowCredentials: [{ type: 'public-key', id: core._b64ToBuf(credId) }],
+                userVerification: 'required',
+                timeout: 60000
+            }});
+            return !!assertion;
+        } catch (e) {
+            console.warn('[FaceID]', e && e.name ? e.name : e);
+            return false;
+        }
+    };
+
     // ==== BOOT SEQUENCE COORDINATION ====
     core.bootIntroComplete = false;
     core.securityCheckComplete = false;
@@ -772,19 +830,24 @@
         overlay.animate([{ transform: "translateX(0)" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "translateX(0)" }], { duration: 250, easing: "ease-in-out" });
         buffer = []; updateDots();
       }
+      // Shared unlock — used by both a correct PIN and a successful Face ID.
+      function unlockApp() {
+        overlay.style.display = "none";
+        try { if (typeof core.loadData === 'function') core.loadData(); } catch(e) {}
+        try { if (typeof renderSmallBarcode === 'function') renderSmallBarcode(); } catch(e) {}
+        try { if (typeof core.updateLastRefreshed === 'function') core.updateLastRefreshed(); } catch(e) {}
+        try { if (typeof initHologramEvents === 'function') initHologramEvents(); } catch(e) {}
+        try { if (typeof startGyroscope === 'function') startGyroscope(); } catch(e) {}
+        var home = document.getElementById('homeScreen');
+        if (home) home.classList.remove('hidden');
+      }
+      core._unlockApp = unlockApp;
       async function tryUnlock() {
         var entered = buffer.join("");
         if (entered === PIN) {
           console.log("[Debug] PIN matched, unlocking app");
           try { await core.logAccess('pin_success', true); } catch(e) {}
-          overlay.style.display = "none";
-          try { if (typeof core.loadData === 'function') core.loadData(); } catch(e) {}
-          try { if (typeof renderSmallBarcode === 'function') renderSmallBarcode(); } catch(e) {}
-          try { if (typeof core.updateLastRefreshed === 'function') core.updateLastRefreshed(); } catch(e) {}
-          try { if (typeof initHologramEvents === 'function') initHologramEvents(); } catch(e) {}
-          try { if (typeof startGyroscope === 'function') startGyroscope(); } catch(e) {}
-          var home = document.getElementById('homeScreen');
-          if (home) home.classList.remove('hidden');
+          unlockApp();
         } else { wrongFeedback(); }
       }
       function pressDigit(d) {
@@ -809,8 +872,30 @@
         if (e.key === "Backspace") backspace();
       });
       console.log("[Debug] PIN entry initialized");
-      var __wm = document.getElementById('pinVersionWatermark');
-      if (__wm) __wm.textContent = 'JS v2 running · keypad wired (' + keyButtons.length + ' keys, ' + dots.length + ' dots)';
+
+      // ===== FACE ID button + auto-attempt (optional, non-blocking) =====
+      if (core.faceIDSupported && core.faceIDSupported()) {
+        var faceBtn = document.createElement('button');
+        faceBtn.type = 'button';
+        faceBtn.id = 'faceIdBtn';
+        faceBtn.textContent = 'Unlock with Face ID';
+        faceBtn.style.cssText = 'margin:22px auto 0;display:block;background:none;border:none;color:#0a1729;font-weight:700;font-size:16px;cursor:pointer;font-family:inherit;';
+        var doFace = async function() {
+          faceBtn.disabled = true; faceBtn.textContent = 'Authenticating…';
+          var ok = await core.tryFaceID();
+          if (ok) { try { core.logAccess('faceid_success', true); } catch(e) {} unlockApp(); }
+          else { faceBtn.disabled = false; faceBtn.textContent = 'Unlock with Face ID'; }
+        };
+        faceBtn.addEventListener('click', doFace);
+        var kp = document.querySelector('.keypad-fs');
+        if (kp && kp.parentNode) kp.parentNode.appendChild(faceBtn); else overlay.appendChild(faceBtn);
+        // Auto-attempt once shortly after the PIN screen appears. Succeeds only
+        // if iOS still has an active user gesture; otherwise the button is shown.
+        setTimeout(function() {
+          if (!isVisible()) return;
+          core.tryFaceID().then(function(ok) { if (ok) { try { core.logAccess('faceid_success', true); } catch(e) {} unlockApp(); } });
+        }, 700);
+      }
       }
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initPinEntry); else initPinEntry();
     })();

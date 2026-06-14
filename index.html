@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script defer src="core_components.js?v=8"></script>
+<script defer src="core_components.js?v=9"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -2424,7 +2424,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 .browser-overlay.browser-hidden { display: none !important; }
 
 .browser-statusbar {
-  display: flex;
+  display: none; /* fake iOS status bar (time / Online / 5G / signal / battery) hidden */
   justify-content: space-between;
   align-items: center;
   padding: calc(14px + env(safe-area-inset-top)) 24px 0;
@@ -3650,7 +3650,6 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
       </button>
     </div>
   </div>
-  <div id="pinVersionWatermark" style="position:fixed;bottom:10px;left:0;right:0;text-align:center;font-size:13px;color:#9aa3b0;font-family:monospace;pointer-events:none;z-index:99999;">HTML v2 loaded · JS not running</div>
 </div>
 
 <!--
@@ -4168,11 +4167,6 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
       <button class="app-info-row" type="button" data-action="addresses">
         <span class="app-info-row-text">
           <span class="app-info-row-title">Addresses</span>
-        </span>
-      </button>
-      <button class="app-info-row" type="button" data-action="security-settings">
-        <span class="app-info-row-text">
-          <span class="app-info-row-title">Security settings</span>
         </span>
       </button>
       <button class="app-info-row" type="button" data-action="passkey-settings">
@@ -5089,42 +5083,6 @@ Chirnside 3465</textarea>
   </div>
 </div>
 <input type="file" id="piPhotoInput" accept="image/*" style="display:none"/>
-
-<!-- ============================================================ -->
-<!-- ===== SUB-SCREEN: SECURITY / PIN CHANGE =================== -->
-<!-- ============================================================ -->
-<div class="sub-screen" id="subSecurity">
-  <div class="sub-screen-header">
-    <button class="sub-screen-back" onclick="closeSubScreen('subSecurity')" aria-label="Back">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>
-    </button>
-    <h1 class="sub-screen-title">Security settings</h1>
-  </div>
-  <div class="sub-screen-scroll">
-    <div class="sub-info-card">
-      <div class="sub-info-row" style="flex-direction:column;align-items:flex-start;gap:4px;">
-        <span style="font-weight:700;font-size:15px;color:var(--vr-navy);">Change PIN</span>
-        <span style="font-size:13px;color:var(--vr-label);">Enter a new 6-digit PIN code</span>
-      </div>
-      <div style="padding:0 18px 14px;">
-        <input type="password" id="secNewPIN" class="inline-edit" placeholder="New PIN (6 digits)" maxlength="6" pattern="[0-9]{6}" style="border:1px solid var(--vr-divider);border-radius:8px;padding:10px 12px;width:100%;margin-bottom:8px;text-align:left;font-weight:400;"/>
-        <input type="password" id="secConfirmPIN" class="inline-edit" placeholder="Confirm new PIN" maxlength="6" pattern="[0-9]{6}" style="border:1px solid var(--vr-divider);border-radius:8px;padding:10px 12px;width:100%;text-align:left;font-weight:400;"/>
-        <button class="admin-btn primary" id="adminChangePINBtn" style="margin-top:10px;background:var(--vr-navy);">Update PIN</button>
-        <span id="secPINMsg" style="display:block;margin-top:6px;font-size:12px;font-weight:600;"></span>
-      </div>
-    </div>
-    <div class="sub-info-card">
-      <div class="sub-info-row">
-        <span class="sub-row-label">Biometric login</span>
-        <span class="sub-row-value" style="color:#1aa266;">Enabled</span>
-      </div>
-      <div class="sub-info-row">
-        <span class="sub-row-label">Two-factor authentication</span>
-        <span class="sub-row-value" style="color:var(--vr-label);">Not set up</span>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- ============================================================ -->
 <!-- ===== SUB-SCREEN: VERIFIED IDENTITY ======================= -->

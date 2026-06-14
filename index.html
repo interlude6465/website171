@@ -4,14 +4,20 @@
 <!doctype html>
 <html lang="en">
 <head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mock Licence">
 <style id="anti-leak">
-  html { background: #ffffff !important; }
+  html { background: #ecf0f4 !important; }
   body * { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
   #early-loader, #early-loader * { visibility: visible !important; opacity: 1 !important; }
   #boot-intro, #boot-intro * { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }
   #boot-intro.gone { opacity: 0 !important; }
   #early-loader {
-    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; height:100vh; display: flex; align-items: center; justify-content: center;
     flex-direction: column; font-family: Inter, -apple-system, system-ui, sans-serif; color: #1a3447;
     background: #ffffff; z-index: 999999;
   }
@@ -45,15 +51,34 @@
   @keyframes ptr-spin { to { transform: rotate(360deg); } }
 </style>
 <link rel="apple-touch-icon" href="https://i.postimg.cc/P5840XBb/IMG-1423.jpg">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Mock Licence">
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Educational Mock Licence (NOT REAL)</title>
+<script>
+// ===== iOS standalone cover recalc =====
+// All full-screen heights use 100vh (the only unit that fills the screen from a
+// PWA cold start; 100% and 100dvh both disable viewport-fit=cover on iOS).
+// On cold start WebKit can still report safe-area-inset = 0 until something
+// forces a recalc, so briefly toggle viewport-fit cover->auto->cover once.
+(function () {
+  function nudgeCover() {
+    var vp = document.querySelector('meta[name="viewport"]');
+    if (!vp) return;
+    var full = vp.getAttribute('content');
+    vp.setAttribute('content', full.replace('viewport-fit=cover', 'viewport-fit=auto'));
+    // Force reflow, then restore cover so insets recompute.
+    void document.documentElement.offsetHeight;
+    vp.setAttribute('content', full);
+  }
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', nudgeCover);
+  } else {
+    nudgeCover();
+  }
+  window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
+})();
+</script>
 <script src="core_components.js"></script>
 <script>
 // ===== EARLY BAN CHECK =====
@@ -133,25 +158,24 @@
   -webkit-tap-highlight-color: transparent;
 }
 html{
-  height:100%;
+  /* 100vh is the ONLY height that keeps viewport-fit=cover working from a PWA
+     cold start on iOS. 100% disables cover entirely; 100dvh misreports on cold
+     start. Do not change these to % or dvh. */
+  height:100vh;
   width:100%;
+  margin:0;
+  background:#ecf0f4;
   overflow:hidden;
-  position:fixed;
-  top:0;
-  left:0;
-  overscroll-behavior:none;
 }
 body{
   margin:0;
-  font-family:'VicRoads',Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
-  background:var(--vr-page-bg);
+  font-family:"VicRoads",Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  background:#ecf0f4;
   color:var(--muted);
-  height:100%;
+  /* 100vh only — see html rule above. */
+  height:100vh;
   width:100%;
   overflow:hidden;
-  position:fixed;
-  top:0;
-  left:0;
   overscroll-behavior:none;
   -webkit-overflow-scrolling: touch;
   -webkit-user-select: none;
@@ -409,7 +433,8 @@ body{
   display: none; /* hidden until unlocked */
   align-items: center;
   justify-content: center;
-  height: 48px;
+  height: calc(48px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
   border-bottom: 1px solid var(--vr-divider);
   z-index: 300;
 }
@@ -443,7 +468,7 @@ body{
 /* Spinner zone — direct child of body, root stacking context */
 #ptr-zone {
   position: fixed;
-  top: 48px;
+  top: calc(48px + env(safe-area-inset-top));
   left: 0;
   right: 0;
   height: 0;
@@ -464,9 +489,11 @@ body{
   position:relative;
   overflow-y:auto;
   overflow-x:hidden;
-  padding-bottom: 60px;
+  padding-top: calc(48px + env(safe-area-inset-top));
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
   display: none;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 #viewport.unlocked {
   display: block;
@@ -844,7 +871,7 @@ body.dev-mode .dev-only {
      indicator / dynamic toolbar in standalone PWA mode. Fallback to 100vh
      for browsers without dvh support. */
   height:100vh;
-  height:100dvh;
+  height:100vh;
   background:#ffffff;
   z-index:1200;
   /* Animate transform on the compositor — iOS Safari paints `bottom`
@@ -1051,7 +1078,7 @@ body.dev-mode .dev-only {
   font-size: 13px;
   color: var(--vr-label);
   text-align: center;
-  margin-top: 48px;
+  margin-top: 0;
   margin-bottom: 0;
   padding: 12px 0 10px 0;
   background-color: var(--vr-page-bg);
@@ -1081,7 +1108,7 @@ body.dev-mode .dev-only {
 }
 #pinBG {
   width: 100vw;
-  height: 100vh;
+  height:100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1194,6 +1221,7 @@ body.dev-mode .dev-only {
 #homeScreen {
   position: fixed;
   inset: 0;
+  height:100vh;
   background: #ecf0f4;
   display: flex;
   flex-direction: column;
@@ -1204,7 +1232,8 @@ body.dev-mode .dev-only {
 #homeScreen.hidden { display: none; }
 
 .home-header {
-  padding: 56px 22px 14px;
+  padding: 16px 22px 14px;
+  padding-top: calc(16px + env(safe-area-inset-top));
   flex-shrink: 0;
 }
 .home-greeting {
@@ -1311,13 +1340,19 @@ body.dev-mode .dev-only {
   gap: 2px;
 }
 .my-licence-title {
+  /* Reference panel uses Inter/system (sample/IMG_1818), not the VicRoads
+     custom face that the rest of the app inherits. Override locally so the
+     "My licence" / "Tap to view licence" copy matches the reference.
+     Weight is 700 (bold) — 800 read as visibly thicker than the reference. */
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 700;
   color: #ffffff;
   letter-spacing: 0.1px;
   line-height: 22px;                   /* APK digital_driver_card_title_line_height */
 }
 .my-licence-subtitle {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
   font-size: 14px;
   font-weight: 400;
   color: rgba(255, 255, 255, 0.78);
@@ -1334,20 +1369,30 @@ body.dev-mode .dev-only {
 /* Bottom tab bar */
 .bottom-tab-bar {
   display: flex;
-  background: #ecf0f4;
+  /* Reference uses a flat white bar (matches sample/IMG_1801..1805). The page
+     bg behind it is the same blue-grey #ecf0f4, but the bar itself is white
+     so the home-indicator zone reads clean instead of letting the page tint
+     bleed into the safe-area padding. */
+  background: #ffffff;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
-  padding: 6px 0 14px;
+  padding: 6px 0 env(safe-area-inset-bottom);
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
   align-items: stretch;
   flex-shrink: 0;
-  position: relative;          /* anchor for the sliding pill */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
 }
 /* Single sliding pill indicator — positioned/animated by JS in
    updateBottomTabPill(). Glides between tabs with eased motion. */
 .bottom-tab-pill {
   position: absolute;
-  top: 8px;
-  height: 48px;
-  background: rgba(217, 224, 232, 0.85);
+  top: 13px;                   /* re-centred on the icon (was 8px) */
+  height: 38px;                /* flatter, snug pill to match official (was 48px) */
+  /* Solid light-grey (matches sample IMG_1801..1805 pill against the white bar) */
+  background: #e9ecef;
   border-radius: 999px;
   pointer-events: none;
   opacity: 0;                  /* hidden until JS positions it */
@@ -1416,7 +1461,9 @@ body.dev-mode .dev-only {
   justify-content: center;
   width: 48px;
   height: 48px;
-  margin-top: -3px;
+  /* Was margin-top:-3px which pulled the icons too high in the bar — removing
+     it lowers the icon (and label below it) to match sample/IMG_1818. */
+  margin-top: 0;
 }
 .bottom-tab .tab-icon-outline,
 .bottom-tab .tab-icon-filled {
@@ -1456,6 +1503,7 @@ body.dev-mode .dev-only {
 #licenceLoadingScreen {
   position: fixed;
   inset: 0;
+  height:100vh;
   background: #ffffff;
   z-index: 9000;
   display: flex;
@@ -1547,6 +1595,7 @@ body.dev-mode .dev-only {
 .app-screen {
   position: fixed;
   inset: 0;
+  height:100vh;
   background: #ecf0f4;
   display: flex;
   flex-direction: column;
@@ -1564,7 +1613,8 @@ body.dev-mode .dev-only {
 }
 
 .app-screen-header {
-  padding: 56px 22px 14px;
+  padding: 16px 22px 14px;
+  padding-top: calc(16px + env(safe-area-inset-top));
   flex-shrink: 0;
 }
 .app-screen-title {
@@ -1744,8 +1794,19 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   text-align: center;
   font-size: 13px;
   color: var(--vr-label);
-  padding: 6px 0 18px;
+  padding: 6px 0 2px;
   margin: 0;
+}
+/* Per-deploy change note — bumped alongside .app-version-text. Small and
+   muted so it doesn't fight the version number visually. */
+.app-version-note {
+  text-align: center;
+  font-size: 11px;
+  color: var(--vr-label);
+  opacity: 0.7;
+  padding: 0 16px 18px;
+  margin: 0;
+  line-height: 1.35;
 }
 
 /* Licence tab "Tap to view licence" panel — reuses my-licence-panel look but
@@ -1816,8 +1877,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   right: -420px;
   width: 400px;
   max-width: 92vw;
-  height: 100vh;
-  height: 100dvh;
+  height:100vh;
   background: #1a1f2e;
   color: #e0e4ec;
   z-index: 10001;
@@ -2079,6 +2139,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 .sub-screen {
   position: fixed;
   inset: 0;
+  height:100vh;
   background: #ecf0f4;
   z-index: 90;
   display: flex;
@@ -2092,7 +2153,8 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 .sub-screen.open { transform: translateX(0); }
 
 .sub-screen-header {
-  padding: 56px 20px 12px;
+  padding: 16px 20px 12px;
+  padding-top: calc(16px + env(safe-area-inset-top));
   display: flex;
   align-items: center;
   gap: 14px;
@@ -2199,7 +2261,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 .verifier-banner {
   background: #DE3523;
   color: #ffffff;
-  padding: 42px 20px 18px;
+  padding: calc(42px + env(safe-area-inset-top)) 20px 18px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2368,7 +2430,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 24px 0;
+  padding: calc(14px + env(safe-area-inset-top)) 24px 0;
   flex-shrink: 0;
 }
 .browser-time-pill {
@@ -3101,12 +3163,12 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 
 </style>
 </head>
-<body style="background: #f1f1f1;">
+<body style="background: #ecf0f4;">
 
 <!-- ===== BOOT INTRO (terminal flood -> logo -> glitch -> reveal) ===== -->
 <style id="boot-intro-style">
   #boot-intro {
-    position: fixed; inset: 0; z-index: 2147483647;
+    position: fixed; inset: 0; height:100vh; z-index: 2147483647;
     background: #000; color: #fff;
     font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
     overflow: hidden; cursor: default;
@@ -3292,9 +3354,30 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
     logo.style.display = 'flex';
   }
 
+  // Force-show the FIRST loading screen (myVicRoads splash + spinner).
+  // Its visual rules lived in the anti-leak <style> that's stripped on first
+  // paint, so re-apply them inline here. Sits just under the boot intro's
+  // z-index so the intro fade reveals THIS, never the passcode underneath.
+  function showFirstLoadingScreen() {
+    var loader = document.getElementById('early-loader');
+    if (!loader) return null;
+    loader.style.cssText =
+      'position:fixed;inset:0;display:flex;flex-direction:column;' +
+      'align-items:center;justify-content:center;background:#ffffff;' +
+      'visibility:visible;opacity:1;pointer-events:auto;z-index:2147483646;' +
+      'transition:opacity 360ms ease;';
+    var lg = loader.querySelector('.loading-logo');
+    if (lg) lg.style.cssText =
+      'position:absolute;top:11vh;left:0;right:0;display:flex;justify-content:center;';
+    var svg = loader.querySelector('.loading-logo svg');
+    if (svg) { svg.style.width = '240px'; svg.style.height = 'auto'; svg.style.display = 'block'; }
+    return loader;
+  }
+
   function glitchOut() {
     intro.classList.add('glitch');
     setTimeout(function(){
+      showFirstLoadingScreen();    // stage the loading screen behind the intro
       intro.classList.add('gone');
       setTimeout(removeIntro, 480);
     }, 620);
@@ -3304,10 +3387,23 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
     if (done) return;
     done = true;
     stopFlood();
+
+    // Hand the intro off to the first loading screen, then remove the intro
+    // so that loading screen — NOT the passcode — is what's revealed.
+    var loader = showFirstLoadingScreen();
     if (intro && intro.parentNode) intro.parentNode.removeChild(intro);
     var st = document.getElementById('boot-intro-style');
     if (st && st.parentNode) st.parentNode.removeChild(st);
-    if (window.Core && window.Core.onBootIntroComplete) window.Core.onBootIntroComplete();
+
+    // Keep the loading screen up for a beat (the licence waits here), THEN let
+    // the app continue to the passcode entry.
+    setTimeout(function () {
+      if (loader) {
+        loader.style.opacity = '0';
+        setTimeout(function () { loader.style.display = 'none'; }, 380);
+      }
+      if (window.Core && window.Core.onBootIntroComplete) window.Core.onBootIntroComplete();
+    }, 2200);
   }
 
   // Sequence: green flood -> red "booting..." in terminal -> white logo -> glitch -> reveal
@@ -3578,7 +3674,7 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 <!-- ============================================================ -->
 <div id="homeScreen" class="hidden">
   <div class="home-header">
-    <h1 class="home-greeting" id="homeGreeting">Hi </h1>
+    <h1 class="home-greeting" id="homeGreeting"></h1>
   </div>
 
   <div class="home-scroll">
@@ -4145,7 +4241,10 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
       </button>
     </div>
 
-    <div class="app-version-text">App version 1.3.5</div>
+    <!-- Bump the patch number and update the note below on every deploy so
+         you can tell at a glance whether the latest changes are live. -->
+    <div class="app-version-text">App version 1.3.7</div>
+    <div class="app-version-note">Tab pill tightened + My licence panel font switched to Inter</div>
   </div>
 
   <div class="bottom-tab-bar">
@@ -4743,7 +4842,7 @@ Chirnside 3465</textarea>
       </div>
       <div class="admin-field">
         <label>Greeting First Name</label>
-        <input type="text" id="adminGreeting" placeholder="First Name" value=""/>
+        <input type="text" id="adminGreeting" placeholder="" value=""/>
       </div>
       <div class="admin-field">
         <label>App Version Display</label>
@@ -4917,7 +5016,7 @@ Chirnside 3465</textarea>
     <div class="sub-info-card">
       <div class="sub-info-row">
         <span class="sub-row-label">Full name</span>
-        <input class="inline-edit" id="piName" style="text-align:right;" placeholder="E.g JAMES R BAKERFEILD (CAPS)"/>
+        <input class="inline-edit" id="piName" placeholder="E.g JAMES R BAKER (CAPS)" style="text-align:right;"/>
       </div>
       <div class="sub-info-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
         <span class="sub-row-label">Date of birth</span>
@@ -4929,11 +5028,11 @@ Chirnside 3465</textarea>
       </div>
       <div class="sub-info-row">
         <span class="sub-row-label">Licence number</span>
-        <input class="inline-edit" id="piLicenceNo" value="068436894" style="text-align:right;"/>
+        <input class="inline-edit" id="piLicenceNo" style="text-align:right;"/>
       </div>
       <div class="sub-info-row">
         <span class="sub-row-label">Card number</span>
-        <input class="inline-edit" id="piCardNo" value="P453005" style="text-align:right;"/>
+        <input class="inline-edit" id="piCardNo" style="text-align:right;"/>
       </div>
     </div>
 
@@ -4941,7 +5040,7 @@ Chirnside 3465</textarea>
     <div class="sub-info-card">
       <div class="sub-info-row">
         <span class="sub-row-label">Address</span>
-        <input class="inline-edit" id="piAddress" style="text-align:right;" placeholder="E.g 5 FOSSUM ST CHIRNSIDE 3546 VIC (CAPS)"/>
+        <input class="inline-edit" id="piAddress" placeholder="E.g 5 DONNELY ST CHIRNSIDE 3546 VIC (CAPS)" style="text-align:right;"/>
       </div>
       <div class="sub-info-row">
         <span class="sub-row-label">Email</span>
@@ -5131,6 +5230,66 @@ Chirnside 3465</textarea>
 
 
 <!-- ===== INJECT SCROLL SPACERS (real DOM children for iOS scroll fix) ===== -->
+
+<!-- ===== HOME GREETING — first name from Personal information ===== -->
+<script>
+(function () {
+  // Pull the full name currently entered/saved (format e.g. "JAMES R BAKER").
+  // Prefer the live "Full name" edit field; fall back to the rendered licence name.
+  function getFullName() {
+    var pi = document.getElementById('piName');
+    var v = pi && pi.value ? pi.value.trim() : '';
+    if (!v) {
+      var el = document.querySelector('.licenceName');
+      if (el) v = (el.textContent || '').trim();
+    }
+    if (!v) return '';
+    if (v.toUpperCase() === 'YOUR NAME HERE') return '';   // placeholder, not a real name
+    return v;
+  }
+
+  // First token, capitalised: "JAMES" -> "James".
+  function firstName(full) {
+    var first = (full || '').trim().split(/\s+/)[0] || '';
+    if (!first) return '';
+    return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+  }
+
+  function updateGreeting() {
+    var g = document.getElementById('homeGreeting');
+    if (!g) return;
+    var name = firstName(getFullName());
+    g.textContent = name ? ('Hi ' + name) : '';   // blank when no name entered yet
+  }
+
+  function bind() {
+    updateGreeting();
+    var pi = document.getElementById('piName');
+    if (pi) {
+      pi.addEventListener('input', updateGreeting);
+      pi.addEventListener('change', updateGreeting);
+    }
+    var save = document.getElementById('adminSavePersonalInfoBtn');
+    if (save) save.addEventListener('click', function () { setTimeout(updateGreeting, 0); });
+
+    // Refresh whenever the home screen is (re)shown.
+    var home = document.getElementById('homeScreen');
+    if (home && window.MutationObserver) {
+      new MutationObserver(updateGreeting).observe(home, { attributes: true, attributeFilter: ['class'] });
+    }
+    // Catch any async population done by core_components.js after first paint.
+    setTimeout(updateGreeting, 300);
+    setTimeout(updateGreeting, 1200);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bind);
+  } else {
+    bind();
+  }
+  window.addEventListener('load', updateGreeting);
+})();
+</script>
 
 </body>
 </html>

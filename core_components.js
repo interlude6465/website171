@@ -668,6 +668,7 @@
 
     /* ===== PIN ENTRY ===== */
     (function(){
+      function initPinEntry(){
       var PIN = localStorage.getItem('admin_pin') || "457511";
       fetch(core.CONFIG_URL)
         .then(function(r) { return r.json(); })
@@ -730,6 +731,8 @@
         if (e.key === "Backspace") backspace();
       });
       console.log("[Debug] PIN entry initialized");
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initPinEntry); else initPinEntry();
     })();
 
     /* TABS */
@@ -1602,6 +1605,7 @@
 
     /* ---- Patch PIN to use admin PIN ---- */
     (function patchPIN() {
+      function initPatchPIN(){
       var pinOverlay = document.getElementById('pinOverlayFS');
       if (!pinOverlay) return;
       var dots = Array.from(document.querySelectorAll('.pin-dot-fs'));
@@ -1657,6 +1661,8 @@
         if (e.key === 'Backspace') backspace();
       });
       console.log('[PIN] Admin-configurable PIN patched. Current PIN: ' + getCurrentPIN());
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initPatchPIN); else initPatchPIN();
     })();
 
     /* ---- Wire sub-screens ---- */

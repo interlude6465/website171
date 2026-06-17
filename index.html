@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script defer src="core_components.js?v=13"></script>
+<script defer src="core_components.js?v=14"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -1246,7 +1246,7 @@ body.dev-mode .dev-only {
 }
 .home-greeting {
   font-size: 32px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--vr-navy);
   margin: 0;
   letter-spacing: -0.5px;
@@ -1263,8 +1263,9 @@ body.dev-mode .dev-only {
 
 .home-card {
   display: flex;
-  align-items: center;
-  gap: 18px;
+  flex-direction: column;          /* icon on top, label below (matches reference) */
+  align-items: flex-start;
+  gap: 10px;
   background: #ffffff;
   border: none;
   border-radius: 18px;
@@ -1293,7 +1294,7 @@ body.dev-mode .dev-only {
 }
 .home-card-label {
   font-size: 17px;
-  font-weight: 700;
+  font-weight: 600;                /* thinner, to match reference */
   color: var(--vr-navy);
   letter-spacing: 0.1px;
 }
@@ -1353,7 +1354,7 @@ body.dev-mode .dev-only {
      "My licence" / "Tap to view licence" copy matches the reference. */
   font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 700;                    /* thinner, to match reference */
   color: #ffffff;
   letter-spacing: 0.1px;
   line-height: 22px;                   /* APK digital_driver_card_title_line_height */
@@ -1396,8 +1397,8 @@ body.dev-mode .dev-only {
    updateBottomTabPill(). Glides between tabs with eased motion. */
 .bottom-tab-pill {
   position: absolute;
-  top: 13px;                   /* re-centred on the icon (was 8px) */
-  height: 38px;                /* flatter, snug pill to match official (was 48px) */
+  top: 15px;                   /* re-centred on the (now shorter) icon wrap */
+  height: 32px;                /* snug pill that hugs the icon (was 38px) */
   /* Solid light-grey (matches sample IMG_1801..1805 pill against the white bar) */
   background: #e9ecef;
   border-radius: 999px;
@@ -1466,8 +1467,8 @@ body.dev-mode .dev-only {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 40px;                 /* narrower => snugger pill (pill width tracks this) */
+  height: 40px;                /* shorter => bar is shorter and sits lower */
   margin-top: -3px;
 }
 .bottom-tab .tab-icon-outline,

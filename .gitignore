@@ -11,5 +11,14 @@ index.backup.html
 
 # Local-only — never push (contains deploy runbook + server creds, Nyx core, harness config)
 CLAUDE.md
+SERVER-ACCESS.md
 .claude/
 nyx/
+
+# Raw VIC font source folder (weights we use are copied into apk_loot/fonts/)
+VIC font/
+
+# Local-only reference screenshots & helper scripts
+comparison photos/
+claude_profiles.bat
+claude_profiles.dat

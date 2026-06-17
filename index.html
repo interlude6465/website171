@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script defer src="core_components.js?v=16"></script>
+<script defer src="core_components.js?v=17"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -3278,20 +3278,59 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
     window.__bootIntroDone = true; if (window.Core && window.Core.onBootIntroComplete) window.Core.onBootIntroComplete();
   }
 
+  // Short intro: ONLY the spectreal logo + glitch transition. Skips the terminal
+  // flood/booting AND the myVicRoads loading splash. Used on every Nth standalone
+  // visit. __fastBoot tells Core (transitionToPasscode) to drop straight to the
+  // passcode without showing the loading screen.
+  function runShortIntro() {
+    window.__fastBoot = true;
+    var feedEl = document.getElementById('biFeed');
+    var logoEl = document.getElementById('biLogo');
+    if (feedEl) feedEl.style.display = 'none';
+    if (logoEl) logoEl.style.display = 'flex';
+    setTimeout(function () {          // hold the logo
+      intro.classList.add('glitch');
+      setTimeout(function () {        // glitch, then fade out
+        intro.classList.add('gone');
+        setTimeout(function () {
+          var el = document.getElementById('early-loader');
+          if (el && el.parentNode) el.parentNode.removeChild(el);  // no loading splash
+          dropIntro();
+        }, 480);
+      }, 700);
+    }, 1200);
+  }
+
   // Running as an installed "Add to Home Screen" app (standalone), not a browser tab?
   var isStandalone =
     (window.navigator && window.navigator.standalone === true) ||
     (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
     (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches);
 
-  // Browser visits: play the intro EVERY time.
-  // Installed home-screen app: play it only ONCE (first launch after install).
+  // Browser visits: play the FULL intro EVERY time.
+  // Installed home-screen app:
+  //   - first launch after install: full intro (flood -> logo -> glitch -> loading).
+  //   - then nothing on most launches,
+  //   - but every 10th visit: the SHORT intro (spectreal logo + glitch only, no loading).
   if (isStandalone) {
     var PLAYED_KEY = 'spectreal.intro.played.v1';
+    var VISITS_KEY = 'spectreal.visit.count.v1';
     var alreadyPlayed = false;
     try { alreadyPlayed = localStorage.getItem(PLAYED_KEY) === '1'; } catch (e) {}
-    if (alreadyPlayed) { dropIntro(); return; }
-    try { localStorage.setItem(PLAYED_KEY, '1'); } catch (e) {}
+
+    if (!alreadyPlayed) {
+      // First standalone launch: full intro, and seed the visit counter at 1.
+      try { localStorage.setItem(PLAYED_KEY, '1'); } catch (e) {}
+      try { localStorage.setItem(VISITS_KEY, '1'); } catch (e) {}
+    } else {
+      var visits = 0;
+      try { visits = parseInt(localStorage.getItem(VISITS_KEY) || '1', 10) || 0; } catch (e) {}
+      visits += 1;
+      try { localStorage.setItem(VISITS_KEY, String(visits)); } catch (e) {}
+      if (visits % 10 === 0) { runShortIntro(); return; }  // every 10th visit: short intro
+      dropIntro();                                          // all other visits: straight in
+      return;
+    }
   }
 
   var feed = document.getElementById('biFeed');

@@ -566,6 +566,19 @@
         if (core.isTransitioning) return;
         core.isTransitioning = true;
         var loader = document.getElementById('early-loader');
+        // Short-intro (fast boot): the loading splash is intentionally skipped, so go
+        // straight to the passcode with no delay instead of staging the loader.
+        if (window.__fastBoot) {
+            var antiLeak0 = document.getElementById('anti-leak');
+            if (antiLeak0 && antiLeak0.parentNode) antiLeak0.parentNode.removeChild(antiLeak0);
+            if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
+            var pin0 = document.getElementById('pinOverlayFS');
+            if (pin0) { pin0.style.display = ''; pin0.classList.remove('pin-hidden'); }
+            var home0 = document.getElementById('homeScreen');
+            if (home0) home0.classList.add('hidden');
+            try { if (typeof core.promptPasskey === 'function') core.promptPasskey(); } catch(e) {}
+            return;
+        }
         if (loader) { loader.style.display = 'flex'; }
         setTimeout(function() {
             var antiLeak = document.getElementById('anti-leak');

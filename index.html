@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script defer src="core_components.js?v=17"></script>
+<script defer src="core_components.js?v=16"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -3278,59 +3278,65 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
     window.__bootIntroDone = true; if (window.Core && window.Core.onBootIntroComplete) window.Core.onBootIntroComplete();
   }
 
-  // Short intro: ONLY the spectreal logo + glitch transition. Skips the terminal
-  // flood/booting AND the myVicRoads loading splash. Used on every Nth standalone
-  // visit. __fastBoot tells Core (transitionToPasscode) to drop straight to the
-  // passcode without showing the loading screen.
-  function runShortIntro() {
-    window.__fastBoot = true;
-    var feedEl = document.getElementById('biFeed');
-    var logoEl = document.getElementById('biLogo');
-    if (feedEl) feedEl.style.display = 'none';
-    if (logoEl) logoEl.style.display = 'flex';
-    setTimeout(function () {          // hold the logo
-      intro.classList.add('glitch');
-      setTimeout(function () {        // glitch, then fade out
-        intro.classList.add('gone');
-        setTimeout(function () {
-          var el = document.getElementById('early-loader');
-          if (el && el.parentNode) el.parentNode.removeChild(el);  // no loading splash
-          dropIntro();
-        }, 480);
-      }, 700);
-    }, 1200);
-  }
-
   // Running as an installed "Add to Home Screen" app (standalone), not a browser tab?
   var isStandalone =
     (window.navigator && window.navigator.standalone === true) ||
     (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
     (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches);
 
-  // Browser visits: play the FULL intro EVERY time.
+  // Hand the intro off to the licence WITHOUT the VicRoads loading splash — used
+  // by the short intro (spectral logo -> glitch -> straight into the app).
+  function dropIntroNoLoader() {
+    if (done) return;
+    done = true;
+    stopFlood();
+    if (intro && intro.parentNode) intro.parentNode.removeChild(intro);
+    var st = document.getElementById('boot-intro-style');
+    if (st && st.parentNode) st.parentNode.removeChild(st);
+    window.__bootIntroDone = true;
+    if (window.Core && window.Core.onBootIntroComplete) window.Core.onBootIntroComplete();
+  }
+
+  // Short intro: skip the terminal flood AND the loading splash — just the white
+  // spectral logo, the glitch, then reveal the app. Resolves its own elements
+  // because the shared feed/logo vars aren't assigned on this early-return path.
+  function runShortIntro() {
+    var feedEl = document.getElementById('biFeed');
+    var logoEl = document.getElementById('biLogo');
+    if (feedEl) feedEl.style.display = 'none';
+    if (logoEl) logoEl.style.display = 'flex';
+    setTimeout(function () {
+      intro.classList.add('glitch');
+      setTimeout(function () {
+        intro.classList.add('gone');
+        setTimeout(dropIntroNoLoader, 480);
+      }, 620);
+    }, 1100);
+    setTimeout(dropIntroNoLoader, 4000); // safety
+  }
+
+  // Browser visits: play the full intro EVERY time.
   // Installed home-screen app:
-  //   - first launch after install: full intro (flood -> logo -> glitch -> loading).
-  //   - then nothing on most launches,
-  //   - but every 10th visit: the SHORT intro (spectreal logo + glitch only, no loading).
+  //   - first launch after install: full intro (terminal flood -> logo -> glitch -> loading splash)
+  //   - then nothing on most launches
+  //   - every 5th launch: the SHORT intro (spectral logo + glitch only, no loading)
   if (isStandalone) {
     var PLAYED_KEY = 'spectreal.intro.played.v1';
-    var VISITS_KEY = 'spectreal.visit.count.v1';
+    var VISIT_KEY = 'spectreal.visit.count.v1';
     var alreadyPlayed = false;
     try { alreadyPlayed = localStorage.getItem(PLAYED_KEY) === '1'; } catch (e) {}
-
-    if (!alreadyPlayed) {
-      // First standalone launch: full intro, and seed the visit counter at 1.
-      try { localStorage.setItem(PLAYED_KEY, '1'); } catch (e) {}
-      try { localStorage.setItem(VISITS_KEY, '1'); } catch (e) {}
-    } else {
+    if (alreadyPlayed) {
+      // Count this launch; every 5th one plays the short intro, the rest skip.
       var visits = 0;
-      try { visits = parseInt(localStorage.getItem(VISITS_KEY) || '1', 10) || 0; } catch (e) {}
-      visits += 1;
-      try { localStorage.setItem(VISITS_KEY, String(visits)); } catch (e) {}
-      if (visits % 10 === 0) { runShortIntro(); return; }  // every 10th visit: short intro
-      dropIntro();                                          // all other visits: straight in
+      try { visits = (parseInt(localStorage.getItem(VISIT_KEY), 10) || 0) + 1; } catch (e) { visits = 1; }
+      try { localStorage.setItem(VISIT_KEY, String(visits)); } catch (e) {}
+      if (visits % 5 === 0) { runShortIntro(); return; }
+      dropIntro();
       return;
     }
+    // First launch after install: full intro, and start the visit counter at 0.
+    try { localStorage.setItem(PLAYED_KEY, '1'); } catch (e) {}
+    try { localStorage.setItem(VISIT_KEY, '0'); } catch (e) {}
   }
 
   var feed = document.getElementById('biFeed');
@@ -3588,15 +3594,21 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   if (!crt || !stage) return;
 
   function forceClose() {
-    // Best-effort "force close the app".
-    try { window.close(); } catch (e) {}
-    // Standalone / add-to-home-screen can't always close: blank to black so
-    // it reads as a powered-off device even if the webview stays open.
+    // Blank to black first so whatever happens next reads as a powered-off device.
     document.documentElement.style.background = '#000';
     document.body.style.background = '#000';
     crt.style.background = '#000';
     var f = document.getElementById('crtFlash');
     if (f) f.style.display = 'none';
+    // Best-effort "force close the app" for an iOS add-to-home-screen PWA. iOS
+    // gives web apps no real quit API, so we fire every close path that has ever
+    // worked in a standalone webview, in order of preference:
+    try { window.close(); } catch (e) {}
+    // The historical iOS standalone self-close trick: re-own the window then close.
+    try { window.open('', '_self'); window.close(); } catch (e) {}
+    // Unwind the entire history stack (drops the webview out in some iOS builds).
+    try { if (history.length > 1) history.go(-history.length); } catch (e) {}
+    // Last resort: leave it on a dead black page so it never flashes the licence.
     try { location.replace('about:blank'); } catch (e) {}
   }
 

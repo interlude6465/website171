@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script defer src="core_components.js?v=14"></script>
+<script defer src="core_components.js?v=15"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -1353,7 +1353,7 @@ body.dev-mode .dev-only {
      custom face that the rest of the app inherits. Override locally so the
      "My licence" / "Tap to view licence" copy matches the reference. */
   font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
-  font-size: 22px;
+  font-size: 20px;                     /* slightly smaller, to match reference */
   font-weight: 700;                    /* thinner, to match reference */
   color: #ffffff;
   letter-spacing: 0.1px;
@@ -1383,7 +1383,7 @@ body.dev-mode .dev-only {
      bleed into the safe-area padding. */
   background: #ffffff;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
-  padding: 6px 0 env(safe-area-inset-bottom);
+  padding: 2px 0 env(safe-area-inset-bottom);   /* shorter bar => white box sits lower */
   padding-bottom: max(6px, env(safe-area-inset-bottom));
   align-items: stretch;
   flex-shrink: 0;
@@ -1397,7 +1397,7 @@ body.dev-mode .dev-only {
    updateBottomTabPill(). Glides between tabs with eased motion. */
 .bottom-tab-pill {
   position: absolute;
-  top: 15px;                   /* re-centred on the (now shorter) icon wrap */
+  top: 6px;                    /* re-centred on the icon within the shorter bar */
   height: 32px;                /* snug pill that hugs the icon (was 38px) */
   /* Solid light-grey (matches sample IMG_1801..1805 pill against the white bar) */
   background: #e9ecef;
@@ -1420,9 +1420,9 @@ body.dev-mode .dev-only {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   cursor: pointer;
-  padding: 8px 0 4px;
+  padding: 3px 0 3px;          /* tighter => shorter nav box, sits lower */
   color: var(--vr-navy);
   font-size: 13px;
   font-weight: 500;
@@ -1444,7 +1444,7 @@ body.dev-mode .dev-only {
 /* Icon color cascade — SVGs in nav icons using fill="currentColor" / stroke="currentColor"
    inherit from .bottom-tab-icon-wrap. Default navy, green when their tab is active. */
 .bottom-tab .bottom-tab-icon-wrap { color: var(--vr-navy); }
-.bottom-tab.active .bottom-tab-icon-wrap { color: var(--vr-green-badge); }
+.bottom-tab.active .bottom-tab-icon-wrap { color: #046235; }  /* darker authentic VicRoads green */
 
 /* ============================================================ */
 /* ===== Authentic outline / filled nav icon swap ============= */
@@ -1498,7 +1498,7 @@ body.dev-mode .dev-only {
   transition: color 250ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .bottom-tab.active .bottom-tab-label {
-  color: var(--vr-green-badge);
+  color: #046235;              /* darker authentic VicRoads green (was bright --vr-green-badge) */
   font-weight: 700;
 }
 
@@ -1624,8 +1624,9 @@ body.dev-mode .dev-only {
   flex-shrink: 0;
 }
 .app-screen-title {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
   font-size: 34px;
-  font-weight: 800;
+  font-weight: 700;                    /* lighter than the heavy custom face, matches reference */
   color: var(--vr-navy);
   margin: 0;
   letter-spacing: -0.5px;
@@ -1776,12 +1777,14 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   min-width: 0;
 }
 .app-info-row-title {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
   font-size: 16px;
   font-weight: 500;
   color: var(--vr-navy);
   line-height: 1.3;
 }
 .app-info-row-subtitle {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
   font-size: 13px;
   font-weight: 400;
   color: var(--vr-label);

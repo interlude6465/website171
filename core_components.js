@@ -1552,7 +1552,7 @@
         var barRect = bar.getBoundingClientRect();
         var iconRect = iconWrap.getBoundingClientRect();
         if (!iconRect.width) return;
-        var PILL_PAD = 4;
+        var PILL_PAD = 8;
         pill.style.left = (iconRect.left - barRect.left - PILL_PAD) + 'px';
         pill.style.width = (iconRect.width + PILL_PAD * 2) + 'px';
         pill.classList.add('ready');

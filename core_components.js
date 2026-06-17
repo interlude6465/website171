@@ -1478,17 +1478,24 @@
             if (_scroller) { _scroller.style.overflowY = 'hidden'; void _scroller.offsetHeight; _scroller.style.overflowY = 'auto'; }
           })();
           if (newBar) {
+            // Seed the pill at the PREVIOUS tab's position WITHOUT animating, then glide to
+            // the target. The pill carries a permanent CSS `transition: left/width`, so if we
+            // simply move it to the seed position it ANIMATES there — and when we then set the
+            // real target a moment later, that half-started seed transition is re-targeted,
+            // leaving the pill barely moved (an instant "jump"). This only looked fine the
+            // first time a given bar's pill was placed (no prior value => seed was instant);
+            // every later navigation jumped, in both directions. Fix: disable the transition,
+            // place the seed, commit it with a reflow, restore the transition, THEN set the
+            // target so only the seed->target move animates.
+            var seedPill = newBar.querySelector('.bottom-tab-pill');
             newBar.querySelectorAll('.bottom-tab[data-nav-target]').forEach(function(b) {
               b.classList.toggle('active', b.getAttribute('data-nav-target') === prev);
             });
+            if (seedPill) seedPill.style.transition = 'none';
             if (typeof window.__positionPillInBar === 'function') { window.__positionPillInBar(newBar); }
-            // Force a synchronous reflow so the pill's OLD position is committed as the
-            // transition's start, then apply the NEW position in this SAME task. Deferring
-            // this to requestAnimationFrame let the browser paint without ever rendering the
-            // committed start frame, so the pill snapped instead of gliding — and, depending
-            // on paint timing, it only snapped one way (e.g. right-to-left).
-            void newBar.offsetWidth;
-            updateBottomTabActiveState(target);
+            void newBar.offsetWidth;                       // commit the seed instantly (no transition)
+            if (seedPill) seedPill.style.transition = '';  // restore the CSS glide
+            updateBottomTabActiveState(target);            // animates seed -> target, both directions
           } else {
             requestAnimationFrame(function() { updateBottomTabActiveState(target); });
           }

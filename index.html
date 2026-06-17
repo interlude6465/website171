@@ -3594,22 +3594,34 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   if (!crt || !stage) return;
 
   function forceClose() {
-    // Blank to black first so whatever happens next reads as a powered-off device.
+    // iOS gives an add-to-home-screen web app NO real quit API — a PWA cannot
+    // terminate itself back to the home screen, and window.close() only works on
+    // windows JS itself opened. So the only thing fully under our control is the
+    // final state: a permanent black "powered-off" screen that never navigates
+    // away (NOT about:blank, which shows browser chrome and reads as broken).
+
+    // 1. Own black overlay above everything, with all app UI torn out behind it.
+    var off = document.createElement('div');
+    off.style.cssText =
+      'position:fixed;inset:0;width:100vw;height:100vh;background:#000;' +
+      'z-index:2147483647;margin:0;padding:0;';
     document.documentElement.style.background = '#000';
     document.body.style.background = '#000';
-    crt.style.background = '#000';
-    var f = document.getElementById('crtFlash');
-    if (f) f.style.display = 'none';
-    // Best-effort "force close the app" for an iOS add-to-home-screen PWA. iOS
-    // gives web apps no real quit API, so we fire every close path that has ever
-    // worked in a standalone webview, in order of preference:
+    document.body.innerHTML = '';
+    document.body.appendChild(off);
+
+    // 2. Try the few self-close paths that have ever worked in some standalone
+    //    webviews — harmless no-ops on modern iOS, but if a build ever honors
+    //    one, the app actually closes instead of sitting on the black screen.
     try { window.close(); } catch (e) {}
-    // The historical iOS standalone self-close trick: re-own the window then close.
     try { window.open('', '_self'); window.close(); } catch (e) {}
-    // Unwind the entire history stack (drops the webview out in some iOS builds).
-    try { if (history.length > 1) history.go(-history.length); } catch (e) {}
-    // Last resort: leave it on a dead black page so it never flashes the licence.
-    try { location.replace('about:blank'); } catch (e) {}
+
+    // 3. Swallow any further interaction so the dead screen stays dead.
+    try {
+      ['click','touchstart','touchmove','keydown'].forEach(function (ev) {
+        window.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); }, { capture: true, passive: false });
+      });
+    } catch (e) {}
   }
 
   function runPowerOff() {

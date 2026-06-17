@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script defer src="core_components.js?v=12"></script>
+<script defer src="core_components.js?v=13"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -1096,55 +1096,7 @@ body.dev-mode .dev-only {
 }
 /* Sheets cover full viewport at every screen size — matches reference photos */
 
-/* ===== FACE ID GATE (custom myVicRoads-style screen) ===== */
-#faceIdScreen {
-  position: fixed;
-  inset: 0;
-  height: 100vh;
-  z-index: 10000;
-  background: #ffffff;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  font-family: Inter, -apple-system, system-ui, Segoe UI, Roboto, Arial;
-}
-#faceIdScreen.show { display: flex; }
-#faceIdScreen .fid-logo { margin-top: 13vh; width: 240px; }
-#faceIdScreen .fid-logo svg { width: 100%; height: auto; display: block; }
-#faceIdScreen .fid-card {
-  margin-top: 25vh;
-  width: 150px;
-  height: 150px;
-  background: #585d63;
-  border-radius: 24px;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  box-shadow: 0 8px 26px rgba(0,0,0,0.20);
-  font-family: inherit;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.12s ease;
-}
-#faceIdScreen .fid-card:active { transform: scale(0.96); }
-#faceIdScreen .fid-icon {
-  filter: drop-shadow(0 0 5px rgba(59,158,255,0.85)) drop-shadow(0 0 12px rgba(59,158,255,0.5));
-  display: inline-flex;
-}
-#faceIdScreen .fid-label { color: #ffffff; font-weight: 700; font-size: 19px; letter-spacing: 0.2px; }
-#faceIdScreen .fid-passcode {
-  margin-top: 30px;
-  background: none;
-  border: none;
-  color: #1a3447;
-  font-weight: 600;
-  font-size: 15px;
-  cursor: pointer;
-  font-family: inherit;
-}
+/* Face ID gate screen removed — native passkey/Face ID prompt now overlays the PIN pad. */
 
 /* ===== PIN ENTRY (matches IMG_1671) ===== */
 #pinOverlayFS {
@@ -3653,47 +3605,9 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   <div class="loading-spinner-big"></div>
 </div>
 
-<!-- ===== FACE ID GATE (custom myVicRoads-style screen, shown before the PIN) ===== -->
-<div id="faceIdScreen" aria-hidden="true">
-  <div class="fid-logo" aria-hidden="true">
-    <svg viewBox="0 0 220 60" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="fidChevronGrad" x1="-2.29" y1="8.83" x2="36.12" y2="19.16" gradientUnits="userSpaceOnUse">
-          <stop offset="0.126" stop-color="#8DC63F"/>
-          <stop offset="0.161" stop-color="#82C341"/>
-          <stop offset="0.264" stop-color="#62BB46"/>
-          <stop offset="0.324" stop-color="#54B948"/>
-          <stop offset="0.489" stop-color="#00AC4E"/>
-          <stop offset="0.599" stop-color="#00A651"/>
-          <stop offset="0.755" stop-color="#007839"/>
-          <stop offset="0.857" stop-color="#005826"/>
-        </linearGradient>
-      </defs>
-      <g transform="translate(2 6) scale(1.55)">
-        <path fill="url(#fidChevronGrad)" d="M34.01,27C34.01,27 30.52,30.42 27.77,27.66C25.84,25.73 0.07,0.05 0.07,0.05H7.02L34.01,27Z"/>
-        <path fill="url(#fidChevronGrad)" d="M29.83,5.74C29.07,5.74 25.84,5.74 25.84,5.74C25.84,5.74 21.36,10.22 20.95,10.63C23.06,10.63 25.73,10.63 27.72,10.63C28.21,10.63 28.68,10.62 29.14,10.64C29.79,10.66 30.42,10.73 31.05,10.94C31.9,11.23 32.64,11.76 33.16,12.49C33.61,13.11 33.87,13.84 34.02,14.59V13.41V10.19C34.02,7.97 32.62,5.74 29.83,5.74Z"/>
-        <path fill="url(#fidChevronGrad)" opacity="0.72" d="M31.05,10.94C30.41,10.73 29.79,10.66 29.13,10.64C29.13,13.26 29.13,20.54 29.13,22.13L34.02,27.01V14.59C33.87,13.84 33.6,13.11 33.16,12.49C32.64,11.76 31.89,11.23 31.05,10.94Z"/>
-      </g>
-      <text x="70" y="42" font-family="VicRoads, Inter, -apple-system, sans-serif" font-size="28" font-weight="600" fill="#253544" letter-spacing="-0.4">myVicRoads</text>
-    </svg>
-  </div>
-  <button class="fid-card" id="faceIdCard" type="button" aria-label="Authenticate with Face ID">
-    <span class="fid-icon" aria-hidden="true">
-      <svg viewBox="0 0 64 64" width="58" height="58" fill="none" stroke="#3b9eff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M8 22 V15 a7 7 0 0 1 7 -7 H22"/>
-        <path d="M42 8 H49 a7 7 0 0 1 7 7 V22"/>
-        <path d="M56 42 V49 a7 7 0 0 1 -7 7 H42"/>
-        <path d="M22 56 H15 a7 7 0 0 1 -7 -7 V42"/>
-        <line x1="24" y1="25" x2="24" y2="30"/>
-        <line x1="40" y1="25" x2="40" y2="30"/>
-        <path d="M32 25 V34 a3.5 3.5 0 0 1 -4 3.2"/>
-        <path d="M24 43 a11 9 0 0 0 16 0"/>
-      </svg>
-    </span>
-    <span class="fid-label">Face ID</span>
-  </button>
-  <button class="fid-passcode" id="faceIdPasscode" type="button">Enter passcode</button>
-</div>
+<!-- Face ID gate removed: the native passkey / Face ID prompt now appears directly
+     over the PIN pad for returning users (see core.promptPasskey in core_components.js).
+     First run shows the PIN pad only; a passkey is offered after the first correct PIN. -->
 
 <!-- Licence loading overlay — shown for ~3s when the user taps "My licence"
      from the home screen or the Licence tab, before the licence detail

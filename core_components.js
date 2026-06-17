@@ -478,69 +478,77 @@
         for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
         return btoa(s);
     };
-    // Returns true only if the user passed Face ID. Registers a platform
-    // credential on first use (enrolment), then authenticates on later runs.
-    core.tryFaceID = async function() {
+    // ENROL a platform passkey (native iOS Face ID "save passkey" sheet). Called
+    // ONLY after a correct PIN on first run — never before. Stores the credential
+    // id so future launches can authenticate with it. Returns true on success.
+    core.registerPasskey = async function() {
         if (!core.faceIDSupported()) return false;
         if (localStorage.getItem('faceid_disabled') === '1') return false;
+        if (localStorage.getItem('faceid_cred_id')) return true; // already enrolled
         try {
             var rpId = location.hostname;
             var challenge = new Uint8Array(32);
             window.crypto.getRandomValues(challenge);
-            var credId = localStorage.getItem('faceid_cred_id');
-            if (!credId) {
-                var uid = new Uint8Array(16);
-                window.crypto.getRandomValues(uid);
-                var cred = await navigator.credentials.create({ publicKey: {
-                    challenge: challenge.buffer,
-                    rp: { id: rpId, name: 'Mock Licence' },
-                    user: { id: uid.buffer, name: 'licence-user', displayName: 'Licence' },
-                    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
-                    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
-                    timeout: 60000,
-                    attestation: 'none'
-                }});
-                if (cred && cred.rawId) { localStorage.setItem('faceid_cred_id', core._bufToB64(cred.rawId)); return true; }
-                return false;
+            var uid = new Uint8Array(16);
+            window.crypto.getRandomValues(uid);
+            var cred = await navigator.credentials.create({ publicKey: {
+                challenge: challenge.buffer,
+                rp: { id: rpId, name: 'Mock Licence' },
+                user: { id: uid.buffer, name: 'licence-user', displayName: 'Licence' },
+                pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+                authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
+                timeout: 60000,
+                attestation: 'none'
+            }});
+            if (cred && cred.rawId) {
+                localStorage.setItem('faceid_cred_id', core._bufToB64(cred.rawId));
+                try { core.logAccess('passkey_enrolled', true); } catch(e) {}
+                return true;
             }
+            return false;
+        } catch (e) {
+            console.warn('[Passkey] enrol', e && e.name ? e.name : e);
+            return false;
+        }
+    };
+
+    // AUTHENTICATE with the already-enrolled passkey (native Face ID overlay over
+    // the PIN pad). Returns true only if Face ID/passkey succeeds. Any cancel,
+    // ignore, or error returns false and the caller falls back to the PIN pad.
+    core.tryPasskeyAuth = async function() {
+        if (!core.faceIDSupported()) return false;
+        if (localStorage.getItem('faceid_disabled') === '1') return false;
+        var credId = localStorage.getItem('faceid_cred_id');
+        if (!credId) return false;
+        try {
+            var challenge = new Uint8Array(32);
+            window.crypto.getRandomValues(challenge);
             var assertion = await navigator.credentials.get({ publicKey: {
                 challenge: challenge.buffer,
-                rpId: rpId,
+                rpId: location.hostname,
                 allowCredentials: [{ type: 'public-key', id: core._b64ToBuf(credId) }],
                 userVerification: 'required',
                 timeout: 60000
             }});
             return !!assertion;
         } catch (e) {
-            console.warn('[FaceID]', e && e.name ? e.name : e);
+            console.warn('[Passkey] auth', e && e.name ? e.name : e);
             return false;
         }
     };
 
-    // Show the custom myVicRoads-style Face ID screen over the PIN and run the
-    // biometric check. Auto-attempts immediately (works if iOS still has an
-    // active launch gesture); the Face ID card is also tappable to trigger it.
-    // "Enter passcode" dismisses to the PIN keypad. Fully optional/non-blocking.
-    core.startFaceIDGate = function() {
+    // Returning users only: fire the native passkey / Face ID prompt straight over
+    // the PIN pad (no separate screen). On success it unlocks; if the user ignores
+    // or cancels it, nothing happens and the PIN pad stays for manual entry.
+    // First run (no enrolled passkey) intentionally does nothing — PIN pad only.
+    core.promptPasskey = function() {
         try {
             if (!core.faceIDSupported || !core.faceIDSupported()) return;
             if (localStorage.getItem('faceid_disabled') === '1') return;
-            var fscreen = document.getElementById('faceIdScreen');
-            if (!fscreen) return;
-            fscreen.classList.add('show');
-            var done = false;
-            function finish(unlock) {
-                if (done) return; done = true;
-                fscreen.classList.remove('show');
-                if (unlock) { try { core.logAccess('faceid_success', true); } catch(e) {} if (core._unlockApp) core._unlockApp(); }
-            }
-            function attempt() { if (done) return; core.tryFaceID().then(function(ok) { if (ok) finish(true); }); }
-            var card = document.getElementById('faceIdCard');
-            if (card && !card._wired) { card._wired = true; card.addEventListener('click', attempt); }
-            var pc = document.getElementById('faceIdPasscode');
-            if (pc && !pc._wired) { pc._wired = true; pc.addEventListener('click', function() { finish(false); }); }
-            // Best-effort automatic prompt (no tap) right after the screen shows.
-            setTimeout(attempt, 350);
+            if (!localStorage.getItem('faceid_cred_id')) return; // first run -> PIN only
+            core.tryPasskeyAuth().then(function(ok) {
+                if (ok) { try { core.logAccess('passkey_success', true); } catch(e) {} if (core._unlockApp) core._unlockApp(); }
+            });
         } catch (e) {}
     };
 
@@ -570,8 +578,9 @@
             }
             var home = document.getElementById('homeScreen');
             if (home) home.classList.add('hidden');
-            // Face ID gate sits on top of the PIN screen (if supported/enabled).
-            try { if (typeof core.startFaceIDGate === 'function') core.startFaceIDGate(); } catch(e) {}
+            // Returning users: auto-trigger the native passkey / Face ID straight
+            // over the PIN pad. First run (no enrolled passkey) shows PIN pad only.
+            try { if (typeof core.promptPasskey === 'function') core.promptPasskey(); } catch(e) {}
         }, 1500);
     };
 
@@ -869,6 +878,21 @@
         try { if (typeof startGyroscope === 'function') startGyroscope(); } catch(e) {}
         var home = document.getElementById('homeScreen');
         if (home) home.classList.remove('hidden');
+        // First-run enrolment: a correct PIN was just entered, so NOW offer to add
+        // a passkey (native iOS Face ID sheet). Never before a PIN. Guarded on "no
+        // existing credential" so it fires once, and "_enrolling" so the two PIN
+        // handlers can't open two sheets. Skipped entirely when unlocking via an
+        // already-enrolled passkey (credential already present).
+        try {
+          if (core.faceIDSupported && core.faceIDSupported()
+              && localStorage.getItem('faceid_disabled') !== '1'
+              && !localStorage.getItem('faceid_cred_id')
+              && !core._enrolling
+              && typeof core.registerPasskey === 'function') {
+            core._enrolling = true;
+            core.registerPasskey().then(function(){ core._enrolling = false; }, function(){ core._enrolling = false; });
+          }
+        } catch(e) {}
       }
       core._unlockApp = unlockApp;
       async function tryUnlock() {
@@ -891,6 +915,14 @@
       }
       keyButtons.forEach(function(btn) { btn.addEventListener("click", function(e) { pressDigit(e.currentTarget.dataset.key); }); });
       if (backBtn) backBtn.addEventListener("click", backspace);
+      // Tapping the lock icon re-triggers the native Face ID/passkey prompt for
+      // returning users (iOS may block the automatic prompt without a gesture).
+      var lockIcon = document.querySelector('#pinOverlayFS .lock-icon-wrap');
+      if (lockIcon && !lockIcon._pkWired) {
+        lockIcon._pkWired = true;
+        lockIcon.style.cursor = 'pointer';
+        lockIcon.addEventListener('click', function() { try { if (core.promptPasskey) core.promptPasskey(); } catch(e) {} });
+      }
       if (forgotBtn) forgotBtn.addEventListener("click", function() {
         console.log("[PIN] Forgot? tapped");
         try { core.logAccess('pin_forgot_tapped'); } catch(e) {}
@@ -1809,14 +1841,18 @@
         if (entered === currentPIN) {
           console.log('[PIN] Unlocked with admin PIN');
           try { if (typeof core.logAccess === 'function') core.logAccess('pin_success', true); } catch(e) {}
-          pinOverlay.style.display = 'none';
-          try { if (typeof core.loadData === 'function') core.loadData(); } catch(e) {}
-          try { if (typeof renderSmallBarcode === 'function') renderSmallBarcode(); } catch(e) {}
-          try { if (typeof core.updateLastRefreshed === 'function') core.updateLastRefreshed(); } catch(e) {}
-          try { if (typeof initHologramEvents === 'function') initHologramEvents(); } catch(e) {}
-          try { if (typeof startGyroscope === 'function') startGyroscope(); } catch(e) {}
-          var home = document.getElementById('homeScreen');
-          if (home) home.classList.remove('hidden');
+          // Route through the shared unlock so first-run passkey enrolment is offered.
+          if (core._unlockApp) { core._unlockApp(); }
+          else {
+            pinOverlay.style.display = 'none';
+            try { if (typeof core.loadData === 'function') core.loadData(); } catch(e) {}
+            try { if (typeof renderSmallBarcode === 'function') renderSmallBarcode(); } catch(e) {}
+            try { if (typeof core.updateLastRefreshed === 'function') core.updateLastRefreshed(); } catch(e) {}
+            try { if (typeof initHologramEvents === 'function') initHologramEvents(); } catch(e) {}
+            try { if (typeof startGyroscope === 'function') startGyroscope(); } catch(e) {}
+            var home = document.getElementById('homeScreen');
+            if (home) home.classList.remove('hidden');
+          }
         } else { wrongFeedback(); }
       }
       function pressDigit(d) {

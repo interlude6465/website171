@@ -1482,9 +1482,16 @@
               b.classList.toggle('active', b.getAttribute('data-nav-target') === prev);
             });
             if (typeof window.__positionPillInBar === 'function') { window.__positionPillInBar(newBar); }
+            // Force a synchronous reflow so the pill's OLD position is committed as the
+            // transition's start, then apply the NEW position in this SAME task. Deferring
+            // this to requestAnimationFrame let the browser paint without ever rendering the
+            // committed start frame, so the pill snapped instead of gliding — and, depending
+            // on paint timing, it only snapped one way (e.g. right-to-left).
             void newBar.offsetWidth;
+            updateBottomTabActiveState(target);
+          } else {
+            requestAnimationFrame(function() { updateBottomTabActiveState(target); });
           }
-          requestAnimationFrame(function() { updateBottomTabActiveState(target); });
         });
       });
       function injectAndPositionPills() {

@@ -8,3 +8,8 @@ banned_devices.txt
 banned_fingerprints.json
 approved_devices.txt
 index.backup.html
+
+# Local-only — never push (contains deploy runbook + server creds, Nyx core, harness config)
+CLAUDE.md
+.claude/
+nyx/

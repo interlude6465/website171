@@ -1,6 +1,0 @@
-# Lau/gov/vic/vicroads/qrcodescanner/scanningInfo/ScanningInfoViewModel;
-super  : Lu4/j;
-
-## Fields
-
-## Methods

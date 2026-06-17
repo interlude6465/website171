@@ -1,6 +1,0 @@
-# Lau/gov/vic/vicroads/payments/payment/PaymentsViewModel;
-super  : Lu4/j;
-
-## Fields
-
-## Methods

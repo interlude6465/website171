@@ -1,6 +1,0 @@
-# Lau/gov/vic/vicroads/dashboard/home/HomeViewModel;
-super  : Lu4/j;
-
-## Fields
-
-## Methods

@@ -1,6 +1,0 @@
-# Lau/gov/vic/vicroads/qrcodescanner/enableCameraPermission/EnableCameraPermissionViewModel;
-super  : Lu4/j;
-
-## Fields
-
-## Methods

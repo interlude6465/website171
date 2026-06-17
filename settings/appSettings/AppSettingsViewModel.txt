@@ -1,6 +1,0 @@
-# Lau/gov/vic/vicroads/settings/appSettings/AppSettingsViewModel;
-super  : Lu4/j;
-
-## Fields
-
-## Methods

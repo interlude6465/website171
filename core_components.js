@@ -970,9 +970,27 @@
     var _holoCurrent = 0.15;
     var _holoTarget  = 0.15;
     var _holoLoopRunning = false;
-    function _computeHoloTarget(gamma) {
-      var val = (Math.abs(gamma) / 10.0) + 0.2;
-      return Math.min(1.0, Math.max(0.2, val));
+    var HOLO_BASE = 0.2, HOLO_MAX = 1.0;
+    function _computeHoloTarget(beta, gamma) {
+      // beta = front/back tilt (0 flat face-up, 90 upright/vertical, >90 toward ground).
+      // gamma = left/right tilt (0 level, +/-90 on its side).
+      var b = (typeof beta === 'number') ? beta : 0;
+      var betaOp;
+      if (b >= 75) {
+        // Upright (~90) and any tilt past it toward the ground stays fully opaque.
+        betaOp = HOLO_MAX;
+      } else if (b <= 0) {
+        betaOp = HOLO_BASE;
+      } else {
+        // Coming up from flat-face-up: reaches MAX within ~15deg of vertical (steep,
+        // i.e. full from 75deg onward) rather than a slow gradual ramp.
+        betaOp = HOLO_BASE + (HOLO_MAX - HOLO_BASE) * (b / 75);
+      }
+      // Side-to-side: gradual from the current (beta-driven) level up to MAX as the
+      // tilt reaches 45deg either side.
+      var g = Math.min(Math.abs((typeof gamma === 'number') ? gamma : 0), 90);
+      var gammaOp = HOLO_BASE + (HOLO_MAX - HOLO_BASE) * Math.min(g / 45, 1);
+      return Math.min(HOLO_MAX, Math.max(HOLO_BASE, Math.max(betaOp, gammaOp)));
     }
     function _holoSmoothLoop() {
       var diff = _holoTarget - _holoCurrent;
@@ -991,18 +1009,18 @@
       _holoLoopRunning = true;
       requestAnimationFrame(_holoSmoothLoop);
     }
-    function _applyHoloOpacity(gamma) {
-      _holoTarget = _computeHoloTarget(gamma);
+    function _applyHoloOpacity(beta, gamma) {
+      _holoTarget = _computeHoloTarget(beta, gamma);
       _kickHoloLoop();
     }
     function handleOrientation(event) {
       if (!_gyroActive) return;
-      var gamma = event.gamma;
-      if (gamma === null) return;
-      _applyHoloOpacity(gamma);
+      if (event.beta === null && event.gamma === null) return;
+      _applyHoloOpacity(event.beta, event.gamma);
     }
-    function startGyroscope() {
-      if (_gyroActive) { stopGyroscope(); return; }
+    function startGyroscope(noToggle) {
+      // noToggle=true => called from a user gesture to ARM (never toggles off).
+      if (_gyroActive) { if (noToggle) return; stopGyroscope(); return; }
       function enableGyro() {
         window.addEventListener('deviceorientation', handleOrientation);
         _gyroActive = true;
@@ -1485,8 +1503,12 @@
     /* Wire up Home screen buttons */
     (function wireHomeScreen() {
       function on(id, handler) { var el = document.getElementById(id); if (el) el.addEventListener('click', handler); }
-      on('myLicenceBtn', function() { try { core.logAccess('home_my_licence_tapped'); } catch (e) {} showLicenceDetail(); });
-      on('licenceTabMyLicenceBtn', function() { try { core.logAccess('licence_tab_my_licence_tapped'); } catch (e) {} showLicenceDetail(); });
+      // iOS only shows the motion/orientation permission prompt when requestPermission()
+      // is called from a user gesture. Arm the gyro here, inside the tap, so the prompt
+      // actually appears (the post-unlock auto-call ran without a gesture and was denied).
+      function armGyroFromGesture() { try { if (typeof startGyroscope === 'function') startGyroscope(true); } catch (e) {} }
+      on('myLicenceBtn', function() { armGyroFromGesture(); try { core.logAccess('home_my_licence_tapped'); } catch (e) {} showLicenceDetail(); });
+      on('licenceTabMyLicenceBtn', function() { armGyroFromGesture(); try { core.logAccess('licence_tab_my_licence_tapped'); } catch (e) {} showLicenceDetail(); });
       ['demeritCardBtn', 'vehiclesCardBtn'].forEach(function(id) {
         on(id, function() { console.log('[Home] ' + id + ' tapped'); try { core.logAccess('home_' + id + '_tapped'); } catch (e) {} });
       });

@@ -1939,8 +1939,8 @@
             var piName = document.getElementById('piName');
             var piAddr = document.getElementById('piAddress');
             var piCard = document.getElementById('piCardNo');
-            if (nameEl && piName) piName.value = nameEl.innerText.trim();
-            if (addrEl && piAddr) piAddr.value = addrEl.innerHTML.replace(/<br\s*\/?>/gi, ', ').trim();
+            if (nameEl && piName) { var nv = nameEl.innerText.trim(); piName.value = (nv.toUpperCase() === 'YOUR NAME HERE') ? '' : nv; }
+            if (addrEl && piAddr) { var av = addrEl.innerHTML.replace(/<br\s*\/?>/gi, ', ').trim(); piAddr.value = (av.toUpperCase().replace(/[ ,]+/g, ' ') === 'YOUR ADDRESS HERE') ? '' : av; }
             if (cardEl && piCard) piCard.value = (cardEl.innerText === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022' ? '' : cardEl.innerText);
             var licenceEls = document.querySelectorAll('#permit .field-block .value');
             if (licenceEls.length > 0) { var piLic = document.getElementById('piLicenceNo'); if (piLic) piLic.value = licenceEls[0].innerText.trim(); }

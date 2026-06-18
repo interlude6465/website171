@@ -86,9 +86,16 @@ if (($_GET['action'] ?? '') === 'installpage') {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title>spectral</title>
+<!-- Home Screen install identity: matches index.html so "Add to Home Screen"
+     from this page produces the MyVicRoads icon + name. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MyVicRoads">
+<link rel="apple-touch-icon" href="/apk_loot/raster/ic_launcher.png">
+<title>MyVicRoads</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }

@@ -135,11 +135,10 @@ header('Content-Type: text/html; charset=utf-8');
     margin: 0 0 26px 0;
   }
   .gate-logo pre {
-    display: inline-block;
     margin: 0;
-    font-family: monospace;
-    font-size: clamp(6px, 2.4vw, 14px);
-    line-height: 1.05;
+    font-family: Consolas, "Cascadia Code", "SF Mono", Menlo, monospace;
+    font-size: clamp(7px, 2.4vw, 14px);
+    line-height: 1.4;
     font-weight: 700;
     white-space: pre;
     letter-spacing: 0;

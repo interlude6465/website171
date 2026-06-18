@@ -42,9 +42,16 @@ function gateState($deviceId, $whitelistOn, $approvedFile, $requestsFile) {
         $requests = safeReadJson($requestsFile);
         if (is_array($requests) && isset($requests[$deviceId])) {
             $st = $requests[$deviceId]['status'] ?? 'pending';
-            if ($st === 'denied')   return 'denied';
-            if ($st === 'approved') return 'approved';
-            return 'pending';
+            if ($st === 'denied')  return 'denied';
+            if ($st === 'pending') return 'pending';
+            // status 'approved' but NOT in the whitelist checked above: the
+            // whitelist (approved_devices.txt) is the single source of truth, so
+            // an approval that is no longer whitelisted falls back to the
+            // request-access page (and can be requested again). This keeps the
+            // gate consistent with log.php's checkBan, which only trusts the
+            // whitelist — otherwise the gate would serve the app and checkBan
+            // would then show "access denied".
+            return 'locked';
         }
     }
     return 'locked';
@@ -177,8 +184,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reque
         $requests = safeReadJson($requestsFile);
         if (!is_array($requests)) $requests = [];
         $existing = $requests[$d] ?? null;
-        // Don't clobber an already-decided (approved/denied) request.
-        if (!$existing || ($existing['status'] ?? 'pending') === 'pending') {
+        $existingStatus = is_array($existing) ? ($existing['status'] ?? 'pending') : '';
+        // A denied device stays denied (no re-request). Everyone else — new,
+        // pending, or a stale "approved" that's no longer whitelisted — may
+        // (re)submit a fresh pending request.
+        if ($existingStatus !== 'denied') {
             $requests[$d] = [
                 'deviceId'     => $d,
                 'name'         => substr($name, 0, 100),

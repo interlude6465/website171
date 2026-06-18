@@ -137,9 +137,10 @@ header('Content-Type: text/html; charset=utf-8');
   .gate-logo pre {
     display: inline-block;
     margin: 0;
-    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-    font-size: clamp(6px, 2.4vw, 13px);
+    font-family: monospace;
+    font-size: clamp(6px, 2.4vw, 14px);
     line-height: 1.05;
+    font-weight: 700;
     white-space: pre;
     letter-spacing: 0;
   }

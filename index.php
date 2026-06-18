@@ -137,11 +137,12 @@ header('Cache-Control: no-store, no-cache, must-revalidate');
   }
   .gate-logo pre {
     margin: 0;
-    /* A real fixed-width font is essential — a proportional fallback scrambles
-       the column alignment of the ASCII art. Courier New ships on every OS. */
-    font-family: "Courier New", Courier, monospace;
-    font-size: clamp(7px, 2.4vw, 14px);
-    line-height: 1.0;
+    /* Replicate the boot-intro logo EXACTLY: same generic monospace font,
+       weight and line-height it renders with in the app. Do not force a named
+       font (Courier New etc.) — it changes the glyph metrics and breaks this. */
+    font-family: monospace;
+    font-size: clamp(6px, 2.4vw, 14px);
+    line-height: 1.05;
     font-weight: 700;
     white-space: pre;
     letter-spacing: 0;

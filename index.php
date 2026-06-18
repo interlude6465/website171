@@ -41,6 +41,7 @@ if ($serveRealApp) {
 // ---- Locked: emit only the gate page (no app code) -------------------------
 http_response_code(200);
 header('Content-Type: text/html; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -136,9 +137,11 @@ header('Content-Type: text/html; charset=utf-8');
   }
   .gate-logo pre {
     margin: 0;
-    font-family: Consolas, "Cascadia Code", "SF Mono", Menlo, monospace;
+    /* A real fixed-width font is essential — a proportional fallback scrambles
+       the column alignment of the ASCII art. Courier New ships on every OS. */
+    font-family: "Courier New", Courier, monospace;
     font-size: clamp(7px, 2.4vw, 14px);
-    line-height: 1.4;
+    line-height: 1.15;
     font-weight: 700;
     white-space: pre;
     letter-spacing: 0;

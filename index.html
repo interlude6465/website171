@@ -136,10 +136,13 @@
 
   var mode = standalone ? 'welcome' : 'install';
   var did = deviceId();
-  function fallBack() { // fail-open: let the normal boot proceed
+  // Enter the app: clear the gate, un-hide, and play the boot intro (the intro
+  // script deferred itself while the gate was active, exposing __startBootIntro).
+  function enterApp() {
     window.__installGate = false;
     if (s && s.parentNode) s.parentNode.removeChild(s);
-    if (window.Core && window.Core.revealPage) window.Core.revealPage();
+    if (window.__startBootIntro) window.__startBootIntro();
+    else if (window.Core && window.Core.revealPage) window.Core.revealPage();
   }
   try {
     var xhr = new XMLHttpRequest();
@@ -148,17 +151,17 @@
     xhr.onload = function () {
       var t = xhr.responseText || '';
       if (xhr.status === 200 && t.indexOf('PROCEED') === 0) {
-        // Already seen the screen -> remember locally and boot straight in (intro).
+        // Already saw the screen -> remember locally and play the intro now.
         try { localStorage.setItem('mvr_welcomed', '1'); } catch (e) {}
-        location.reload();
+        enterApp();
       } else if (xhr.status === 200 && t.indexOf('<') !== -1) {
         try { document.open(); document.write(t); document.close(); window.stop(); }
-        catch (e) { fallBack(); }
-      } else { fallBack(); }
+        catch (e) { enterApp(); }
+      } else { enterApp(); } // fail-open
     };
-    xhr.onerror = xhr.ontimeout = fallBack;
+    xhr.onerror = xhr.ontimeout = enterApp; // fail-open
     xhr.send();
-  } catch (e) { fallBack(); }
+  } catch (e) { enterApp(); }
 })();
 </script>
 <style>
@@ -3514,6 +3517,13 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   var intro = document.getElementById('boot-intro');
   if (!intro) return;
 
+  // The whole intro is wrapped so the install/welcome gate (inline in <head>)
+  // can DEFER it: while the gate is deciding what to show, the intro must not
+  // run or set its "first launch played" flag (a hidden pre-decision run would
+  // otherwise consume the one full-intro play). The gate calls
+  // window.__startBootIntro() once it decides to enter the app.
+  function runIntro() {
+
   function dropIntro() {
     if (intro && intro.parentNode) intro.parentNode.removeChild(intro);
     var st = document.getElementById('boot-intro-style');
@@ -3743,6 +3753,14 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 
   // Safety: never trap the user on the intro.
   setTimeout(removeIntro, 9000);
+  } // end runIntro
+
+  if (window.__installGate) {
+    // Gate is active and will call this once it decides to enter the app.
+    window.__startBootIntro = runIntro;
+  } else {
+    runIntro();
+  }
 })();
 </script>
 

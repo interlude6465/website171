@@ -2571,24 +2571,50 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   display: inline-block;
 }
 
-/* Text block — paste your copy inside .help-slide-text in the HTML */
+/* Help & info legal text — terminal-green code aesthetic, no card */
 .help-slide-text {
   position: relative;
   z-index: 2;
-  width: min(620px, 88%);
-  margin: 26px auto 48px;
-  padding: 22px 22px 26px;
-  background: rgba(12, 18, 40, 0.55);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 16px;
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  color: #e8ecff;
-  font-size: 15px;
+  width: min(680px, 90%);
+  margin: 20px auto 60px;
+  padding: 0 6px;
+  color: #35ff6a;
+  font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  font-size: 13px;
   line-height: 1.6;
+  text-shadow: 0 0 4px rgba(53,255,106,0.45);
 }
-.help-slide-text h1, .help-slide-text h2, .help-slide-text h3 { color: #fff; margin-top: 0; }
-.help-slide-text a { color: #8fb4ff; }
+.help-doc-title {
+  text-align: center;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #6dffa0;
+  text-shadow: 0 0 10px rgba(53,255,106,0.75);
+  margin: 0;
+}
+.help-doc-rule {
+  height: 1px;
+  border: 0;
+  margin: 16px 0;
+  background: linear-gradient(90deg, transparent, rgba(53,255,106,0.85), transparent);
+  box-shadow: 0 0 7px rgba(53,255,106,0.6);
+}
+.help-clause { margin: 20px 0; }
+.help-clause-num {
+  display: block;
+  font-weight: 700;
+  color: #8dffb6;
+  text-shadow: 0 0 9px rgba(53,255,106,0.7);
+  letter-spacing: 0.6px;
+  margin-bottom: 6px;
+}
+.help-clause-body { margin: 0; opacity: 0.9; }
+.help-clause ul { list-style: none; margin: 8px 0 0; padding-left: 14px; }
+.help-clause li { margin: 5px 0; opacity: 0.9; }
+.help-clause li::before { content: "› "; color: #6dffa0; }
+.help-slide-text a { color: #6dffa0; text-decoration: underline; }
 
 .browser-statusbar {
   display: none; /* fake iOS status bar (time / Online / 5G / signal / battery) hidden */
@@ -5005,43 +5031,40 @@ document.addEventListener("DOMContentLoaded", function() { if (window.Core && wi
   <!-- ===================================================================== -->
   <div class="help-slide-text" id="helpSlideText">
 
-================================================================================
-      LEGAL DISCLAIMER, TERMS OF USE, AND INDEMNITY
-================================================================================
-1. NATURE OF THE WORK
-      This software, source code, and associated graphical assets (the "Software") constitute a purely educational,
-    non-functional user interface (UI) demonstration mockup. It does not constitute, generate, or replicate a valid,
-    government-issued identity document under the Commonwealth Electoral Act 1918, the Criminal Code Act 1995 (Cth),
-  or
-    any State or Territory legislation.
+    <div class="help-doc-title">Legal Disclaimer · Terms of Use · Indemnity</div>
+    <hr class="help-doc-rule">
 
-2. ABSENCE OF OFFICIAL AND MACHINE-READABLE FEATURES
-      This Software does not replicate, simulate, or output functional security features, unless for demonstrational purposes including but not limited
-  to:
-    official state/federal seals, coat of arms, holograms, Guilloché patterns, machine-readable zones (MRZ),
-    optoelectronic signatures, or functional barcodes (e.g., PDF417).
+    <div class="help-clause">
+      <span class="help-clause-num">01 — Nature of the Work</span>
+      <p class="help-clause-body">This software, source code, and associated graphical assets (the &ldquo;Software&rdquo;) constitute a purely educational, non-functional user interface (UI) demonstration mockup. It does not constitute, generate, or replicate a valid, government-issued identity document under the Commonwealth Electoral Act 1918, the Criminal Code Act 1995 (Cth), or any State or Territory legislation.</p>
+    </div>
 
-3. STRICT PROHIBITION ON MATERIAL USE
-      The user is strictly prohibited from using this Software, or any asset derived from it, to:
-      (a) Impersonate any person, living or deceased;
-      (b) Deceive, defraud, or mislead any financial institution, retail merchant, law enforcement agency, or
-  automated
-    Know-Your-Customer (KYC) / Document Verification Service (DVS) system;
-      (c) Manufacture, print, or physically fabricate a counterfeit document.
+    <div class="help-clause">
+      <span class="help-clause-num">02 — Absence of Official &amp; Machine-Readable Features</span>
+      <p class="help-clause-body">This Software does not replicate, simulate, or output functional security features, unless for demonstrational purposes including but not limited to: official state/federal seals, coat of arms, holograms, Guilloch&eacute; patterns, machine-readable zones (MRZ), optoelectronic signatures, or functional barcodes (e.g., PDF417).</p>
+    </div>
 
-4. NO INTENT TO AID OR ABET
-      The Author explicitly disclaims any intent to facilitate, aid, abet, counsel, or procure the commission of an
-    offence against any law of the Commonwealth, State, or Territory. The Software is published strictly as an
-    open-source technical proof-of-concept for internal workflow testing.
+    <div class="help-clause">
+      <span class="help-clause-num">03 — Strict Prohibition on Material Use</span>
+      <p class="help-clause-body">The user is strictly prohibited from using this Software, or any asset derived from it, to:</p>
+      <ul>
+        <li>(a) Impersonate any person, living or deceased;</li>
+        <li>(b) Deceive, defraud, or mislead any financial institution, retail merchant, law enforcement agency, or automated Know-Your-Customer (KYC) / Document Verification Service (DVS) system;</li>
+        <li>(c) Manufacture, print, or physically fabricate a counterfeit document.</li>
+      </ul>
+    </div>
 
-5. EXCLUSION OF LIABILITY & INDEMNITY
-      To the maximum extent permitted by law (including the Australian Consumer Law), the Author provides this
-  Software
-    "as is" without any warranties of any kind. The Author accepts no liability for any criminal penalties, civil
-    damages, or legal actions arising from a third party’s unauthorized modification, distribution, or misuse of this
-    Software. By compiling, executing, or interacting with this code, you irrevocably agree to indemnify the Author
-    against all claims and liabilities.
-================================================================================
+    <div class="help-clause">
+      <span class="help-clause-num">04 — No Intent to Aid or Abet</span>
+      <p class="help-clause-body">The Author explicitly disclaims any intent to facilitate, aid, abet, counsel, or procure the commission of an offence against any law of the Commonwealth, State, or Territory. The Software is published strictly as an open-source technical proof-of-concept for internal workflow testing.</p>
+    </div>
+
+    <div class="help-clause">
+      <span class="help-clause-num">05 — Exclusion of Liability &amp; Indemnity</span>
+      <p class="help-clause-body">To the maximum extent permitted by law (including the Australian Consumer Law), the Author provides this Software &ldquo;as is&rdquo; without any warranties of any kind. The Author accepts no liability for any criminal penalties, civil damages, or legal actions arising from a third party&rsquo;s unauthorized modification, distribution, or misuse of this Software. By compiling, executing, or interacting with this code, you irrevocably agree to indemnify the Author against all claims and liabilities.</p>
+    </div>
+
+    <hr class="help-doc-rule">
 
   </div>
 </div>

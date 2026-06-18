@@ -59,6 +59,114 @@ if (($_GET['action'] ?? '') === 'gatestate') {
     exit;
 }
 
+// ---- AJAX: "Access granted / add to Home Screen" page (approved-but-not-installed) ----
+// Served to an approved iOS device that opened the site in a normal Safari tab
+// instead of the installed (Home Screen) app. Carries the owner's approval note.
+if (($_GET['action'] ?? '') === 'installpage') {
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+    $d = isset($_GET['deviceId']) ? trim($_GET['deviceId']) : $deviceId;
+    $note = '';
+    $requests = safeReadJson($requestsFile);
+    if (is_array($requests) && $d !== '' && isset($requests[$d]) && ($requests[$d]['status'] ?? '') === 'approved') {
+        $note = (string)($requests[$d]['note'] ?? '');
+    }
+    $noteSafe  = htmlspecialchars($note, ENT_QUOTES, 'UTF-8');
+    $noteBlock = $noteSafe !== '' ? '<div class="gate-note">Note from spectral: ' . $noteSafe . '</div>' : '';
+
+    $page = <<<'HTML'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>spectral</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #000;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, Inter, Arial, sans-serif;
+    overflow: hidden;
+  }
+  .gate-stars { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 40%, #0a1230 0%, #05060f 55%, #000 100%); }
+  .gate-stars span { position: absolute; top: 0; left: 0; width: 200%; height: 200%;
+    background-repeat: repeat; background-position: 0 0; }
+  .gate-stars .layer-1 {
+    background-image:
+      radial-gradient(1px 1px at 20px 30px, #fff, transparent),
+      radial-gradient(1px 1px at 120px 80px, #cfd8ff, transparent),
+      radial-gradient(1px 1px at 200px 160px, #fff, transparent),
+      radial-gradient(2px 2px at 320px 60px, #fff, transparent),
+      radial-gradient(1px 1px at 400px 220px, #bcd0ff, transparent);
+    background-size: 420px 300px;
+    animation: gate-drift 90s linear infinite, gate-twinkle 4s ease-in-out infinite; opacity: 0.9; }
+  .gate-stars .layer-2 {
+    background-image:
+      radial-gradient(1px 1px at 60px 120px, #fff, transparent),
+      radial-gradient(1.5px 1.5px at 180px 40px, #e7ecff, transparent),
+      radial-gradient(1px 1px at 280px 200px, #fff, transparent),
+      radial-gradient(1px 1px at 360px 140px, #aac4ff, transparent);
+    background-size: 380px 280px;
+    animation: gate-drift 140s linear infinite reverse, gate-twinkle 6s ease-in-out infinite; opacity: 0.65; }
+  .gate-stars .layer-3 {
+    background-image:
+      radial-gradient(2px 2px at 100px 90px, #fff, transparent),
+      radial-gradient(2.5px 2.5px at 240px 180px, #d7e2ff, transparent),
+      radial-gradient(2px 2px at 340px 50px, #fff, transparent);
+    background-size: 500px 360px;
+    animation: gate-drift 200s linear infinite, gate-twinkle 5s ease-in-out infinite; opacity: 0.45; filter: blur(0.4px); }
+  @keyframes gate-drift { from { transform: translate3d(0,0,0); } to { transform: translate3d(-50%,-50%,0); } }
+  @keyframes gate-twinkle { 0%,100% { opacity: 0.85; } 50% { opacity: 0.4; } }
+  @media (prefers-reduced-motion: reduce) { .gate-stars span { animation: none !important; } }
+
+  .gate-wrap { position: relative; z-index: 1; min-height: 100%; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; padding: 24px; }
+  .gate-logo { color: #fff; text-shadow: 0 0 18px rgba(120,160,255,0.55), 0 0 40px rgba(80,120,255,0.25);
+    margin: 0 0 24px 0; display: flex; justify-content: center; }
+  .gate-logo pre { margin: 0; font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: clamp(6px, 2.6vw, 15px); line-height: 1.05; font-weight: 700; white-space: pre; letter-spacing: 0; text-align: left; }
+  .gate-msg { color: #32d74b; font-size: clamp(18px, 5vw, 24px); font-weight: 700; line-height: 1.4;
+    max-width: 560px; text-shadow: 0 0 16px rgba(50,215,75,0.45); letter-spacing: 0.3px; }
+  .gate-note { color: #e7ecff; font-size: clamp(14px, 4vw, 17px); font-weight: 500; line-height: 1.5;
+    max-width: 520px; margin-top: 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 12px; padding: 12px 16px; }
+  .gate-instructions { color: #aab0c6; font-size: clamp(14px, 4vw, 16px); font-weight: 500; line-height: 1.6;
+    max-width: 480px; margin-top: 22px; }
+  .gate-instructions strong { color: #fff; }
+</style>
+</head>
+<body>
+  <div class="gate-stars" aria-hidden="true">
+    <span class="layer-1"></span>
+    <span class="layer-2"></span>
+    <span class="layer-3"></span>
+  </div>
+
+  <div class="gate-wrap">
+    <div class="gate-logo" aria-label="spectral">
+      <pre>
+                                  __                .__
+    ____________   ____   _____/  |_____________  |  |
+   /  ___/\____ \_/ __ \_/ ___\   __\_  __ \__  \ |  |
+   \___ \ |  |_> >  ___/\  \___|  |  |  | \// __ \|  |__
+  /____  >|   __/ \___  >\___  >__|  |__|  (____  /____/
+       \/ |__|        \/     \/                 \/</pre>
+    </div>
+    <div class="gate-msg">Access granted</div>
+    %%NOTE%%
+    <div class="gate-instructions">Please press <strong>Share</strong>, scroll until you see <strong>Add to Home Screen</strong>, and proceed there.</div>
+  </div>
+</body>
+</html>
+HTML;
+    echo str_replace('%%NOTE%%', $noteBlock, $page);
+    exit;
+}
+
 // ---- POST: submit an access request -----------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'request_access') {
     $d = trim($_POST['deviceId'] ?? '');

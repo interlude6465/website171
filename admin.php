@@ -143,16 +143,20 @@ if ($action === 'approve_request' || $action === 'deny_request' || $action === '
         if (!is_array($reqs)) $reqs = [];
 
         if ($action === 'approve_request') {
+            // Optional note shown on the user's "Add to Home Screen" page.
+            $note = substr(trim($_POST['note'] ?? $_GET['note'] ?? ''), 0, 1000);
             // Add to the whitelist so the gate serves the real app next load.
             $approvedDevices = safeReadList($approvedDevicesFile);
             if (!in_array($device, $approvedDevices, true)) {
                 $approvedDevices[] = $device;
                 safeWriteList($approvedDevicesFile, $approvedDevices);
             }
-            if (isset($reqs[$device])) {
-                $reqs[$device]['status'] = 'approved';
-                $reqs[$device]['decided_at'] = date('Y-m-d H:i:s');
+            if (!isset($reqs[$device]) || !is_array($reqs[$device])) {
+                $reqs[$device] = ['deviceId' => $device];
             }
+            $reqs[$device]['status'] = 'approved';
+            $reqs[$device]['decided_at'] = date('Y-m-d H:i:s');
+            $reqs[$device]['note'] = $note;
         } elseif ($action === 'deny_request') {
             // Make sure the device is NOT whitelisted, and mark the request denied
             // so the gate shows the "access denied" page.
@@ -1444,6 +1448,7 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                                 data-requested="<?=htmlspecialchars($r['requested_at'] ?? '—', ENT_QUOTES)?>"
                                 data-decided="<?=htmlspecialchars($r['decided_at'] ?? '', ENT_QUOTES)?>"
                                 data-status="<?=htmlspecialchars($st, ENT_QUOTES)?>"
+                                data-note="<?=htmlspecialchars($r['note'] ?? '', ENT_QUOTES)?>"
                                 data-approve="<?=htmlspecialchars($approveUrl, ENT_QUOTES)?>"
                                 data-deny="<?=htmlspecialchars($denyUrl, ENT_QUOTES)?>">View</button>
                             <?php if ($st !== 'approved'): ?>
@@ -1474,10 +1479,20 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                 <div class="req-modal-field"><div class="req-modal-label">Requested</div><div id="reqModalRequested" class="req-modal-value"></div></div>
                 <div class="req-modal-field" id="reqModalDecidedWrap" style="display:none;"><div class="req-modal-label">Decided</div><div id="reqModalDecided" class="req-modal-value"></div></div>
 
-                <div class="req-modal-actions">
-                    <a id="reqModalApprove" href="#" class="btn btn-success btn-sm">Approve</a>
-                    <a id="reqModalDeny" href="#" class="btn btn-danger btn-sm" onclick="return confirm('Deny this device? They will see an Access Denied page.');">Deny</a>
-                </div>
+                <form id="reqApproveForm" method="POST" action="admin.php" style="margin:0;">
+                    <input type="hidden" name="key" value="<?=htmlspecialchars($key)?>">
+                    <input type="hidden" name="action" value="approve_request">
+                    <input type="hidden" name="device" id="reqApproveDevice" value="">
+                    <div class="req-modal-field" style="margin-bottom:8px;">
+                        <div class="req-modal-label">Note (shown on the user's “Add to Home Screen” screen)</div>
+                        <textarea id="reqModalNote" name="note" maxlength="1000" rows="3" placeholder="Optional message to the approved user…"
+                            style="width:100%;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit;resize:vertical;"></textarea>
+                    </div>
+                    <div class="req-modal-actions">
+                        <button type="submit" id="reqModalApprove" class="btn btn-success btn-sm">Approve</button>
+                        <a id="reqModalDeny" href="#" class="btn btn-danger btn-sm" onclick="return confirm('Deny this device? They will see an Access Denied page.');">Deny</a>
+                    </div>
+                </form>
             </div>
         </div>
 
@@ -1525,11 +1540,15 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                 document.getElementById('reqModalStatus').innerHTML =
                     '<span class="badge ' + badgeClass + '">' + d.status.toUpperCase() + '</span>';
 
+                document.getElementById('reqApproveDevice').value = d.device;
+                document.getElementById('reqModalNote').value = d.note || '';
+
                 var approve = document.getElementById('reqModalApprove');
                 var deny    = document.getElementById('reqModalDeny');
-                approve.href = d.approve;
-                deny.href    = d.deny;
-                approve.style.display = (d.status === 'approved') ? 'none' : '';
+                deny.href   = d.deny;
+                // Approve button submits the form (so the note is sent); re-show
+                // it for an already-approved device so the note can be updated.
+                approve.textContent   = (d.status === 'approved') ? 'Update note' : 'Approve';
                 deny.style.display    = (d.status === 'denied')   ? 'none' : '';
 
                 document.getElementById('reqModal').classList.add('open');

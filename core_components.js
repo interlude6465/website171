@@ -419,7 +419,10 @@
                 // and show the ban page immediately instead of after the intro.
                 core.showBanned(xhr.responseText);
             } else {
-                core.revealPage();
+                // Approved & not banned. On iOS, require the app to be launched
+                // from the Home Screen (standalone PWA); otherwise show the
+                // "Access granted / add to Home Screen" page instead of the app.
+                core.maybeRevealOrInstall(deviceId);
             }
         };
         xhr.onerror = xhr.ontimeout = function() {
@@ -455,6 +458,49 @@
                   '<div><div style="font-size:54px">⛔</div><h2>Access Blocked</h2>' +
                   '<p style="opacity:.7">This device has been banned.</p></div></body>';
             document.open(); document.write(page); document.close();
+            window.stop();
+        } catch (e) {}
+    };
+
+    // Approved devices on iOS must run as an installed (Home Screen / standalone)
+    // app. If launched in the normal Safari tab, fetch the server-rendered
+    // "Access granted / add to Home Screen" page (carrying the owner's approval
+    // note) and show it instead of the real app. Non-iOS / already-installed
+    // devices fall straight through to the app.
+    core.maybeRevealOrInstall = function(deviceId) {
+        var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        var isStandalone = (window.navigator.standalone === true) ||
+            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+        if (!isIOS || isStandalone) { core.revealPage(); return; }
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', 'index.php?action=installpage&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now(), true);
+            xhr.timeout = 8000;
+            xhr.onload = function() {
+                if (xhr.status === 200 && xhr.responseText.indexOf('<') !== -1) {
+                    core.showInstallPrompt(xhr.responseText);
+                } else {
+                    core.revealPage();
+                }
+            };
+            // Fail-open on a transient error rather than bricking an approved user.
+            xhr.onerror = xhr.ontimeout = function() { core.revealPage(); };
+            xhr.send();
+        } catch (e) {
+            core.revealPage();
+        }
+    };
+
+    // Render the server-rendered install page, tearing down the intro/loaders
+    // first (same teardown as the ban page) so it's the only thing shown.
+    core.showInstallPrompt = function(html) {
+        ['boot-intro', 'boot-intro-style', 'early-loader', 'anti-leak'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        });
+        try {
+            document.open(); document.write(html); document.close();
             window.stop();
         } catch (e) {}
     };

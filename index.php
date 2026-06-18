@@ -94,7 +94,7 @@ if (($_GET['action'] ?? '') === 'installpage') {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="MyVicRoads">
-<link rel="apple-touch-icon" href="/apk_loot/raster/ic_launcher.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>MyVicRoads</title>
 <style>
   * { box-sizing: border-box; }

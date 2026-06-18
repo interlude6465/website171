@@ -1658,21 +1658,23 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
   touch-action: manipulation;
 }
 
-/* Home screen scroll container — iOS standalone PWA scroll fix v2.
-   padding-bottom guarantees scrollHeight > clientHeight so iOS engages
-   the elastic scroller; works reliably where ::after pseudo-elements fail
-   in standalone PWAs with flex margin-top:auto siblings. */
+/* Home screen scroll container — iOS standalone PWA scroll fix v3.
+   The scroller must size to its FLEX SLOT (the space left after the header
+   and any pinned siblings), NOT the full viewport — forcing height:100%
+   made the scroller taller than its content, so nothing overflowed and iOS
+   never engaged the elastic scroller. flex:1 1 auto + min-height:0 sizes it
+   to the slot; padding-bottom + the injected .scroll-spacer then guarantee a
+   small overflow so the rubber-band bounce engages (matches Profile/Licence). */
 .home-scroll,
 #screenVehicles .app-screen-scroll,
 #screenPayments .app-screen-scroll {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
   display: block;
   min-height: 0;
-  height: 100%;
   padding-bottom: 200px;
 }
 

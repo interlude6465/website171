@@ -739,6 +739,12 @@
       if (viewport) viewport.classList.remove('unlocked');
       if (topNav) topNav.classList.remove('unlocked');
       window.__lastScreen = name;
+      // The scroll spacer can only be measured once the screen is visible (not display:none),
+      // so re-size it here every time a tab is shown — and again next frame after layout settles.
+      if (typeof window.__sizeScrollSpacers === 'function') {
+        window.__sizeScrollSpacers();
+        requestAnimationFrame(window.__sizeScrollSpacers);
+      }
       setTimeout(function() {
         var visible = screens[name];
         if (!visible) return;
@@ -2194,10 +2200,42 @@
 
     (function injectScrollSpacers() {
       var selectors = ['.home-scroll', '#screenVehicles .app-screen-scroll', '#screenPayments .app-screen-scroll'];
-      function inject() {
-        selectors.forEach(function (sel) { var el = document.querySelector(sel); if (!el) return; if (el.querySelector(':scope > .scroll-spacer')) return; var spacer = document.createElement('div'); spacer.className = 'scroll-spacer'; spacer.setAttribute('aria-hidden', 'true'); el.appendChild(spacer); });
+      var BOUNCE_PAD = 90; // px of guaranteed overflow so iOS engages the elastic rubber-band
+      function each(fn) {
+        selectors.forEach(function (sel) { var el = document.querySelector(sel); if (el) fn(el); });
       }
-      if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', inject); } else { inject(); }
+      function inject() {
+        each(function (el) {
+          if (el.querySelector(':scope > .scroll-spacer')) return;
+          var spacer = document.createElement('div');
+          spacer.className = 'scroll-spacer';
+          spacer.setAttribute('aria-hidden', 'true');
+          el.appendChild(spacer);
+        });
+      }
+      // Size each spacer so the scroller ALWAYS overflows its visible slot by exactly
+      // BOUNCE_PAD, regardless of screen height. A fixed-px spacer overflowed a short
+      // phone (iPhone 13) but not a tall one (13 Pro Max) — so the taller screen never
+      // overflowed and never bounced. Measuring the real slot fixes it on every device.
+      function size() {
+        each(function (el) {
+          var spacer = el.querySelector(':scope > .scroll-spacer');
+          if (!spacer) return;
+          spacer.style.flex = '0 0 0px';
+          spacer.style.height = '0px';
+          var slot = el.clientHeight;
+          if (slot <= 0) return; // screen hidden / not laid out yet — try again later
+          var natural = el.scrollHeight; // content height with the spacer collapsed
+          var needed = Math.max(0, slot + BOUNCE_PAD - natural);
+          spacer.style.height = needed + 'px';
+          spacer.style.flex = '0 0 ' + needed + 'px';
+        });
+      }
+      window.__sizeScrollSpacers = size;
+      function start() { inject(); size(); setTimeout(size, 300); }
+      if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
+      window.addEventListener('resize', size);
+      window.addEventListener('orientationchange', function () { setTimeout(size, 250); });
     })();
 
     // ===== CLEAN INITIALIZATION =====

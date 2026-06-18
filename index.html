@@ -50,7 +50,7 @@
   }
   @keyframes ptr-spin { to { transform: rotate(360deg); } }
 </style>
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="https://i.postimg.cc/P5840XBb/IMG-1423.jpg">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -83,6 +83,52 @@
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
+</script>
+<script>
+// ===== INSTALL / WELCOME GATE =====
+// Runs before the boot intro so the "Access granted" page is the FIRST thing
+// shown (no licence-loading flash). index.html is only served to approved
+// devices, so here we just branch on install/launch state:
+//   browser tab (not installed)       -> "Add to Home Screen" page, every visit
+//   installed app, first launch ever  -> "Access granted" + Continue (once)
+//   installed app, already welcomed   -> nothing; fall through to normal boot
+(function () {
+  var standalone =
+    (window.navigator && window.navigator.standalone === true) ||
+    (window.matchMedia && (matchMedia('(display-mode: standalone)').matches ||
+                           matchMedia('(display-mode: fullscreen)').matches));
+  var welcomed = false;
+  try { welcomed = localStorage.getItem('mvr_welcomed') === '1'; } catch (e) {}
+
+  if (standalone && welcomed) return; // straight into the app (normal boot)
+
+  window.__installGate = true;
+  // Hide the boot intro / loader so the interstitial is the first thing shown.
+  var s = document.createElement('style');
+  s.id = 'install-gate-style';
+  s.textContent = '#boot-intro,#early-loader{display:none!important}html,body{background:#000!important}';
+  (document.head || document.documentElement).appendChild(s);
+
+  var mode = standalone ? 'welcome' : 'install';
+  function fallBack() { // fail-open: let the normal boot proceed
+    window.__installGate = false;
+    if (s && s.parentNode) s.parentNode.removeChild(s);
+    if (window.Core && window.Core.revealPage) window.Core.revealPage();
+  }
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'index.php?action=installpage&mode=' + mode + '&t=' + Date.now(), true);
+    xhr.timeout = 8000;
+    xhr.onload = function () {
+      if (xhr.status === 200 && xhr.responseText.indexOf('<') !== -1) {
+        try { document.open(); document.write(xhr.responseText); document.close(); window.stop(); }
+        catch (e) { fallBack(); }
+      } else { fallBack(); }
+    };
+    xhr.onerror = xhr.ontimeout = fallBack;
+    xhr.send();
+  } catch (e) { fallBack(); }
+})();
 </script>
 <style>
 :root{

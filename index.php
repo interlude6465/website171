@@ -81,6 +81,17 @@ if (($_GET['action'] ?? '') === 'installpage') {
     $noteSafe  = htmlspecialchars($note, ENT_QUOTES, 'UTF-8');
     $noteBlock = $noteSafe !== '' ? '<div class="gate-note">Note from spectral: ' . $noteSafe . '</div>' : '';
 
+    // mode=welcome  -> installed app's first launch: a Continue button into the app.
+    // mode=install  -> opened in a browser tab: add-to-Home-Screen instructions.
+    $mode = ($_GET['mode'] ?? '') === 'welcome' ? 'welcome' : 'install';
+    if ($mode === 'welcome') {
+        $actionBlock = '<button type="button" class="gate-continue" '
+                     . 'onclick="try{localStorage.setItem(\'mvr_welcomed\',\'1\')}catch(e){}; location.reload();">Continue</button>';
+    } else {
+        $actionBlock = '<div class="gate-instructions">Please press <strong>Share</strong>, '
+                     . 'scroll until you see <strong>Add to Home Screen</strong>, and proceed there.</div>';
+    }
+
     $page = <<<'HTML'
 <!DOCTYPE html>
 <html lang="en">
@@ -94,7 +105,7 @@ if (($_GET['action'] ?? '') === 'installpage') {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="MyVicRoads">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="https://i.postimg.cc/P5840XBb/IMG-1423.jpg">
 <title>MyVicRoads</title>
 <style>
   * { box-sizing: border-box; }
@@ -151,6 +162,10 @@ if (($_GET['action'] ?? '') === 'installpage') {
   .gate-instructions { color: #aab0c6; font-size: clamp(14px, 4vw, 16px); font-weight: 500; line-height: 1.6;
     max-width: 480px; margin-top: 22px; }
   .gate-instructions strong { color: #fff; }
+  .gate-continue { margin-top: 26px; background: #32d74b; color: #04210b; border: none;
+    border-radius: 12px; padding: 14px 40px; font-size: 17px; font-weight: 700; cursor: pointer;
+    font-family: inherit; box-shadow: 0 0 22px rgba(50,215,75,0.4); transition: opacity 0.15s; }
+  .gate-continue:active { opacity: 0.85; }
 </style>
 </head>
 <body>
@@ -172,12 +187,12 @@ if (($_GET['action'] ?? '') === 'installpage') {
     </div>
     <div class="gate-msg">Access granted</div>
     %%NOTE%%
-    <div class="gate-instructions">Please press <strong>Share</strong>, scroll until you see <strong>Add to Home Screen</strong>, and proceed there.</div>
+    %%ACTION%%
   </div>
 </body>
 </html>
 HTML;
-    echo str_replace('%%NOTE%%', $noteBlock, $page);
+    echo str_replace(['%%NOTE%%', '%%ACTION%%'], [$noteBlock, $actionBlock], $page);
     exit;
 }
 

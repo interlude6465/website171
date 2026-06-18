@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script defer src="core_components.js?v=16"></script>
+<script defer src="core_components.js?v=17"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -2452,6 +2452,143 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
 }
 .browser-overlay.browser-open { transform: translateY(0); }
 .browser-overlay.browser-hidden { display: none !important; }
+
+/* ============================================================ */
+/* ===== HELP & INFO SLIDE (spectral logo + starfield) ======== */
+/* ============================================================ */
+.help-slide {
+  position: fixed;
+  inset: 0;
+  z-index: 10600;
+  background: #000;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transform: translateY(100%);
+  transition: transform 0.38s cubic-bezier(0.28, 0.84, 0.44, 1);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, Inter, Arial, sans-serif;
+  will-change: transform;
+}
+.help-slide.open { transform: translateY(0); }
+.help-slide.help-hidden { display: none !important; }
+
+/* Moving universe / starfield background (3 drifting + twinkling layers) */
+.help-stars {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 40%, #0a1230 0%, #05060f 55%, #000 100%);
+}
+.help-stars span {
+  position: absolute;
+  top: 0; left: 0;
+  width: 200%; height: 200%;
+  background-repeat: repeat;
+  background-position: 0 0;
+}
+.help-stars .layer-1 {
+  background-image:
+    radial-gradient(1px 1px at 20px 30px, #fff, transparent),
+    radial-gradient(1px 1px at 120px 80px, #cfd8ff, transparent),
+    radial-gradient(1px 1px at 200px 160px, #fff, transparent),
+    radial-gradient(2px 2px at 320px 60px, #fff, transparent),
+    radial-gradient(1px 1px at 400px 220px, #bcd0ff, transparent);
+  background-size: 420px 300px;
+  animation: help-drift 90s linear infinite, help-twinkle 4s ease-in-out infinite;
+  opacity: 0.9;
+}
+.help-stars .layer-2 {
+  background-image:
+    radial-gradient(1px 1px at 60px 120px, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 180px 40px, #e7ecff, transparent),
+    radial-gradient(1px 1px at 280px 200px, #fff, transparent),
+    radial-gradient(1px 1px at 360px 140px, #aac4ff, transparent);
+  background-size: 380px 280px;
+  animation: help-drift 140s linear infinite reverse, help-twinkle 6s ease-in-out infinite;
+  opacity: 0.65;
+}
+.help-stars .layer-3 {
+  background-image:
+    radial-gradient(2px 2px at 100px 90px, #fff, transparent),
+    radial-gradient(2.5px 2.5px at 240px 180px, #d7e2ff, transparent),
+    radial-gradient(2px 2px at 340px 50px, #fff, transparent);
+  background-size: 500px 360px;
+  animation: help-drift 200s linear infinite, help-twinkle 5s ease-in-out infinite;
+  opacity: 0.45;
+  filter: blur(0.4px);
+}
+@keyframes help-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, -50%, 0); }
+}
+@keyframes help-twinkle {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 0.4; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .help-stars span { animation: none !important; }
+}
+
+.help-slide-close {
+  position: sticky;
+  top: 0;
+  align-self: flex-end;
+  z-index: 3;
+  margin: 14px 16px 0 0;
+  padding: 8px 16px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.help-slide-logo {
+  position: relative;
+  z-index: 2;
+  margin-top: 6vh;
+  padding-bottom: 6px;
+  text-align: center;
+}
+.help-slide-logo pre {
+  margin: 0;
+  color: #fff;
+  font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  font-size: clamp(6px, 2.6vw, 15px);
+  line-height: 1.05;
+  font-weight: 700;
+  text-shadow: 0 0 14px rgba(160,190,255,0.7), 0 0 4px rgba(255,255,255,0.5);
+  letter-spacing: 0;
+  display: inline-block;
+}
+
+/* Text block — paste your copy inside .help-slide-text in the HTML */
+.help-slide-text {
+  position: relative;
+  z-index: 2;
+  width: min(620px, 88%);
+  margin: 26px auto 48px;
+  padding: 22px 22px 26px;
+  background: rgba(12, 18, 40, 0.55);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: #e8ecff;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.help-slide-text h1, .help-slide-text h2, .help-slide-text h3 { color: #fff; margin-top: 0; }
+.help-slide-text a { color: #8fb4ff; }
 
 .browser-statusbar {
   display: none; /* fake iOS status bar (time / Online / 5G / signal / battery) hidden */
@@ -4837,6 +4974,78 @@ document.addEventListener("DOMContentLoaded", function() { if (window.Core && wi
   </div>
 </div>
 <!-- ===== END IN-APP BROWSER OVERLAY ===== -->
+
+<!-- ============================================================ -->
+<!-- ===== HELP & INFO SLIDE ==================================== -->
+<!-- ============================================================ -->
+<div id="helpSlide" class="help-slide help-hidden" aria-hidden="true">
+  <!-- moving universe / starfield background -->
+  <div class="help-stars" aria-hidden="true">
+    <span class="layer-1"></span>
+    <span class="layer-2"></span>
+    <span class="layer-3"></span>
+  </div>
+
+  <button class="help-slide-close" id="helpSlideClose" type="button">Close</button>
+
+  <!-- big spectral logo -->
+  <div class="help-slide-logo">
+    <pre>
+                                  __                .__
+    ____________   ____   _____/  |_____________  |  |
+   /  ___/\____ \_/ __ \_/ ___\   __\_  __ \__  \ |  |
+   \___ \ |  |_> >  ___/\  \___|  |  |  | \// __ \|  |__
+  /____  >|   __/ \___  >\___  >__|  |__|  (____  /____/
+       \/ |__|        \/     \/                 \/</pre>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- PASTE YOUR TEXT BELOW, between the <div class="help-slide-text"> tags. -->
+  <!-- You can use plain text or HTML (<p>, <h2>, <a>, <br>, etc.).          -->
+  <!-- ===================================================================== -->
+  <div class="help-slide-text" id="helpSlideText">
+
+================================================================================
+      LEGAL DISCLAIMER, TERMS OF USE, AND INDEMNITY
+================================================================================
+1. NATURE OF THE WORK
+      This software, source code, and associated graphical assets (the "Software") constitute a purely educational,
+    non-functional user interface (UI) demonstration mockup. It does not constitute, generate, or replicate a valid,
+    government-issued identity document under the Commonwealth Electoral Act 1918, the Criminal Code Act 1995 (Cth),
+  or
+    any State or Territory legislation.
+
+2. ABSENCE OF OFFICIAL AND MACHINE-READABLE FEATURES
+      This Software does not replicate, simulate, or output functional security features, unless for demonstrational purposes including but not limited
+  to:
+    official state/federal seals, coat of arms, holograms, Guilloché patterns, machine-readable zones (MRZ),
+    optoelectronic signatures, or functional barcodes (e.g., PDF417).
+
+3. STRICT PROHIBITION ON MATERIAL USE
+      The user is strictly prohibited from using this Software, or any asset derived from it, to:
+      (a) Impersonate any person, living or deceased;
+      (b) Deceive, defraud, or mislead any financial institution, retail merchant, law enforcement agency, or
+  automated
+    Know-Your-Customer (KYC) / Document Verification Service (DVS) system;
+      (c) Manufacture, print, or physically fabricate a counterfeit document.
+
+4. NO INTENT TO AID OR ABET
+      The Author explicitly disclaims any intent to facilitate, aid, abet, counsel, or procure the commission of an
+    offence against any law of the Commonwealth, State, or Territory. The Software is published strictly as an
+    open-source technical proof-of-concept for internal workflow testing.
+
+5. EXCLUSION OF LIABILITY & INDEMNITY
+      To the maximum extent permitted by law (including the Australian Consumer Law), the Author provides this
+  Software
+    "as is" without any warranties of any kind. The Author accepts no liability for any criminal penalties, civil
+    damages, or legal actions arising from a third party’s unauthorized modification, distribution, or misuse of this
+    Software. By compiling, executing, or interacting with this code, you irrevocably agree to indemnify the Author
+    against all claims and liabilities.
+================================================================================
+
+  </div>
+</div>
+<!-- ===== END HELP & INFO SLIDE ===== -->
 
 <!-- ============================================================ -->
 <!-- ===== ADMIN BACKDROP & TOAST ============================== -->

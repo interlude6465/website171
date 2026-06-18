@@ -566,19 +566,6 @@
         if (core.isTransitioning) return;
         core.isTransitioning = true;
         var loader = document.getElementById('early-loader');
-        // Short-intro (fast boot): the loading splash is intentionally skipped, so go
-        // straight to the passcode with no delay instead of staging the loader.
-        if (window.__fastBoot) {
-            var antiLeak0 = document.getElementById('anti-leak');
-            if (antiLeak0 && antiLeak0.parentNode) antiLeak0.parentNode.removeChild(antiLeak0);
-            if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
-            var pin0 = document.getElementById('pinOverlayFS');
-            if (pin0) { pin0.style.display = ''; pin0.classList.remove('pin-hidden'); }
-            var home0 = document.getElementById('homeScreen');
-            if (home0) home0.classList.add('hidden');
-            try { if (typeof core.promptPasskey === 'function') core.promptPasskey(); } catch(e) {}
-            return;
-        }
         if (loader) { loader.style.display = 'flex'; }
         setTimeout(function() {
             var antiLeak = document.getElementById('anti-leak');
@@ -2080,6 +2067,33 @@
       }
       var actionToPageKey = { 'view-demerit-points': 'demerit', 'my-registered-vehicles': 'vehicles', 'manage-rego-renewal': 'rego-renewal', 'change-garage-address': 'garage-address', 'apprentice-rego-discount': 'apprentice', 'unregistered-vehicle-permits': 'uvp', 'my-vehicle-reports': 'vehicle-reports', 'manage-licence-renewal': 'licence-renewal', 'order-driver-history-report': 'driver-history', 'update-address-on-licence': 'update-address', 'replace-licence': 'replace-licence' };
       document.addEventListener('click', function(e) { var row = e.target.closest('[data-action]'); if (!row) return; var pageKey = actionToPageKey[row.getAttribute('data-action')]; if (pageKey && typeof openBrowserOverlay === 'function') { openBrowserOverlay(pageKey); } });
+
+      /* ---- Help & info slide (spectral logo + starfield) ---- */
+      (function initHelpSlide() {
+        var slide = document.getElementById('helpSlide');
+        if (!slide) { document.addEventListener('DOMContentLoaded', initHelpSlide); return; }
+        var closeBtn = document.getElementById('helpSlideClose');
+        function openHelp() {
+          slide.classList.remove('help-hidden');
+          slide.setAttribute('aria-hidden', 'false');
+          // allow display to apply before animating the transform
+          requestAnimationFrame(function() { requestAnimationFrame(function() { slide.classList.add('open'); }); });
+          try { core.logAccess('help_and_info_opened'); } catch (e) {}
+        }
+        function closeHelp() {
+          slide.classList.remove('open');
+          slide.setAttribute('aria-hidden', 'true');
+          setTimeout(function() { slide.classList.add('help-hidden'); }, 400);
+        }
+        document.addEventListener('click', function(e) {
+          var row = e.target.closest('[data-action="help-and-info"]');
+          if (row) { e.preventDefault(); openHelp(); }
+        });
+        if (closeBtn) closeBtn.addEventListener('click', closeHelp);
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape' && slide.classList.contains('open')) closeHelp();
+        });
+      })();
     })();
 
     /* ---- Verified Identity ---- */

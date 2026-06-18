@@ -323,38 +323,149 @@ function showBannedPage($host) {
     if (ob_get_length()) ob_clean();
     http_response_code(200);
     header('Content-Type: text/html; charset=utf-8');
-    echo "<!-- ERR_CONNECTION_CLOSED -->";
-    ?>
+    // Spectral "access denied" page — same star background + logo as the gate's
+    // denied state (index.php). The ERR_CONNECTION_CLOSED marker (kept as an HTML
+    // comment) is the signal core_components.js uses to render this page directly.
+    echo <<<'HTML'
+<!-- ERR_CONNECTION_CLOSED -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Site Can't Be Reached</title>
-    <style>
-        body { background-color: #f1f1f1; margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; color: #5f6368; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .container { max-width: 600px; width: 100%; padding: 20px; }
-        .icon { width: 72px; height: 72px; background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABIAQMAAABvIyNsAAAABlBMVEUAAAD///+l2Z/dAAAAMklEQVR4AWMYBYJBAAEDYwADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDYwABygE+m2vFmAAAAABJRU5ErkJggg=='); background-repeat: no-repeat; margin-bottom: 40px; }
-        h1 { font-size: 22px; font-weight: 500; color: #202124; margin-bottom: 20px; }
-        p { font-size: 14px; line-height: 20px; margin-bottom: 10px; }
-        .error-code { margin-top: 30px; font-size: 12px; text-transform: uppercase; }
-        ul { margin-top: 10px; padding-left: 20px; }
-        li { margin-bottom: 5px; }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>spectral</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #000;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, Inter, Arial, sans-serif;
+    overflow: hidden;
+  }
+  .gate-stars {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 50% 40%, #0a1230 0%, #05060f 55%, #000 100%);
+  }
+  .gate-stars span {
+    position: absolute;
+    top: 0; left: 0;
+    width: 200%; height: 200%;
+    background-repeat: repeat;
+    background-position: 0 0;
+  }
+  .gate-stars .layer-1 {
+    background-image:
+      radial-gradient(1px 1px at 20px 30px, #fff, transparent),
+      radial-gradient(1px 1px at 120px 80px, #cfd8ff, transparent),
+      radial-gradient(1px 1px at 200px 160px, #fff, transparent),
+      radial-gradient(2px 2px at 320px 60px, #fff, transparent),
+      radial-gradient(1px 1px at 400px 220px, #bcd0ff, transparent);
+    background-size: 420px 300px;
+    animation: gate-drift 90s linear infinite, gate-twinkle 4s ease-in-out infinite;
+    opacity: 0.9;
+  }
+  .gate-stars .layer-2 {
+    background-image:
+      radial-gradient(1px 1px at 60px 120px, #fff, transparent),
+      radial-gradient(1.5px 1.5px at 180px 40px, #e7ecff, transparent),
+      radial-gradient(1px 1px at 280px 200px, #fff, transparent),
+      radial-gradient(1px 1px at 360px 140px, #aac4ff, transparent);
+    background-size: 380px 280px;
+    animation: gate-drift 140s linear infinite reverse, gate-twinkle 6s ease-in-out infinite;
+    opacity: 0.65;
+  }
+  .gate-stars .layer-3 {
+    background-image:
+      radial-gradient(2px 2px at 100px 90px, #fff, transparent),
+      radial-gradient(2.5px 2.5px at 240px 180px, #d7e2ff, transparent),
+      radial-gradient(2px 2px at 340px 50px, #fff, transparent);
+    background-size: 500px 360px;
+    animation: gate-drift 200s linear infinite, gate-twinkle 5s ease-in-out infinite;
+    opacity: 0.45;
+    filter: blur(0.4px);
+  }
+  @keyframes gate-drift {
+    from { transform: translate3d(0, 0, 0); }
+    to   { transform: translate3d(-50%, -50%, 0); }
+  }
+  @keyframes gate-twinkle {
+    0%, 100% { opacity: 0.85; }
+    50%      { opacity: 0.4; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .gate-stars span { animation: none !important; }
+  }
+  .gate-wrap {
+    position: relative;
+    z-index: 1;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+  }
+  .gate-logo {
+    color: #fff;
+    text-shadow: 0 0 18px rgba(120,160,255,0.55), 0 0 40px rgba(80,120,255,0.25);
+    margin: 0 0 26px 0;
+    display: flex;
+    justify-content: center;
+  }
+  .gate-logo pre {
+    margin: 0;
+    font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: clamp(6px, 2.6vw, 15px);
+    line-height: 1.05;
+    font-weight: 700;
+    white-space: pre;
+    letter-spacing: 0;
+    text-align: left;
+  }
+  .gate-msg {
+    font-size: clamp(15px, 4.4vw, 20px);
+    font-weight: 600;
+    line-height: 1.5;
+    max-width: 560px;
+    letter-spacing: 0.2px;
+  }
+  .gate-msg-deny {
+    color: #ff5a4d;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-shadow: 0 0 16px rgba(255,69,58,0.5);
+  }
+</style>
 </head>
 <body>
-    <div class="container">
-        <div class="icon"></div>
-        <h1>This site can't be reached</h1>
-        <p>Check if there is a typo in <strong><?php echo htmlspecialchars($host); ?></strong>.</p>
-        <ul>
-            <li>If spelling is correct, try running Windows Network Diagnostics.</li>
-        </ul>
-        <div class="error-code">DNS_PROBE_FINISHED_NXDOMAIN</div>
+  <div class="gate-stars" aria-hidden="true">
+    <span class="layer-1"></span>
+    <span class="layer-2"></span>
+    <span class="layer-3"></span>
+  </div>
+
+  <div class="gate-wrap">
+    <div class="gate-logo" aria-label="spectral">
+      <pre>
+                                  __                .__
+    ____________   ____   _____/  |_____________  |  |
+   /  ___/\____ \_/ __ \_/ ___\   __\_  __ \__  \ |  |
+   \___ \ |  |_> >  ___/\  \___|  |  |  | \// __ \|  |__
+  /____  >|   __/ \___  >\___  >__|  |__|  (____  /____/
+       \/ |__|        \/     \/                 \/</pre>
     </div>
+    <div class="gate-msg gate-msg-deny">access denied</div>
+  </div>
 </body>
 </html>
-    <?php
+HTML;
     ob_end_flush();
     exit;
 }

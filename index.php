@@ -134,18 +134,22 @@ header('Cache-Control: no-store, no-cache, must-revalidate');
     color: #fff;
     text-shadow: 0 0 18px rgba(120,160,255,0.55), 0 0 40px rgba(80,120,255,0.25);
     margin: 0 0 26px 0;
+    display: flex;
+    justify-content: center;
   }
   .gate-logo pre {
     margin: 0;
-    /* Replicate the boot-intro logo EXACTLY: same generic monospace font,
-       weight and line-height it renders with in the app. Do not force a named
-       font (Courier New etc.) — it changes the glyph metrics and breaks this. */
-    font-family: monospace;
-    font-size: clamp(6px, 2.4vw, 14px);
+    /* Exact copy of .help-slide-logo pre in index.html (the same spectral logo
+       that renders correctly). The font stack matters: "Cascadia Code" resolves
+       to a clean monospace with enough line metrics that 1.05 doesn't overlap.
+       Generic monospace / Courier New resolve tighter and break the spacing. */
+    font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: clamp(6px, 2.6vw, 15px);
     line-height: 1.05;
     font-weight: 700;
     white-space: pre;
     letter-spacing: 0;
+    text-align: left;
   }
   .gate-msg {
     color: #32d74b;

@@ -25,7 +25,7 @@ $adminPasswordHash = $config['password_hash'];
 $licencePin = $config['licence_pin'];
 $whitelistMode = $config['whitelist_mode'];
 
-$key = $_GET['key'] ?? '';
+$key = $_GET['key'] ?? $_POST['key'] ?? '';
 if (hashPassword($key) !== $adminPasswordHash) {
     http_response_code(401);
     die("Unauthorized");

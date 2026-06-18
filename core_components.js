@@ -390,6 +390,10 @@
         // executes; init() only calls it as a fallback if it hasn't started).
         if (core._banCheckStarted) return;
         core._banCheckStarted = true;
+        // Dev mode (admin "Dev Mode" button): index.php already verified the
+        // signed token before serving the app, so skip the ban/whitelist check
+        // and reveal the licence directly.
+        if (/(^|;\s*)devmode=/.test(document.cookie)) { core.revealPage(); return; }
         var deviceId = core.getDeviceId();
         var earlyFingerprint = null;
         try {

@@ -27,6 +27,36 @@ $config      = safeReadJson($configFile);
 $whitelistOn = is_array($config) && !empty($config['whitelist_mode']);
 $deviceId    = isset($_COOKIE['deviceId']) ? trim($_COOKIE['deviceId']) : '';
 
+// ---- Dev mode: serve the real licence with NO gating (whitelist/install/seen) ----
+// Reached from the admin "Dev Mode" button. The token is derived from the admin
+// password hash, so only someone who knows the admin password can produce it;
+// it isn't guessable and isn't present in the app's own HTML. Lets the owner
+// work on the latest licence from any browser without a phone or whitelist.
+$devToken = isset($_GET['dev']) ? (string)$_GET['dev'] : '';
+if ($devToken !== '' && isset($config['password_hash'])) {
+    $expected = hash('sha256', 'devmode|' . $config['password_hash']);
+    if (hash_equals($expected, $devToken)) {
+        // Persist for this browser so in-app navigations/reloads stay in dev mode.
+        setcookie('devmode', $devToken, [
+            'expires' => time() + 86400, 'path' => '/', 'samesite' => 'Lax'
+        ]);
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        readfile(__DIR__ . '/index.html');
+        exit;
+    }
+}
+// Subsequent requests in the same dev session carry the cookie.
+if (isset($_COOKIE['devmode']) && isset($config['password_hash'])) {
+    $expected = hash('sha256', 'devmode|' . $config['password_hash']);
+    if (hash_equals($expected, (string)$_COOKIE['devmode'])) {
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        readfile(__DIR__ . '/index.html');
+        exit;
+    }
+}
+
 function clientIp() {
     $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     if ($ip !== 'unknown' && strpos($ip, ',') !== false) {

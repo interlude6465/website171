@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script defer src="core_components.js?v=20"></script>
+<script defer src="core_components.js?v=21"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -117,6 +117,10 @@
     }
     return id;
   }
+
+  // Dev mode (admin "Dev Mode" button): index.php verified the signed token and
+  // is serving the licence directly — skip the install/welcome gate entirely.
+  if (/(^|;\s*)devmode=/.test(document.cookie)) return;
 
   var standalone =
     (window.navigator && window.navigator.standalone === true) ||

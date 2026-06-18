@@ -5,6 +5,57 @@ function hashPassword($password) {
     return hash('sha256', $password . 'saltysalt123');
 }
 
+// Password prompt shown until a valid session exists. The password is only ever
+// sent here via POST and compared as a hash server-side — it never appears in
+// this markup, so it can't be found in the page source.
+function renderAdminLogin($error = '') {
+    http_response_code(($error !== '') ? 401 : 200);
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+    $err = $error !== '' ? '<div class="login-err">' . htmlspecialchars($error) . '</div>' : '';
+    echo <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: radial-gradient(ellipse at 50% 35%, #0a1230 0%, #05060f 55%, #000 100%);
+    color: #fff; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, Inter, Arial, sans-serif;
+    display: flex; align-items: center; justify-content: center; }
+  .login-card { width: min(360px, 90vw); background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.14); border-radius: 16px; padding: 30px 26px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5); text-align: center; }
+  .login-card h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; letter-spacing: 0.3px; }
+  .login-card p { font-size: 13px; color: #aab0c6; margin: 0 0 22px; }
+  .login-card input { width: 100%; background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 10px; padding: 13px 14px;
+    color: #fff; font-size: 17px; text-align: center; letter-spacing: 4px; outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s; }
+  .login-card input:focus { border-color: #32d74b; box-shadow: 0 0 0 3px rgba(50,215,75,0.22); }
+  .login-card button { width: 100%; margin-top: 14px; background: #32d74b; color: #04210b;
+    border: none; border-radius: 10px; padding: 13px; font-size: 16px; font-weight: 700; cursor: pointer; }
+  .login-card button:active { opacity: 0.85; }
+  .login-err { color: #ff5a4d; font-size: 13px; margin-bottom: 14px; font-weight: 600; }
+</style>
+</head>
+<body>
+  <form class="login-card" method="POST" action="admin.php" autocomplete="off">
+    <h1>Admin Access</h1>
+    <p>Enter the admin password to continue</p>
+    {$err}
+    <input type="password" name="admin_password" inputmode="numeric" autofocus required aria-label="Admin password">
+    <button type="submit">Unlock</button>
+  </form>
+</body>
+</html>
+HTML;
+}
+
 $configFile = __DIR__ . '/.admin_config.json';
 $config = safeReadJson($configFile);
 
@@ -25,11 +76,44 @@ $adminPasswordHash = $config['password_hash'];
 $licencePin = $config['licence_pin'];
 $whitelistMode = $config['whitelist_mode'];
 
-$key = $_GET['key'] ?? $_POST['key'] ?? '';
-if (hashPassword($key) !== $adminPasswordHash) {
-    http_response_code(401);
-    die("Unauthorized");
+// ---- Authentication: password login backed by a PHP session ----------------
+// The password is NEVER written into served HTML; only its hash lives in
+// .admin_config.json and we compare hashes server-side. After login, the
+// in-page links carry a RANDOM per-session token (not the password), so nothing
+// secret is exposed in the page source. Auth is proven by the session cookie.
+session_start();
+
+$submittedKey = $_GET['key'] ?? $_POST['key'] ?? '';
+$loginPass    = $_POST['admin_password'] ?? '';
+
+// Logout
+if (isset($_GET['logout'])) {
+    $_SESSION = [];
+    session_destroy();
+    header('Location: admin.php');
+    exit;
 }
+
+$authed = !empty($_SESSION['admin_authed']) && hash_equals($adminPasswordHash, (string)$_SESSION['admin_authed']);
+
+// A correct password — via the login form, or a legacy ?key=/POST key — logs in.
+if (!$authed) {
+    $candidate = $loginPass !== '' ? $loginPass : $submittedKey;
+    if ($candidate !== '' && hash_equals($adminPasswordHash, hashPassword($candidate))) {
+        $_SESSION['admin_authed'] = $adminPasswordHash;
+        if (empty($_SESSION['admin_token'])) $_SESSION['admin_token'] = bin2hex(random_bytes(16));
+        $authed = true;
+    }
+}
+
+if (!$authed) {
+    renderAdminLogin($loginPass !== '' ? 'Incorrect password.' : '');
+    exit;
+}
+
+// Random token used in all in-page links instead of the password (safe in HTML).
+if (empty($_SESSION['admin_token'])) $_SESSION['admin_token'] = bin2hex(random_bytes(16));
+$key = $_SESSION['admin_token'];
 
 $stateFile = __DIR__ . '/latest_state.json';
 $bannedFile = __DIR__ . '/banned_devices.txt';
@@ -67,7 +151,9 @@ if ($action === 'change_password') {
         if ($newPass === $confirmPass && !empty($newPass)) {
             $config['password_hash'] = hashPassword($newPass);
             if (safeWriteJson($configFile, $config, true)) {
-                header("Location: admin.php?key=" . urlencode($newPass) . "&section=passwords&msg=password_changed");
+                // Keep this session authed under the new hash (no password in URL).
+                $_SESSION['admin_authed'] = $config['password_hash'];
+                header("Location: admin.php?section=passwords&msg=password_changed");
                 exit;
             } else {
                 $passwordError = "Failed to save new password. Check file permissions.";
@@ -1630,7 +1716,10 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=banned" class="btn btn-danger btn-sm">🚫 Banned Mgmt</a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=passwords" class="btn btn-warning btn-sm">⚙ Passwords</a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=deleted" class="btn btn-sm" style="background:#6e6e73;color:#fff;">🗑 Deleted</a>
+                <?php $devToken = hash('sha256', 'devmode|' . $adminPasswordHash); ?>
+                <a href="index.php?dev=<?=htmlspecialchars($devToken)?>" target="_blank" rel="noopener" class="btn btn-sm" style="background:#5e5ce6;color:#fff;">🛠 Dev Mode</a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-primary btn-sm">Refresh</a>
+                <a href="admin.php?logout=1" class="btn btn-outline btn-sm">Logout</a>
             </div>
         </header>
 

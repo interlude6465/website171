@@ -90,9 +90,34 @@
 // shown (no licence-loading flash). index.html is only served to approved
 // devices, so here we just branch on install/launch state:
 //   browser tab (not installed)       -> "Add to Home Screen" page, every visit
-//   installed app, first launch ever  -> "Access granted" + Continue (once)
-//   installed app, already welcomed   -> nothing; fall through to normal boot
+//   installed app, NOT yet seen       -> "Access granted" + Continue (once)
+//   installed app, already seen       -> nothing; fall through to normal boot
+// "Seen" is tracked server-side by the fingerprint deviceId (identical in Safari
+// and the installed app), so viewing the screen in the browser means the Home
+// Screen app skips it and goes straight to the intro.
 (function () {
+  // Compute the same stable deviceId core_components uses (FNV-1a fingerprint),
+  // so the server can match this device across Safari and the standalone app.
+  function hashString(str) {
+    var hash = 0x811c9dc5;
+    for (var i = 0; i < str.length; i++) { hash ^= str.charCodeAt(i); hash = Math.imul(hash, 0x01000193); }
+    return (hash >>> 0).toString(36);
+  }
+  function getCookie(n) { var m = document.cookie.match(new RegExp('(^| )' + n + '=([^;]+)')); return m ? decodeURIComponent(m[2]) : null; }
+  function deviceId() {
+    var id = getCookie('deviceId');
+    if (!id) { try { id = localStorage.getItem('deviceId'); } catch (e) {} }
+    if (!id) {
+      try {
+        var fp = { ua: navigator.userAgent, screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone, lang: navigator.language, platform: navigator.platform,
+          hwConcurrency: navigator.hardwareConcurrency || null, deviceMemory: navigator.deviceMemory || null };
+        id = 'dev-' + hashString(JSON.stringify(fp)).substring(0, 16);
+      } catch (e) { id = 'dev-fallback'; }
+    }
+    return id;
+  }
+
   var standalone =
     (window.navigator && window.navigator.standalone === true) ||
     (window.matchMedia && (matchMedia('(display-mode: standalone)').matches ||
@@ -110,6 +135,7 @@
   (document.head || document.documentElement).appendChild(s);
 
   var mode = standalone ? 'welcome' : 'install';
+  var did = deviceId();
   function fallBack() { // fail-open: let the normal boot proceed
     window.__installGate = false;
     if (s && s.parentNode) s.parentNode.removeChild(s);
@@ -117,11 +143,16 @@
   }
   try {
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'index.php?action=installpage&mode=' + mode + '&t=' + Date.now(), true);
+    xhr.open('GET', 'index.php?action=installpage&mode=' + mode + '&deviceId=' + encodeURIComponent(did) + '&t=' + Date.now(), true);
     xhr.timeout = 8000;
     xhr.onload = function () {
-      if (xhr.status === 200 && xhr.responseText.indexOf('<') !== -1) {
-        try { document.open(); document.write(xhr.responseText); document.close(); window.stop(); }
+      var t = xhr.responseText || '';
+      if (xhr.status === 200 && t.indexOf('PROCEED') === 0) {
+        // Already seen the screen -> remember locally and boot straight in (intro).
+        try { localStorage.setItem('mvr_welcomed', '1'); } catch (e) {}
+        location.reload();
+      } else if (xhr.status === 200 && t.indexOf('<') !== -1) {
+        try { document.open(); document.write(t); document.close(); window.stop(); }
         catch (e) { fallBack(); }
       } else { fallBack(); }
     };

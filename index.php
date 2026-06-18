@@ -21,6 +21,7 @@ require_once __DIR__ . '/helpers.php';
 $configFile   = __DIR__ . '/.admin_config.json';
 $approvedFile = __DIR__ . '/approved_devices.txt';
 $requestsFile = __DIR__ . '/access_requests.json';
+$seenFile     = __DIR__ . '/access_seen.json'; // deviceIds that have viewed the "Access granted" screen
 
 $config      = safeReadJson($configFile);
 $whitelistOn = is_array($config) && !empty($config['whitelist_mode']);
@@ -66,13 +67,51 @@ if (($_GET['action'] ?? '') === 'gatestate') {
     exit;
 }
 
-// ---- AJAX: "Access granted / add to Home Screen" page (approved-but-not-installed) ----
-// Served to an approved iOS device that opened the site in a normal Safari tab
-// instead of the installed (Home Screen) app. Carries the owner's approval note.
+// ---- AJAX: mark that a device has viewed the "Access granted" screen --------
+// Keyed by the fingerprint deviceId, which is identical in Safari and in the
+// installed (standalone) app — so "seen in the browser" carries over to the
+// Home Screen app even though iOS isolates their cookies/localStorage.
+if (($_GET['action'] ?? '') === 'markseen') {
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Cache-Control: no-store');
+    $d = isset($_GET['deviceId']) ? trim($_GET['deviceId']) : $deviceId;
+    if ($d !== '' && strtolower($d) !== 'unknown') {
+        $seen = safeReadJson($seenFile);
+        if (!is_array($seen)) $seen = [];
+        if (!isset($seen[$d])) { $seen[$d] = date('Y-m-d H:i:s'); safeWriteJson($seenFile, $seen, true); }
+    }
+    echo 'OK';
+    exit;
+}
+
+// ---- AJAX: "Access granted" page (approved-but-not-installed / first launch) ----
+// mode=install  -> opened in a browser tab: add-to-Home-Screen instructions
+//                  (and record that this device has now seen the screen).
+// mode=welcome  -> installed app launch: if the device already saw the screen
+//                  (in the browser or a prior launch) reply "PROCEED" so the app
+//                  boots straight into the intro; otherwise show Continue.
 if (($_GET['action'] ?? '') === 'installpage') {
-    header('Content-Type: text/html; charset=utf-8');
     header('Cache-Control: no-store, no-cache, must-revalidate');
     $d = isset($_GET['deviceId']) ? trim($_GET['deviceId']) : $deviceId;
+    $mode = ($_GET['mode'] ?? '') === 'welcome' ? 'welcome' : 'install';
+
+    $seen = safeReadJson($seenFile);
+    if (!is_array($seen)) $seen = [];
+    $hasSeen = $d !== '' && isset($seen[$d]);
+
+    // Installed app + already seen the screen -> skip it, go straight to the app.
+    if ($mode === 'welcome' && $hasSeen) {
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'PROCEED';
+        exit;
+    }
+    // Browser view counts as "seen the access-granted screen".
+    if ($mode === 'install' && $d !== '' && strtolower($d) !== 'unknown' && !$hasSeen) {
+        $seen[$d] = date('Y-m-d H:i:s');
+        safeWriteJson($seenFile, $seen, true);
+    }
+
+    header('Content-Type: text/html; charset=utf-8');
     $note = '';
     $requests = safeReadJson($requestsFile);
     if (is_array($requests) && $d !== '' && isset($requests[$d]) && ($requests[$d]['status'] ?? '') === 'approved') {
@@ -80,13 +119,15 @@ if (($_GET['action'] ?? '') === 'installpage') {
     }
     $noteSafe  = htmlspecialchars($note, ENT_QUOTES, 'UTF-8');
     $noteBlock = $noteSafe !== '' ? '<div class="gate-note">Note from spectral: ' . $noteSafe . '</div>' : '';
+    $didSafe   = htmlspecialchars($d, ENT_QUOTES, 'UTF-8');
 
-    // mode=welcome  -> installed app's first launch: a Continue button into the app.
-    // mode=install  -> opened in a browser tab: add-to-Home-Screen instructions.
-    $mode = ($_GET['mode'] ?? '') === 'welcome' ? 'welcome' : 'install';
     if ($mode === 'welcome') {
-        $actionBlock = '<button type="button" class="gate-continue" '
-                     . 'onclick="try{localStorage.setItem(\'mvr_welcomed\',\'1\')}catch(e){}; location.reload();">Continue</button>';
+        // Continue: mark seen server-side + locally, then reload (-> PROCEED -> intro).
+        $actionBlock = '<button type="button" class="gate-continue" onclick="'
+                     . 'try{localStorage.setItem(\'mvr_welcomed\',\'1\')}catch(e){};'
+                     . 'var x=new XMLHttpRequest();x.open(\'GET\',\'index.php?action=markseen&deviceId=' . $didSafe . '&t=\'+Date.now(),true);'
+                     . 'x.onload=x.onerror=function(){location.reload();};x.send();'
+                     . '">Continue</button>';
     } else {
         $actionBlock = '<div class="gate-instructions">Please press <strong>Share</strong>, '
                      . 'scroll until you see <strong>Add to Home Screen</strong>, and proceed there.</div>';

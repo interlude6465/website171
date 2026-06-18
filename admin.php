@@ -118,7 +118,8 @@ if ($action === 'delete_profile') {
             safeWriteList($deletedFile, $deletedDevices);
         }
     }
-    header("Location: admin.php?key=" . urlencode($key) . "&section=deleted");
+    // Return to the dashboard (homescreen) after deleting, not the Deleted section.
+    header("Location: admin.php?key=" . urlencode($key));
     exit;
 }
 if ($action === 'restore_profile') {
@@ -262,11 +263,15 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
         safeWriteJson($bannedFingerprintsFile, array_values($bannedFps));
     }
 
+    // Actions triggered from the Banned Management page carry section=banned and
+    // should leave the admin right there (e.g. unban a device, then unban more)
+    // instead of being pulled into that device's profile. Actions fired from a
+    // device profile have no section, so they fall through and stay on the profile.
     $redirectDevice = $_GET['device'] ?? $_POST['device'] ?? '';
-    if ($redirectDevice) {
-        header("Location: admin.php?key=" . urlencode($key) . "&device=" . urlencode($redirectDevice));
-    } elseif ($section === 'banned') {
+    if ($section === 'banned') {
         header("Location: admin.php?key=" . urlencode($key) . "&section=banned");
+    } elseif ($redirectDevice) {
+        header("Location: admin.php?key=" . urlencode($key) . "&device=" . urlencode($redirectDevice));
     } else {
         header("Location: admin.php?key=" . urlencode($key));
     }
@@ -431,28 +436,90 @@ $isDeletedView = $section === 'deleted';
     <title><?= $isProfileView ? 'Device Profile' : ($isPasswordView ? 'Password Management' : ($isBannedView ? 'Banned Management' : 'Licence Admin Dashboard')) ?></title>
     <style>
         :root {
-            --primary: #007aff;
-            --danger: #ff3b30;
-            --success: #34c759;
-            --warning: #ff9500;
-            --bg: #f2f2f7;
-            --card-bg: #ffffff;
-            --text: #1c1c1e;
-            --text-secondary: #8e8e93;
-            --text-muted: #aeaeb2;
-            --border: #e5e5ea;
-            --shadow: 0 2px 8px rgba(0,0,0,0.06);
-            --radius: 12px;
+            --primary: #0a84ff;
+            --danger: #ff453a;
+            --success: #32d74b;
+            --warning: #ff9f0a;
+            --bg: #05060f;
+            --card-bg: rgba(255,255,255,0.055);
+            --text: #f4f6fb;
+            --text-secondary: #aab0c6;
+            --text-muted: #707793;
+            --border: rgba(255,255,255,0.12);
+            --shadow: 0 10px 34px rgba(0,0,0,0.5);
+            --radius: 14px;
         }
         * { box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
-            background: var(--bg);
+            background: #05060f;
             color: var(--text);
             -webkit-font-smoothing: antialiased;
+            position: relative;
+            min-height: 100vh;
         }
-        .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+        /* Moving universe / starfield background (matches the Help & Info disclaimer) */
+        .admin-stars {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+            background: radial-gradient(ellipse at 50% 30%, #0a1230 0%, #05060f 55%, #000 100%);
+        }
+        .admin-stars span {
+            position: absolute;
+            top: 0; left: 0;
+            width: 200%; height: 200%;
+            background-repeat: repeat;
+            background-position: 0 0;
+        }
+        .admin-stars .layer-1 {
+            background-image:
+                radial-gradient(1px 1px at 20px 30px, #fff, transparent),
+                radial-gradient(1px 1px at 120px 80px, #cfd8ff, transparent),
+                radial-gradient(1px 1px at 200px 160px, #fff, transparent),
+                radial-gradient(2px 2px at 320px 60px, #fff, transparent),
+                radial-gradient(1px 1px at 400px 220px, #bcd0ff, transparent);
+            background-size: 420px 300px;
+            animation: admin-drift 90s linear infinite, admin-twinkle 4s ease-in-out infinite;
+            opacity: 0.9;
+        }
+        .admin-stars .layer-2 {
+            background-image:
+                radial-gradient(1px 1px at 60px 120px, #fff, transparent),
+                radial-gradient(1.5px 1.5px at 180px 40px, #e7ecff, transparent),
+                radial-gradient(1px 1px at 280px 200px, #fff, transparent),
+                radial-gradient(1px 1px at 360px 140px, #aac4ff, transparent);
+            background-size: 380px 280px;
+            animation: admin-drift 140s linear infinite reverse, admin-twinkle 6s ease-in-out infinite;
+            opacity: 0.65;
+        }
+        .admin-stars .layer-3 {
+            background-image:
+                radial-gradient(2px 2px at 100px 90px, #fff, transparent),
+                radial-gradient(2.5px 2.5px at 240px 180px, #d7e2ff, transparent),
+                radial-gradient(2px 2px at 340px 50px, #fff, transparent);
+            background-size: 500px 360px;
+            animation: admin-drift 200s linear infinite, admin-twinkle 5s ease-in-out infinite;
+            opacity: 0.45;
+            filter: blur(0.4px);
+        }
+        @keyframes admin-drift {
+            from { transform: translate3d(0, 0, 0); }
+            to   { transform: translate3d(-50%, -50%, 0); }
+        }
+        @keyframes admin-twinkle {
+            0%, 100% { opacity: 0.85; }
+            50%      { opacity: 0.4; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .admin-stars span { animation: none !important; }
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 20px; position: relative; z-index: 1; }
         @media (max-width: 600px) { .container { padding: 12px; } }
 
         /* Header */
@@ -464,7 +531,13 @@ $isDeletedView = $section === 'deleted';
             flex-wrap: wrap;
             gap: 10px;
         }
-        h1 { font-size: 22px; margin: 0; font-weight: 700; }
+        h1 {
+            font-size: 24px; margin: 0; font-weight: 800; letter-spacing: -0.3px;
+            background: linear-gradient(90deg, #fff 0%, #a9c2ff 60%, #6f8dff 100%);
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 2px 20px rgba(80,120,255,0.25);
+        }
         h2 { font-size: 16px; margin: 0 0 10px 0; font-weight: 600; }
         .header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .btn {
@@ -494,7 +567,7 @@ $isDeletedView = $section === 'deleted';
             border-radius: 20px;
             font-size: 11px;
             font-weight: 700;
-            background: #e5e5ea;
+            background: rgba(255,255,255,0.12);
             color: var(--text-secondary);
         }
         .badge-banned { background: #000; color: #fff; }
@@ -604,7 +677,7 @@ $isDeletedView = $section === 'deleted';
             height: 56px;
             border-radius: 10px;
             object-fit: cover;
-            background: #e5e5ea;
+            background: rgba(255,255,255,0.08);
             flex-shrink: 0;
         }
         .device-card .info { flex: 1; min-width: 0; }
@@ -629,9 +702,9 @@ $isDeletedView = $section === 'deleted';
             font-weight: 700;
             flex-shrink: 0;
         }
-        .device-card .status-badge.online { background: #e8f8ee; color: var(--success); }
-        .device-card .status-badge.offline { background: #f2f2f7; color: var(--text-muted); }
-        .device-card .status-badge.banned-sm { background: #fde8e7; color: var(--danger); }
+        .device-card .status-badge.online { background: rgba(50,215,75,0.18); color: var(--success); }
+        .device-card .status-badge.offline { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+        .device-card .status-badge.banned-sm { background: rgba(255,69,58,0.2); color: var(--danger); }
         
         .risk-icon {
             position: absolute;
@@ -668,7 +741,7 @@ $isDeletedView = $section === 'deleted';
             height: 200px;
             border-radius: 10px;
             object-fit: cover;
-            background: #e5e5ea;
+            background: rgba(255,255,255,0.08);
             flex-shrink: 0;
         }
         .profile-header .info { flex: 1; min-width: 200px; }
@@ -777,7 +850,7 @@ $isDeletedView = $section === 'deleted';
         }
         .password-form h3 { margin: 0 0 16px 0; font-size: 16px; font-weight: 600; }
         .password-form .current-value {
-            background: #f9f9f9;
+            background: rgba(255,255,255,0.05);
             border: 1px solid var(--border);
             border-radius: 6px;
             padding: 8px 12px;
@@ -795,9 +868,11 @@ $isDeletedView = $section === 'deleted';
             border-radius: 6px;
             font-size: 14px;
             outline: none;
-            transition: border-color 0.2s;
+            background: rgba(255,255,255,0.05);
+            color: var(--text);
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
-        .form-group input:focus { border-color: var(--primary); }
+        .form-group input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(10,132,255,0.25); }
         .password-form .btn { width: 100%; justify-content: center; padding: 10px; margin-top: 4px; }
         .msg-box { padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 600; text-align: center; margin-bottom: 16px; }
         .msg-box.success { background: var(--success); color: white; }
@@ -821,9 +896,28 @@ $isDeletedView = $section === 'deleted';
             .device-grid { grid-template-columns: 1fr; }
             .stats-bar .stat-card { min-width: 80px; }
         }
+
+        /* Frosted-glass treatment so the starfield shows through the cards */
+        .stat-card, .device-card, .profile-header, .profile-section,
+        .password-form, .empty-state {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(16px) saturate(150%);
+            -webkit-backdrop-filter: blur(16px) saturate(150%);
+        }
+        .device-card:hover { box-shadow: 0 8px 26px rgba(0,0,0,0.55); }
+        .back-link { color: #7fa8ff; }
+        a { color: #7fa8ff; }
+        ::selection { background: rgba(10,132,255,0.4); }
     </style>
 </head>
 <body>
+    <!-- moving universe / starfield background -->
+    <div class="admin-stars" aria-hidden="true">
+        <span class="layer-1"></span>
+        <span class="layer-2"></span>
+        <span class="layer-3"></span>
+    </div>
     <div class="container">
 
     <!-- Debug Info Toggle -->
@@ -948,17 +1042,17 @@ $isDeletedView = $section === 'deleted';
                 <div class="profile-section">
                     <h3>🔒 Triple-Lock Security Status</h3>
                     <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:4px;">
-                        <div style="flex:1;min-width:140px;padding:12px;border-radius:8px;background:<?=$lock1?'#fde8e7':'#e8f8ee'?>;border:1px solid <?=$lock1?'var(--danger)':'var(--success)'?>;">
+                        <div style="flex:1;min-width:140px;padding:12px;border-radius:8px;background:<?=$lock1?'rgba(255,69,58,0.14)':'rgba(50,215,75,0.14)'?>;border:1px solid <?=$lock1?'var(--danger)':'var(--success)'?>;">
                             <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:<?=$lock1?'var(--danger)':'var(--success)'?>;">Lock 1</div>
                             <div style="font-size:13px;font-weight:600;margin-top:2px;">Explicit (Cookie/IP)</div>
                             <div style="font-size:16px;font-weight:700;margin-top:4px;color:<?=$lock1?'var(--danger)':'var(--success)'?>;"><?=$lock1?'🔴 BREACHED':'🟢 CLEAR'?></div>
                         </div>
-                        <div style="flex:1;min-width:140px;padding:12px;border-radius:8px;background:<?=$lock2?'#fde8e7':'#e8f8ee'?>;border:1px solid <?=$lock2?'var(--danger)':'var(--success)'?>;">
+                        <div style="flex:1;min-width:140px;padding:12px;border-radius:8px;background:<?=$lock2?'rgba(255,69,58,0.14)':'rgba(50,215,75,0.14)'?>;border:1px solid <?=$lock2?'var(--danger)':'var(--success)'?>;">
                             <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:<?=$lock2?'var(--danger)':'var(--success)'?>;">Lock 2</div>
                             <div style="font-size:13px;font-weight:600;margin-top:2px;">Implicit (Canvas/WebGL)</div>
                             <div style="font-size:16px;font-weight:700;margin-top:4px;color:<?=$lock2?'var(--danger)':'var(--success)'?>;"><?=$lock2?'🔴 BREACHED':'🟢 CLEAR'?></div>
                         </div>
-                        <div style="flex:1;min-width:140px;padding:12px;border-radius:8px;background:<?=$lock3?'#fde8e7':'#e8f8ee'?>;border:1px solid <?=$lock3?'var(--danger)':'var(--success)'?>;">
+                        <div style="flex:1;min-width:140px;padding:12px;border-radius:8px;background:<?=$lock3?'rgba(255,69,58,0.14)':'rgba(50,215,75,0.14)'?>;border:1px solid <?=$lock3?'var(--danger)':'var(--success)'?>;">
                             <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:<?=$lock3?'var(--danger)':'var(--success)'?>;">Lock 3</div>
                             <div style="font-size:13px;font-weight:600;margin-top:2px;">Profile Matching</div>
                             <div style="font-size:16px;font-weight:700;margin-top:4px;color:<?=$lock3?'var(--danger)':'var(--success)'?>;"><?=$lock3?'🔴 BREACHED':'🟢 CLEAR'?></div>
@@ -970,7 +1064,7 @@ $isDeletedView = $section === 'deleted';
                     </div>
                     <?php endif; ?>
                     <?php if ($deviceFp && is_array($deviceFp)): ?>
-                    <div style="margin-top:8px;padding:10px;background:#f9f9f9;border-radius:6px;font-size:11px;font-family:monospace;color:var(--text-secondary);word-break:break-all;">
+                    <div style="margin-top:8px;padding:10px;background:rgba(255,255,255,0.05);border-radius:6px;font-size:11px;font-family:monospace;color:var(--text-secondary);word-break:break-all;">
                         <strong>Canvas Hash:</strong> <?=htmlspecialchars($deviceFp['canvasHash'] ?? '—')?><br>
                         <strong>WebGL Renderer:</strong> <?=htmlspecialchars($deviceFp['webGLRenderer'] ?? '—')?><br>
                         <strong>Platform:</strong> <?=htmlspecialchars($deviceFp['platform'] ?? '—')?><br>
@@ -1143,13 +1237,13 @@ $isDeletedView = $section === 'deleted';
             </div>
         </div>
 
-        <div id="healthDetailsBanned" class="debug-section" style="margin-top:-10px; margin-bottom:20px; background:#fff; color:var(--text); border:1px solid var(--border);">
+        <div id="healthDetailsBanned" class="debug-section" style="margin-top:-10px; margin-bottom:20px; background:rgba(20,24,42,0.72); color:var(--text); border:1px solid var(--border);">
             <h3 style="margin:0 0 10px 0; font-size:14px;">File System Writability</h3>
             <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px;">
                 <?php foreach ($health as $file => $status): 
                     $isOK = strpos($status, 'Writable') !== false;
                 ?>
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px; background:#f9f9f9; border-radius:6px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px; background:rgba(255,255,255,0.05); border-radius:6px;">
                         <span><?=htmlspecialchars($file)?></span>
                         <span class="badge <?=$isOK ? 'badge-success' : 'badge-danger'?>"><?=htmlspecialchars($status)?></span>
                     </div>
@@ -1159,7 +1253,7 @@ $isDeletedView = $section === 'deleted';
 
         <div class="profile-section">
             <h3>🛡️ Security Settings</h3>
-            <div style="display:flex; align-items:center; justify-content:space-between; padding:15px; background:#f9f9f9; border-radius:10px; border:1px solid var(--border);">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:15px; background:rgba(255,255,255,0.05); border-radius:10px; border:1px solid var(--border);">
                 <div>
                     <div style="font-weight:700; font-size:15px;">Whitelist Mode</div>
                     <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">When enabled, only approved devices can access the application.</div>
@@ -1176,12 +1270,15 @@ $isDeletedView = $section === 'deleted';
         <div class="profile-section">
             <h3>Approved Devices</h3>
             <table class="admin-table">
-                <thead><tr><th>Device ID</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Profile</th><th>Actions</th></tr></thead>
                 <tbody>
                     <?php if (empty($approvedDevices)): ?><tr><td colspan="2">No approved devices.</td></tr><?php endif; ?>
                     <?php foreach ($approvedDevices as $ad): ?>
                     <tr>
-                        <td style="font-family:monospace;"><?=htmlspecialchars($ad)?></td>
+                        <td>
+                            <div style="font-weight:600;"><?=htmlspecialchars($state[$ad]['name'] ?? 'Unknown')?></div>
+                            <div style="font-family:monospace;font-size:11px;color:var(--text-secondary);"><?=htmlspecialchars($ad)?></div>
+                        </td>
                         <td>
                             <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($ad)?>" class="btn btn-primary btn-sm">View</a>
                             <a href="admin.php?key=<?=urlencode($key)?>&section=banned&device=<?=urlencode($ad)?>&action=unapprove" class="btn btn-outline btn-sm">Revoke</a>
@@ -1195,12 +1292,15 @@ $isDeletedView = $section === 'deleted';
         <div class="profile-section">
             <h3>Banned Devices</h3>
             <table class="admin-table">
-                <thead><tr><th>Device ID</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Profile</th><th>Actions</th></tr></thead>
                 <tbody>
                     <?php if (empty($bannedDevices)): ?><tr><td colspan="2">No banned devices.</td></tr><?php endif; ?>
                     <?php foreach ($bannedDevices as $bd): ?>
                     <tr>
-                        <td style="font-family:monospace;"><?=htmlspecialchars($bd)?></td>
+                        <td>
+                            <div style="font-weight:600;"><?=htmlspecialchars($state[$bd]['name'] ?? 'Unknown')?></div>
+                            <div style="font-family:monospace;font-size:11px;color:var(--text-secondary);"><?=htmlspecialchars($bd)?></div>
+                        </td>
                         <td><a href="admin.php?key=<?=urlencode($key)?>&section=banned&device=<?=urlencode($bd)?>&action=unban" class="btn btn-success btn-sm">Unban</a></td>
                     </tr>
                     <?php endforeach; ?>
@@ -1227,14 +1327,17 @@ $isDeletedView = $section === 'deleted';
         <div class="profile-section">
             <h3>Banned Fingerprints (Lock 2)</h3>
             <table class="admin-table">
-                <thead><tr><th>Canvas Hash</th><th>WebGL Renderer</th><th>Linked Device</th><th>Banned At</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Canvas Hash</th><th>WebGL Renderer</th><th>Linked Profile</th><th>Banned At</th><th>Actions</th></tr></thead>
                 <tbody>
                     <?php if (empty($bannedFingerprints)): ?><tr><td colspan="5">No banned fingerprints.</td></tr><?php endif; ?>
-                    <?php foreach ($bannedFingerprints as $bfp): ?>
+                    <?php foreach ($bannedFingerprints as $bfp): $bfpDev = $bfp['banned_deviceId'] ?? ''; ?>
                     <tr>
                         <td style="font-family:monospace;font-size:11px;"><?=htmlspecialchars(substr($bfp['canvasHash'] ?? '—', 0, 20))?></td>
                         <td style="font-family:monospace;font-size:11px;"><?=htmlspecialchars(substr($bfp['webGLRenderer'] ?? '—', 0, 30))?></td>
-                        <td style="font-family:monospace;font-size:11px;"><?=htmlspecialchars($bfp['banned_deviceId'] ?? '—')?></td>
+                        <td style="font-size:11px;">
+                            <div style="font-weight:600;"><?=htmlspecialchars($bfpDev !== '' ? ($state[$bfpDev]['name'] ?? 'Unknown') : '—')?></div>
+                            <div style="font-family:monospace;color:var(--text-secondary);"><?=htmlspecialchars($bfpDev ?: '—')?></div>
+                        </td>
                         <td style="font-size:12px;"><?=htmlspecialchars($bfp['banned_at'] ?? '—')?></td>
                         <td>
                             <a href="admin.php?key=<?=urlencode($key)?>&section=banned&canvasHash=<?=urlencode($bfp['canvasHash'] ?? '')?>&webGLRenderer=<?=urlencode($bfp['webGLRenderer'] ?? '')?>&action=unban_fingerprint" class="btn btn-success btn-sm">Unban</a>
@@ -1331,13 +1434,13 @@ $isDeletedView = $section === 'deleted';
             </div>
         </div>
 
-        <div id="healthDetails" class="debug-section" style="margin-top:-10px; margin-bottom:20px; background:#fff; color:var(--text); border:1px solid var(--border);">
+        <div id="healthDetails" class="debug-section" style="margin-top:-10px; margin-bottom:20px; background:rgba(20,24,42,0.72); color:var(--text); border:1px solid var(--border);">
             <h3 style="margin:0 0 10px 0; font-size:14px;">File System Writability</h3>
             <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px;">
                 <?php foreach ($health as $file => $status): 
                     $isOK = strpos($status, 'Writable') !== false;
                 ?>
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px; background:#f9f9f9; border-radius:6px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px; background:rgba(255,255,255,0.05); border-radius:6px;">
                         <span><?=htmlspecialchars($file)?></span>
                         <span class="badge <?=$isOK ? 'badge-success' : 'badge-danger'?>"><?=htmlspecialchars($status)?></span>
                     </div>

@@ -1,47 +1,128 @@
 <?php
 /**
- * index.php — Whitelist gate (server-side).
+ * index.php — Whitelist gate + access-request flow (server-side).
  *
- * The real application document (index.html, which contains ALL of the inline
- * CSS + UI) is NEVER served by nginx as a static file anymore — every request
- * for "/" lands here first. We decide, BEFORE emitting a single byte of the
- * app, whether this visitor is allowed to receive the code:
+ * The real app (index.html, all inline CSS/UI) is never served to a device that
+ * isn't approved. Per-device state, when whitelist mode is on:
  *
- *   - Whitelist mode OFF  -> serve the real app to everyone (unchanged behaviour).
- *   - Whitelist mode ON   -> only devices whose deviceId cookie is on the
- *                            approved list receive the real app. Everyone else
- *                            gets the self-contained lock page below (logo +
- *                            starfield + message) and none of our actual code.
+ *   open      whitelist OFF  -> serve the real app to everyone
+ *   approved  deviceId on approved_devices.txt -> serve the real app
+ *   locked    no request yet -> lock page + "Request Access" button
+ *   pending   submitted a request, awaiting a decision -> "check back in 24h"
+ *   denied    request denied -> "access denied"
  *
- * This is what stops a random visitor from opening DevTools and lifting the
- * CSS/markup: an un-approved device literally never receives index.html.
- *
- * Approved users get index.html verbatim (readfile), so the licence app and all
- * of its styling are byte-for-byte identical to before.
+ * Requests live in access_requests.json keyed by deviceId and are actioned from
+ * the admin "Access Requests" section. State is tied to the deviceId cookie, so
+ * the pending/denied page survives reloads.
  */
 
 require_once __DIR__ . '/helpers.php';
 
-$config       = safeReadJson(__DIR__ . '/.admin_config.json');
-$whitelistOn  = is_array($config) && !empty($config['whitelist_mode']);
+$configFile   = __DIR__ . '/.admin_config.json';
+$approvedFile = __DIR__ . '/approved_devices.txt';
+$requestsFile = __DIR__ . '/access_requests.json';
 
-$serveRealApp = true;
-if ($whitelistOn) {
-    $deviceId  = isset($_COOKIE['deviceId']) ? trim($_COOKIE['deviceId']) : '';
-    $approved  = safeReadList(__DIR__ . '/approved_devices.txt');
-    $serveRealApp = ($deviceId !== '' && strtolower($deviceId) !== 'unknown' && in_array($deviceId, $approved, true));
+$config      = safeReadJson($configFile);
+$whitelistOn = is_array($config) && !empty($config['whitelist_mode']);
+$deviceId    = isset($_COOKIE['deviceId']) ? trim($_COOKIE['deviceId']) : '';
+
+function clientIp() {
+    $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    if ($ip !== 'unknown' && strpos($ip, ',') !== false) {
+        $ip = trim(explode(',', $ip)[0]);
+    }
+    return $ip;
 }
 
-if ($serveRealApp) {
+function gateState($deviceId, $whitelistOn, $approvedFile, $requestsFile) {
+    if (!$whitelistOn) return 'open';
+    if ($deviceId !== '' && strtolower($deviceId) !== 'unknown') {
+        $approved = safeReadList($approvedFile);
+        if (in_array($deviceId, $approved, true)) return 'approved';
+        $requests = safeReadJson($requestsFile);
+        if (is_array($requests) && isset($requests[$deviceId])) {
+            $st = $requests[$deviceId]['status'] ?? 'pending';
+            if ($st === 'denied')   return 'denied';
+            if ($st === 'approved') return 'approved';
+            return 'pending';
+        }
+    }
+    return 'locked';
+}
+
+// ---- AJAX: poll current gate state (drives live transitions) ----------------
+if (($_GET['action'] ?? '') === 'gatestate') {
+    header('Content-Type: application/json');
+    header('Cache-Control: no-store');
+    $d = isset($_GET['deviceId']) ? trim($_GET['deviceId']) : $deviceId;
+    echo json_encode(['state' => gateState($d, $whitelistOn, $approvedFile, $requestsFile)]);
+    exit;
+}
+
+// ---- POST: submit an access request -----------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'request_access') {
+    $d = trim($_POST['deviceId'] ?? '');
+    if ($d === '') $d = $deviceId;
+    $name   = trim($_POST['name'] ?? '');
+    $reason = trim($_POST['reason'] ?? '');
+    if ($d !== '' && strtolower($d) !== 'unknown' && $name !== '' && $reason !== '') {
+        $requests = safeReadJson($requestsFile);
+        if (!is_array($requests)) $requests = [];
+        $existing = $requests[$d] ?? null;
+        // Don't clobber an already-decided (approved/denied) request.
+        if (!$existing || ($existing['status'] ?? 'pending') === 'pending') {
+            $requests[$d] = [
+                'deviceId'     => $d,
+                'name'         => mb_substr($name, 0, 100),
+                'reason'       => mb_substr($reason, 0, 1000),
+                'status'       => 'pending',
+                'requested_at' => date('Y-m-d H:i:s'),
+                'ip'           => clientIp(),
+            ];
+            safeWriteJson($requestsFile, $requests, true);
+        }
+    }
+    header('Location: index.php'); // PRG -> pending page
+    exit;
+}
+
+$state = gateState($deviceId, $whitelistOn, $approvedFile, $requestsFile);
+
+// Approved / whitelist-off: serve the real app, byte-for-byte unchanged.
+if ($state === 'open' || $state === 'approved') {
     header('Content-Type: text/html; charset=utf-8');
     readfile(__DIR__ . '/index.html');
     exit;
 }
 
-// ---- Locked: emit only the gate page (no app code) -------------------------
+$view = $_GET['view'] ?? '';
 http_response_code(200);
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
+
+// Decide what to show under the logo for this state.
+$topLeft = '';
+$inner   = '';
+if ($state === 'denied') {
+    $inner = '<div class="gate-msg gate-msg-deny">access denied</div>';
+} elseif ($state === 'pending') {
+    $inner = '<div class="gate-msg">please check back here within the next 24 hours for your access to be granted</div>';
+} elseif ($view === 'request') {
+    $inner = '<form class="gate-form" method="POST" action="index.php" autocomplete="off">'
+           . '<input type="hidden" name="action" value="request_access">'
+           . '<input type="hidden" name="deviceId" id="reqDeviceId" value="">'
+           . '<div class="gate-form-title">Request access</div>'
+           . '<div><label for="reqName">Name</label>'
+           . '<input id="reqName" name="name" maxlength="100" required></div>'
+           . '<div><label for="reqReason">Reason</label>'
+           . '<textarea id="reqReason" name="reason" maxlength="1000" required></textarea></div>'
+           . '<button type="submit">Request</button>'
+           . '<a class="gate-form-back" href="index.php">Cancel</a>'
+           . '</form>';
+} else { // locked
+    $topLeft = '<a class="gate-topbtn" href="index.php?view=request">Request Access</a>';
+    $inner   = '<div class="gate-msg">This service is no longer available, please contact the owner to gain access</div>';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -119,6 +200,24 @@ header('Cache-Control: no-store, no-cache, must-revalidate');
     .gate-stars span { animation: none !important; }
   }
 
+  .gate-topbtn {
+    position: fixed;
+    top: 18px; left: 18px;
+    z-index: 3;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.22);
+    color: #fff;
+    text-decoration: none;
+    padding: 9px 16px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    transition: background 0.15s;
+  }
+  .gate-topbtn:hover { background: rgba(255,255,255,0.16); }
+
   .gate-wrap {
     position: relative;
     z-index: 1;
@@ -160,6 +259,73 @@ header('Cache-Control: no-store, no-cache, must-revalidate');
     text-shadow: 0 0 16px rgba(50,215,75,0.45);
     letter-spacing: 0.2px;
   }
+  .gate-msg-deny {
+    color: #ff5a4d;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-shadow: 0 0 16px rgba(255,69,58,0.5);
+  }
+
+  .gate-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: min(420px, 86vw);
+    text-align: left;
+  }
+  .gate-form .gate-form-title {
+    color: #fff;
+    font-weight: 700;
+    font-size: 20px;
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .gate-form label {
+    display: block;
+    font-size: 13px;
+    color: #aab0c6;
+    font-weight: 600;
+    margin-bottom: 5px;
+  }
+  .gate-form input,
+  .gate-form textarea {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 10px;
+    padding: 11px 12px;
+    color: #fff;
+    font-size: 15px;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .gate-form textarea { min-height: 96px; resize: vertical; }
+  .gate-form input:focus,
+  .gate-form textarea:focus {
+    border-color: #32d74b;
+    box-shadow: 0 0 0 3px rgba(50,215,75,0.22);
+  }
+  .gate-form button {
+    margin-top: 4px;
+    background: #32d74b;
+    color: #04210b;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .gate-form button:active { opacity: 0.85; }
+  .gate-form-back {
+    text-align: center;
+    color: #aab0c6;
+    text-decoration: none;
+    font-size: 13px;
+  }
+  .gate-form-back:hover { color: #fff; }
 </style>
 </head>
 <body>
@@ -168,6 +334,8 @@ header('Cache-Control: no-store, no-cache, must-revalidate');
     <span class="layer-2"></span>
     <span class="layer-3"></span>
   </div>
+
+  <?= $topLeft ?>
 
   <div class="gate-wrap">
     <div class="gate-logo" aria-label="spectral">
@@ -179,13 +347,13 @@ header('Cache-Control: no-store, no-cache, must-revalidate');
   /____  >|   __/ \___  >\___  >__|  |__|  (____  /____/
        \/ |__|        \/     \/                 \/</pre>
     </div>
-    <div class="gate-msg">This service is no longer available, please contact the owner to gain access</div>
+    <?= $inner ?>
   </div>
 
   <script>
-  /* Identify this device exactly the way the app does (so the admin sees it as
-     pending and can approve it), then poll the server — the moment the owner
-     approves this device, reload straight into the real app. Mirrors
+  /* Identify this device the same way the app does (so it shows up in the admin
+     and so the request/poll carry the right id), then poll for state changes —
+     when the owner approves/denies, the page updates itself. Mirrors
      core.getDeviceId / generateStableDeviceId / hashString in core_components.js. */
   (function () {
     function hashString(str) {
@@ -227,22 +395,27 @@ header('Cache-Control: no-store, no-cache, must-revalidate');
     setCookie('deviceId', deviceId, 365);
     try { localStorage.setItem('deviceId', deviceId); } catch (e) {}
 
-    function check() {
+    var hid = document.getElementById('reqDeviceId');
+    if (hid) { hid.value = deviceId; }
+
+    var STATE = <?= json_encode($state) ?>;
+    function poll() {
       try {
         var xhr = new XMLHttpRequest();
-        xhr.open('GET', 'log.php?action=checkBan&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now(), true);
+        xhr.open('GET', 'index.php?action=gatestate&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now(), true);
         xhr.timeout = 10000;
         xhr.onload = function () {
-          // "OK" means the server now allows this device (i.e. it was approved).
-          if (xhr.status === 200 && xhr.responseText.trim() === 'OK') {
-            location.reload();
+          if (xhr.status === 200) {
+            try {
+              var s = JSON.parse(xhr.responseText).state;
+              if (s && s !== STATE) { location.reload(); }
+            } catch (e) {}
           }
         };
         xhr.send();
       } catch (e) {}
     }
-    check();
-    setInterval(check, 20000);
+    setInterval(poll, 15000);
   })();
   </script>
 </body>

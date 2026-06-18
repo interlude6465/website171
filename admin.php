@@ -47,6 +47,9 @@ $bannedDevices = safeReadList($bannedFile);
 $bannedIps = safeReadList($bannedIpsFile);
 $deletedFile = __DIR__ . '/deleted_devices.txt';
 $deletedDevices = safeReadList($deletedFile);
+$requestsFile = __DIR__ . '/access_requests.json';
+$accessRequests = safeReadJson($requestsFile);
+if (!is_array($accessRequests)) $accessRequests = [];
 
 // Handle Actions - must check before any output
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
@@ -129,6 +132,42 @@ if ($action === 'restore_profile') {
         safeWriteList($deletedFile, $deletedDevices);
     }
     header("Location: admin.php?key=" . urlencode($key));
+    exit;
+}
+
+// ---- Access request actions (approve / deny / delete) ----
+if ($action === 'approve_request' || $action === 'deny_request' || $action === 'delete_request') {
+    $device = trim($device);
+    if ($device) {
+        $reqs = safeReadJson($requestsFile);
+        if (!is_array($reqs)) $reqs = [];
+
+        if ($action === 'approve_request') {
+            // Add to the whitelist so the gate serves the real app next load.
+            $approvedDevices = safeReadList($approvedDevicesFile);
+            if (!in_array($device, $approvedDevices, true)) {
+                $approvedDevices[] = $device;
+                safeWriteList($approvedDevicesFile, $approvedDevices);
+            }
+            if (isset($reqs[$device])) {
+                $reqs[$device]['status'] = 'approved';
+                $reqs[$device]['decided_at'] = date('Y-m-d H:i:s');
+            }
+        } elseif ($action === 'deny_request') {
+            // Make sure the device is NOT whitelisted, and mark the request denied
+            // so the gate shows the "access denied" page.
+            $approvedDevices = array_values(array_filter(safeReadList($approvedDevicesFile), fn($d) => trim($d) !== $device));
+            safeWriteList($approvedDevicesFile, $approvedDevices);
+            if (isset($reqs[$device])) {
+                $reqs[$device]['status'] = 'denied';
+                $reqs[$device]['decided_at'] = date('Y-m-d H:i:s');
+            }
+        } elseif ($action === 'delete_request') {
+            unset($reqs[$device]);
+        }
+        safeWriteJson($requestsFile, $reqs, true);
+    }
+    header("Location: admin.php?key=" . urlencode($key) . "&section=requests");
     exit;
 }
 
@@ -426,6 +465,10 @@ $isProfileView = !empty($viewDevice) && isset($state[$viewDevice]);
 $isPasswordView = $section === 'passwords';
 $isBannedView = $section === 'banned';
 $isDeletedView = $section === 'deleted';
+$isRequestsView = $section === 'requests';
+
+// Count requests still awaiting a decision (for the dashboard badge).
+$pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status'] ?? '') === 'pending'));
 
 ?>
 <!DOCTYPE html>
@@ -1348,6 +1391,65 @@ $isDeletedView = $section === 'deleted';
             </table>
         </div>
 
+    <?php elseif ($isRequestsView):
+        // Access requests submitted from the locked gate page. Pending first,
+        // then most-recent. Approving whitelists the device; denying shows the
+        // "access denied" page on their device.
+        $reqsList = $accessRequests;
+        uasort($reqsList, function($a, $b) {
+            $pa = (($a['status'] ?? '') === 'pending') ? 0 : 1;
+            $pb = (($b['status'] ?? '') === 'pending') ? 0 : 1;
+            if ($pa !== $pb) return $pa - $pb;
+            return strcmp($b['requested_at'] ?? '', $a['requested_at'] ?? '');
+        });
+        $statusBadge = ['pending' => 'badge-warning', 'approved' => 'badge-success', 'denied' => 'badge-danger'];
+    ?>
+        <header>
+            <h1>Access Requests</h1>
+            <div class="header-actions">
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-outline">← Back to Dashboard</a>
+            </div>
+        </header>
+
+        <div class="stats-bar">
+            <div class="stat-card"><div class="num" style="color:var(--warning)"><?=$pendingRequestCount?></div><div class="label">Pending</div></div>
+            <div class="stat-card"><div class="num"><?=count($accessRequests)?></div><div class="label">Total Requests</div></div>
+        </div>
+
+        <div class="profile-section">
+            <h3>📨 Requests</h3>
+            <table class="admin-table">
+                <thead><tr><th>Name</th><th>Reason</th><th>Device</th><th>Requested</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody>
+                    <?php if (empty($reqsList)): ?><tr><td colspan="6">No access requests yet.</td></tr><?php endif; ?>
+                    <?php foreach ($reqsList as $rid => $r):
+                        $st = $r['status'] ?? 'pending';
+                        $badge = $statusBadge[$st] ?? 'badge';
+                    ?>
+                    <tr>
+                        <td style="font-weight:600;"><?=htmlspecialchars($r['name'] ?? '—')?></td>
+                        <td style="max-width:280px;font-size:13px;color:var(--text-secondary);word-break:break-word;"><?=nl2br(htmlspecialchars($r['reason'] ?? '—'))?></td>
+                        <td style="font-family:monospace;font-size:11px;"><?=htmlspecialchars($rid)?></td>
+                        <td style="font-size:12px;white-space:nowrap;"><?=htmlspecialchars($r['requested_at'] ?? '—')?></td>
+                        <td><span class="badge <?=$badge?>"><?=strtoupper(htmlspecialchars($st))?></span></td>
+                        <td style="white-space:nowrap;">
+                            <?php if ($st !== 'approved'): ?>
+                                <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($rid)?>&action=approve_request" class="btn btn-success btn-sm">Approve</a>
+                            <?php endif; ?>
+                            <?php if ($st !== 'denied'): ?>
+                                <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($rid)?>&action=deny_request" class="btn btn-danger btn-sm" onclick="return confirm('Deny this device? They will see an Access Denied page.');">Deny</a>
+                            <?php endif; ?>
+                            <?php if (isset($state[$rid])): ?>
+                                <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($rid)?>" class="btn btn-outline btn-sm">View</a>
+                            <?php endif; ?>
+                            <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($rid)?>&action=delete_request" class="btn btn-outline btn-sm" onclick="return confirm('Delete this request record?');">✕</a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
     <?php elseif ($isDeletedView):
         // Deleted profiles that are currently inactive. A deleted profile that
         // is active right now intentionally appears on the dashboard's Active
@@ -1413,6 +1515,7 @@ $isDeletedView = $section === 'deleted';
         <header>
             <h1>Admin Dashboard</h1>
             <div class="header-actions">
+                <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=requests" class="btn btn-success btn-sm" style="position:relative;">📨 Access Requests<?php if ($pendingRequestCount > 0): ?> <span class="badge badge-danger" style="margin-left:4px;"><?=$pendingRequestCount?></span><?php endif; ?></a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=banned" class="btn btn-danger btn-sm">🚫 Banned Mgmt</a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=passwords" class="btn btn-warning btn-sm">⚙ Passwords</a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=deleted" class="btn btn-sm" style="background:#6e6e73;color:#fff;">🗑 Deleted</a>

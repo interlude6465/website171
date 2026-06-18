@@ -73,8 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reque
         if (!$existing || ($existing['status'] ?? 'pending') === 'pending') {
             $requests[$d] = [
                 'deviceId'     => $d,
-                'name'         => mb_substr($name, 0, 100),
-                'reason'       => mb_substr($reason, 0, 1000),
+                'name'         => substr($name, 0, 100),
+                'reason'       => substr($reason, 0, 1000),
                 'status'       => 'pending',
                 'requested_at' => date('Y-m-d H:i:s'),
                 'ip'           => clientIp(),

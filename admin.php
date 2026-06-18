@@ -1425,6 +1425,8 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                     <?php foreach ($reqsList as $rid => $r):
                         $st = $r['status'] ?? 'pending';
                         $badge = $statusBadge[$st] ?? 'badge';
+                        $approveUrl = 'admin.php?key=' . urlencode($key) . '&device=' . urlencode($rid) . '&action=approve_request';
+                        $denyUrl    = 'admin.php?key=' . urlencode($key) . '&device=' . urlencode($rid) . '&action=deny_request';
                     ?>
                     <tr>
                         <td style="font-weight:600;"><?=htmlspecialchars($r['name'] ?? '—')?></td>
@@ -1433,14 +1435,22 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                         <td style="font-size:12px;white-space:nowrap;"><?=htmlspecialchars($r['requested_at'] ?? '—')?></td>
                         <td><span class="badge <?=$badge?>"><?=strtoupper(htmlspecialchars($st))?></span></td>
                         <td style="white-space:nowrap;">
+                            <button type="button" class="btn btn-outline btn-sm"
+                                onclick='openRequestModal(this)'
+                                data-name="<?=htmlspecialchars($r['name'] ?? '—', ENT_QUOTES)?>"
+                                data-reason="<?=htmlspecialchars($r['reason'] ?? '—', ENT_QUOTES)?>"
+                                data-device="<?=htmlspecialchars($rid, ENT_QUOTES)?>"
+                                data-ip="<?=htmlspecialchars($r['ip'] ?? '—', ENT_QUOTES)?>"
+                                data-requested="<?=htmlspecialchars($r['requested_at'] ?? '—', ENT_QUOTES)?>"
+                                data-decided="<?=htmlspecialchars($r['decided_at'] ?? '', ENT_QUOTES)?>"
+                                data-status="<?=htmlspecialchars($st, ENT_QUOTES)?>"
+                                data-approve="<?=htmlspecialchars($approveUrl, ENT_QUOTES)?>"
+                                data-deny="<?=htmlspecialchars($denyUrl, ENT_QUOTES)?>">View</button>
                             <?php if ($st !== 'approved'): ?>
-                                <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($rid)?>&action=approve_request" class="btn btn-success btn-sm">Approve</a>
+                                <a href="<?=htmlspecialchars($approveUrl)?>" class="btn btn-success btn-sm">Approve</a>
                             <?php endif; ?>
                             <?php if ($st !== 'denied'): ?>
-                                <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($rid)?>&action=deny_request" class="btn btn-danger btn-sm" onclick="return confirm('Deny this device? They will see an Access Denied page.');">Deny</a>
-                            <?php endif; ?>
-                            <?php if (isset($state[$rid])): ?>
-                                <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($rid)?>" class="btn btn-outline btn-sm">View</a>
+                                <a href="<?=htmlspecialchars($denyUrl)?>" class="btn btn-danger btn-sm" onclick="return confirm('Deny this device? They will see an Access Denied page.');">Deny</a>
                             <?php endif; ?>
                             <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($rid)?>&action=delete_request" class="btn btn-outline btn-sm" onclick="return confirm('Delete this request record?');">✕</a>
                         </td>
@@ -1449,6 +1459,88 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                 </tbody>
             </table>
         </div>
+
+        <!-- Access request detail modal -->
+        <div id="reqModal" class="req-modal-overlay" onclick="if(event.target===this)closeRequestModal()">
+            <div class="req-modal" role="dialog" aria-modal="true" aria-labelledby="reqModalName">
+                <button type="button" class="req-modal-close" onclick="closeRequestModal()" aria-label="Close">✕</button>
+                <h3 style="margin:0 0 4px;">Access Request</h3>
+                <div id="reqModalStatus" style="margin-bottom:16px;"></div>
+
+                <div class="req-modal-field"><div class="req-modal-label">Name</div><div id="reqModalName" class="req-modal-value"></div></div>
+                <div class="req-modal-field"><div class="req-modal-label">Reason</div><div id="reqModalReason" class="req-modal-value" style="white-space:pre-wrap;"></div></div>
+                <div class="req-modal-field"><div class="req-modal-label">Device ID</div><div id="reqModalDevice" class="req-modal-value" style="font-family:monospace;font-size:12px;word-break:break-all;"></div></div>
+                <div class="req-modal-field"><div class="req-modal-label">IP</div><div id="reqModalIp" class="req-modal-value" style="font-family:monospace;font-size:12px;"></div></div>
+                <div class="req-modal-field"><div class="req-modal-label">Requested</div><div id="reqModalRequested" class="req-modal-value"></div></div>
+                <div class="req-modal-field" id="reqModalDecidedWrap" style="display:none;"><div class="req-modal-label">Decided</div><div id="reqModalDecided" class="req-modal-value"></div></div>
+
+                <div class="req-modal-actions">
+                    <a id="reqModalApprove" href="#" class="btn btn-success btn-sm">Approve</a>
+                    <a id="reqModalDeny" href="#" class="btn btn-danger btn-sm" onclick="return confirm('Deny this device? They will see an Access Denied page.');">Deny</a>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            .req-modal-overlay {
+                display: none; position: fixed; inset: 0; z-index: 1000;
+                background: rgba(0,0,0,0.62); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+                align-items: center; justify-content: center; padding: 20px;
+            }
+            .req-modal-overlay.open { display: flex; }
+            .req-modal {
+                position: relative; width: min(520px, 94vw); max-height: 88vh; overflow-y: auto;
+                background: #11131f; border: 1px solid var(--border); border-radius: 16px;
+                padding: 24px 24px 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            }
+            .req-modal-close {
+                position: absolute; top: 14px; right: 14px; background: transparent; border: none;
+                color: var(--text-secondary); font-size: 18px; cursor: pointer; line-height: 1;
+            }
+            .req-modal-close:hover { color: #fff; }
+            .req-modal-field { margin-bottom: 14px; }
+            .req-modal-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); margin-bottom: 4px; }
+            .req-modal-value { font-size: 15px; color: var(--text); word-break: break-word; }
+            .req-modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+        </style>
+
+        <script>
+            function openRequestModal(btn) {
+                var d = btn.dataset;
+                document.getElementById('reqModalName').textContent     = d.name;
+                document.getElementById('reqModalReason').textContent   = d.reason;
+                document.getElementById('reqModalDevice').textContent   = d.device;
+                document.getElementById('reqModalIp').textContent       = d.ip;
+                document.getElementById('reqModalRequested').textContent = d.requested;
+
+                var decidedWrap = document.getElementById('reqModalDecidedWrap');
+                if (d.decided) {
+                    document.getElementById('reqModalDecided').textContent = d.decided;
+                    decidedWrap.style.display = '';
+                } else {
+                    decidedWrap.style.display = 'none';
+                }
+
+                var badgeClass = { pending: 'badge-warning', approved: 'badge-success', denied: 'badge-danger' }[d.status] || 'badge';
+                document.getElementById('reqModalStatus').innerHTML =
+                    '<span class="badge ' + badgeClass + '">' + d.status.toUpperCase() + '</span>';
+
+                var approve = document.getElementById('reqModalApprove');
+                var deny    = document.getElementById('reqModalDeny');
+                approve.href = d.approve;
+                deny.href    = d.deny;
+                approve.style.display = (d.status === 'approved') ? 'none' : '';
+                deny.style.display    = (d.status === 'denied')   ? 'none' : '';
+
+                document.getElementById('reqModal').classList.add('open');
+            }
+            function closeRequestModal() {
+                document.getElementById('reqModal').classList.remove('open');
+            }
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') closeRequestModal();
+            });
+        </script>
 
     <?php elseif ($isDeletedView):
         // Deleted profiles that are currently inactive. A deleted profile that

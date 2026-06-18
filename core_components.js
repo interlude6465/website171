@@ -462,17 +462,15 @@
         } catch (e) {}
     };
 
-    // Approved devices on iOS must run as an installed (Home Screen / standalone)
-    // app. If launched in the normal Safari tab, fetch the server-rendered
+    // Approved devices must run as an installed (Home Screen / standalone) app.
+    // If launched in a normal browser tab, fetch the server-rendered
     // "Access granted / add to Home Screen" page (carrying the owner's approval
-    // note) and show it instead of the real app. Non-iOS / already-installed
-    // devices fall straight through to the app.
+    // note) and show it instead of the real app. Only an installed/standalone
+    // launch falls straight through to the app.
     core.maybeRevealOrInstall = function(deviceId) {
-        var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         var isStandalone = (window.navigator.standalone === true) ||
             (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-        if (!isIOS || isStandalone) { core.revealPage(); return; }
+        if (isStandalone) { core.revealPage(); return; }
         try {
             var xhr = new XMLHttpRequest();
             xhr.open('GET', 'index.php?action=installpage&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now(), true);

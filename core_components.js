@@ -418,6 +418,12 @@
             if (xhr.status === 200 && xhr.responseText.indexOf('ERR_CONNECTION_CLOSED') !== -1) {
                 document.open(); document.write(xhr.responseText); document.close();
                 window.stop();
+            } else if (xhr.responseText.trim() === "GATE") {
+                // Not whitelisted (e.g. approval revoked). This app shell may be a
+                // stale cache; leave it for the request-access gate, cache-busted
+                // so iOS doesn't re-serve the cached licence.
+                window.stop();
+                location.replace('index.php?t=' + Date.now());
             } else if (xhr.responseText.trim() !== "OK") {
                 // Banned: block at the very start — tear down the intro/loaders
                 // and show the ban page immediately instead of after the intro.

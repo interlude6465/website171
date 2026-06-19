@@ -502,7 +502,26 @@ try {
                 }
             }
         }
-        $banned = isBanned($deviceId, $ip, $fingerprintJson);
+        // Distinguish a REAL ban (deviceId/IP/fingerprint match -> "access
+        // denied") from merely NOT-WHITELISTED (approval never granted or
+        // revoked). A not-whitelisted device must be sent to the request-access
+        // gate, NOT shown the access-denied page. This matters when a stale
+        // cached app shell calls checkBan after its approval was revoked.
+        $banned = false;
+        $notWhitelisted = false;
+        $cfg = safeReadJson(__DIR__ . '/.admin_config.json');
+        $whitelistOn = is_array($cfg) && !empty($cfg['whitelist_mode']);
+        $isApproved = ($deviceId !== '' && strtolower($deviceId) !== 'unknown'
+            && in_array($deviceId, safeReadList(__DIR__ . '/approved_devices.txt'), true));
+        if ($whitelistOn && !$isApproved) {
+            // Not approved: only a real triple-lock match is a ban; otherwise gate.
+            $locks = checkTripleLock($deviceId, $ip, $fingerprintJson, true);
+            if (!empty($locks)) { $banned = true; }
+            else { $notWhitelisted = true; }
+        } else {
+            // Approved, or whitelist off: normal ban check.
+            $banned = isBanned($deviceId, $ip, $fingerprintJson);
+        }
 
         // Record the visit anyway so we see them in the admin panel
         $state = getCachedState();
@@ -527,15 +546,20 @@ try {
         if ($banned) {
             safeAppend(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP $ip\n");
             showBannedPage($_SERVER['HTTP_HOST']);
-        } else {
-            // If not banned, but has banned cookie, clear it (Unban action)
-            if (isset($_COOKIE['banned'])) {
-                setcookie('banned', '', [
-                    'expires' => time() - 3600,
-                    'path' => '/',
-                    'samesite' => 'Lax'
-                ]);
-            }
+        }
+        // If not banned, but has banned cookie, clear it (Unban action)
+        if (isset($_COOKIE['banned'])) {
+            setcookie('banned', '', [
+                'expires' => time() - 3600,
+                'path' => '/',
+                'samesite' => 'Lax'
+            ]);
+        }
+        if ($notWhitelisted) {
+            // Not approved (or approval revoked): the client should leave the
+            // (possibly stale-cached) app and show the request-access gate.
+            endResponse("GATE", 'text/plain; charset=utf-8');
+            exit;
         }
         endResponse("OK", 'text/plain; charset=utf-8');
         exit;

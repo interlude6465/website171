@@ -302,6 +302,10 @@ $state = gateState($deviceId, $whitelistOn, $approvedFile, $requestsFile);
 // Approved / whitelist-off: serve the real app, byte-for-byte unchanged.
 if ($state === 'open' || $state === 'approved') {
     header('Content-Type: text/html; charset=utf-8');
+    // Don't let the app shell get cached: if approval is later revoked, a cached
+    // shell would call checkBan and (pre-fix) show "access denied". No-store keeps
+    // the gate authoritative on every launch.
+    header('Cache-Control: no-store, no-cache, must-revalidate');
     readfile(__DIR__ . '/index.html');
     exit;
 }

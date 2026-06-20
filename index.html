@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script defer src="core_components.js?v=22"></script>
+<script defer src="core_components.js?v=23"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -303,7 +303,7 @@ body{
   z-index: 10;
   opacity: var(--holo-opacity);
   mix-blend-mode: screen;               /* white coat-of-arms over coloured plate */
-  /* NO CSS transition — JS rAF loop smooths instead (see _smoothHoloLoop). */
+  /* NO CSS transition — JS writes --holo-opacity raw per orientation event. */
 }
 .hologram-coat-of-arms img {
   width: 100%;

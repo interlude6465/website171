@@ -1015,26 +1015,12 @@
       var gammaOp = HOLO_BASE + (HOLO_MAX - HOLO_BASE) * Math.min(g / 45, 1);
       return Math.min(HOLO_MAX, Math.max(HOLO_BASE, Math.max(betaOp, gammaOp)));
     }
-    function _holoSmoothLoop() {
-      var diff = _holoTarget - _holoCurrent;
-      if (Math.abs(diff) < 0.002) {
-        _holoCurrent = _holoTarget;
-        document.documentElement.style.setProperty("--holo-opacity", _holoCurrent.toFixed(3));
-        _holoLoopRunning = false;
-        return;
-      }
-      _holoCurrent += diff * 0.12;
-      document.documentElement.style.setProperty("--holo-opacity", _holoCurrent.toFixed(3));
-      requestAnimationFrame(_holoSmoothLoop);
-    }
-    function _kickHoloLoop() {
-      if (_holoLoopRunning) return;
-      _holoLoopRunning = true;
-      requestAnimationFrame(_holoSmoothLoop);
-    }
     function _applyHoloOpacity(beta, gamma) {
-      _holoTarget = _computeHoloTarget(beta, gamma);
-      _kickHoloLoop();
+      // Raw, no smoothing: write the computed opacity straight to the CSS var on
+      // every orientation event so the crest tracks the phone's motion with no
+      // easing/lag.
+      _holoCurrent = _holoTarget = _computeHoloTarget(beta, gamma);
+      document.documentElement.style.setProperty("--holo-opacity", _holoCurrent.toFixed(3));
     }
     function handleOrientation(event) {
       if (!_gyroActive) return;

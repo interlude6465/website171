@@ -675,7 +675,6 @@ body{
   background-image:
     url('apk_loot/logos/floral_bgro_w.webp'),
     radial-gradient(ellipse at 30% 25%, rgba(255,255,255,0.18), transparent 55%),
-    radial-gradient(ellipse at 75% 80%, rgba(0,40,0,0.08), transparent 60%),
     repeating-linear-gradient(135deg,
       rgba(255,255,255,0.04) 0,
       rgba(255,255,255,0.04) 2px,
@@ -684,11 +683,12 @@ body{
   /* cover = fill the whole panel regardless of viewport size (PWA-safe).
      Previously this was 60%/auto which shrunk into a small corner square
      when the viewport changed (e.g. home-screen launch). */
-  background-size: cover, auto, auto, auto;
-  background-position: center, 0 0, 0 0, 0 0;
-  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+  background-size: cover, auto, auto;
+  background-position: center, 0 0, 0 0;
+  background-repeat: no-repeat, no-repeat, repeat;
   overflow: hidden;
-  box-shadow: 0 3px 3px rgba(0, 0, 0, 0.1);
+  /* No drop shadow / dark bottom-right radial: those read as a dark edge under
+     the card. Removed (not masked) so nothing composites over the photo. */
   z-index: 1;
 }
 .card-inner{
@@ -794,7 +794,7 @@ body.dev-mode .dev-only {
 .tab{
   flex:1;
   text-align:center;
-  padding:7px 0;
+  padding:9px 0;
   font-weight:600;
   font-size:14px;
   color:var(--vr-navy);

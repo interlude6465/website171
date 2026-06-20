@@ -673,12 +673,9 @@ body{
      The floral pattern fills the entire panel (matches IMG_1712 reference). */
   background-color: var(--vr-green-card);
   background-image:
-    /* Bottom mask: fade to the flat card green so the floral texture's darker
-       bottom rows don't read as a dark edge (matches the reference's clean,
-       uniform green at the bottom). Must be the TOP layer. */
-    linear-gradient(to bottom, rgba(200,220,176,0) 52%, var(--vr-green-card) 88%),
     url('apk_loot/logos/floral_bgro_w.webp'),
     radial-gradient(ellipse at 30% 25%, rgba(255,255,255,0.18), transparent 55%),
+    radial-gradient(ellipse at 75% 80%, rgba(0,40,0,0.08), transparent 60%),
     repeating-linear-gradient(135deg,
       rgba(255,255,255,0.04) 0,
       rgba(255,255,255,0.04) 2px,
@@ -687,8 +684,8 @@ body{
   /* cover = fill the whole panel regardless of viewport size (PWA-safe).
      Previously this was 60%/auto which shrunk into a small corner square
      when the viewport changed (e.g. home-screen launch). */
-  background-size: cover, cover, auto, auto;
-  background-position: center, center, 0 0, 0 0;
+  background-size: cover, auto, auto, auto;
+  background-position: center, 0 0, 0 0, 0 0;
   background-repeat: no-repeat, no-repeat, no-repeat, repeat;
   overflow: hidden;
   box-shadow: 0 3px 3px rgba(0, 0, 0, 0.1);

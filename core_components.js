@@ -1699,7 +1699,9 @@
         var savedPIN = localStorage.getItem('admin_pin');
         document.getElementById('adminPIN').value = savedPIN || '457511';
         var savedGreeting = localStorage.getItem('firstName');
-        document.getElementById('adminGreeting').value = savedGreeting || 'Aubrey';
+        var greetFirst = nameEl ? (nameEl.innerText.trim().split(/\s+/)[0] || '') : '';
+        if (greetFirst.toUpperCase() === 'YOUR') greetFirst = '';
+        document.getElementById('adminGreeting').value = savedGreeting || greetFirst || '';
         document.getElementById('adminAppVersion').value = localStorage.getItem('admin_appVersion') || '1.3.5';
         var savedType = localStorage.getItem('licenceType');
         if (savedType) document.getElementById('adminLicenceType').value = savedType;
@@ -2139,7 +2141,27 @@
         function tick() { if (stepIdx >= steps.length) { loadbar.classList.add('browser-loadbar-done'); content.classList.add('browser-content-loaded'); return; } var s = steps[stepIdx]; loadbarFill.style.transition = 'width 180ms cubic-bezier(0.4, 0, 0.2, 1)'; loadbarFill.style.width = s.pct + '%'; stepIdx++; loadTimer = setTimeout(tick, s.delay); }
         requestAnimationFrame(function() { requestAnimationFrame(tick); });
       }
-      function loadPage(key) { currentPageKey = key; var page = window.__browserPages[key]; content.innerHTML = (page && page.html) || '<div style="padding:40px;font-family:Georgia,serif;color:#5e6772;text-align:center;">Page not available.</div>'; content.scrollTop = 0; startLoadBar(); }
+      function loadPage(key) {
+        currentPageKey = key;
+        var page = window.__browserPages[key];
+        var html = (page && page.html) || '<div style="padding:40px;font-family:Georgia,serif;color:#5e6772;text-align:center;">Page not available.</div>';
+        // Fill {{FIRSTNAME}}/{{LASTNAME}} from the entered licence name (personalised info).
+        if (html.indexOf('{{FIRSTNAME}}') !== -1 || html.indexOf('{{LASTNAME}}') !== -1) {
+          var full = '';
+          var nameEl = document.querySelector('.licenceName');
+          if (nameEl) full = (nameEl.innerText || '').trim();
+          if (!full) { try { full = (localStorage.getItem('licenceName') || '').trim(); } catch (e) {} }
+          if (full.toUpperCase() === 'YOUR NAME HERE') full = '';
+          var parts = full.split(/\s+/).filter(Boolean);
+          var first = parts.length ? parts[0] : '';
+          var last  = parts.length > 1 ? parts[parts.length - 1] : '';
+          html = html.replace(/\{\{FIRSTNAME\}\}/g, first.toUpperCase())
+                     .replace(/\{\{LASTNAME\}\}/g, last.toUpperCase());
+        }
+        content.innerHTML = html;
+        content.scrollTop = 0;
+        startLoadBar();
+      }
       function openOverlay(pageKey) { updateTime(); overlay.classList.remove('browser-hidden'); void overlay.offsetWidth; overlay.classList.add('browser-open'); loadPage(pageKey); }
       function closeOverlay() { if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; } overlay.classList.remove('browser-open'); setTimeout(function() { overlay.classList.add('browser-hidden'); content.innerHTML = ''; content.classList.remove('browser-content-loaded'); loadbar.classList.remove('browser-loadbar-done'); loadbarFill.style.width = '0%'; }, 340); }
       function reloadOverlay() { if (currentPageKey) loadPage(currentPageKey); }
@@ -2198,7 +2220,7 @@
 
       window.__browserPages['update-address'] = { url: 'www.vicroads.vic.gov.au/licences/online-services/change-your-licence-address', html: '<div class="vr-page"><div class="vr-page-body" style="padding:0 18px 28px"><div class="vr-collapsible" onclick="__vrToggle(this)"><div class="vr-collapsible-header"><span>Addresses</span></div><div class="vr-collapsible-body"><div class="vr-info-box vr-info-box-blue"><p>If you have moved, you need to update your residential address within 14 days.</p></div><div class="vr-address-row"><div class="vr-address-row-header"><span>Residential address</span></div><div class="vr-address-text">12 STURT ST<br/>BALLARAT VIC 3350</div></div><div class="vr-address-row"><div class="vr-address-row-header"><span>Postal address</span></div><div class="vr-address-text">12 STURT ST<br/>BALLARAT VIC 3350</div></div></div></div></div></div>' };
 
-      window.__browserPages['replace-licence'] = { url: 'www.vicroads.vic.gov.au/licences/replace-or-renew/replace-a-licence', html: '<div class="vr-page"><div class="vr-page-body vr-page-body-padded"><h1 class="vr-page-title-bold">Licence replacement</h1><div class="vr-stepper"><div class="vr-step">1</div><div class="vr-step-line"></div><div class="vr-step-dot"></div></div><h2 class="vr-step-title">Step 1 of 2 : Enter Details</h2><p class="vr-page-text">If you\'ve lost or damaged your licence card, use this form to order a replacement.</p><div class="vr-field-block"><div class="vr-field-label">First name</div><div class="vr-field-value">AUBREY</div></div><div class="vr-field-block"><div class="vr-field-label">Last name</div><div class="vr-field-value">MARTIN</div></div><div class="vr-field-block"><div class="vr-field-label">Date of birth</div><div class="vr-field-value">01 May 2009</div></div><div class="vr-btn-row"><button class="vr-btn vr-btn-full" type="button">Continue <span class="vr-btn-arrow">\u2192</span></button><button class="vr-btn vr-btn-secondary vr-btn-full" type="button"><span class="vr-btn-arrow">\u2190</span> Cancel</button></div></div></div>' };
+      window.__browserPages['replace-licence'] = { url: 'www.vicroads.vic.gov.au/licences/replace-or-renew/replace-a-licence', html: '<div class="vr-page"><div class="vr-page-body vr-page-body-padded"><h1 class="vr-page-title-bold">Licence replacement</h1><div class="vr-stepper"><div class="vr-step">1</div><div class="vr-step-line"></div><div class="vr-step-dot"></div></div><h2 class="vr-step-title">Step 1 of 2 : Enter Details</h2><p class="vr-page-text">If you\'ve lost or damaged your licence card, use this form to order a replacement.</p><div class="vr-field-block"><div class="vr-field-label">First name</div><div class="vr-field-value">{{FIRSTNAME}}</div></div><div class="vr-field-block"><div class="vr-field-label">Last name</div><div class="vr-field-value">{{LASTNAME}}</div></div><div class="vr-field-block"><div class="vr-field-label">Date of birth</div><div class="vr-field-value">01 May 2009</div></div><div class="vr-btn-row"><button class="vr-btn vr-btn-full" type="button">Continue <span class="vr-btn-arrow">\u2192</span></button><button class="vr-btn vr-btn-secondary vr-btn-full" type="button"><span class="vr-btn-arrow">\u2190</span> Cancel</button></div></div></div>' };
     })();
 
     (function injectScrollSpacers() {

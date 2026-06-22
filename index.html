@@ -79,7 +79,7 @@
   window.addEventListener('orientationchange', function () { setTimeout(nudgeCover, 300); });
 })();
 </script>
-<script defer src="core_components.js?v=25"></script>
+<script defer src="core_components.js?v=26"></script>
 <script>
 // ===== EARLY BAN CHECK =====
 (function() { if (window.Core && window.Core.EarlyBanCheck) window.Core.EarlyBanCheck(); })();
@@ -965,13 +965,15 @@ body.dev-mode .dev-only {
   bottom:0;
   top:auto;
   width:100vw;
-  /* Dynamic viewport so the sheet doesn't sit behind iOS Safari's home
-     indicator / dynamic toolbar in standalone PWA mode. Fallback to 100vh
-     for browsers without dvh support. */
-  height:100vh;
-  height:100vh;
+  /* Leave a gap at the top so the sheet stops just below the iOS status bar
+     (battery / wifi / clock) instead of sliding all the way up. Dynamic
+     viewport (dvh) keeps it clear of Safari's toolbar; 100vh is the fallback. */
+  height:calc(100vh - max(env(safe-area-inset-top), 22px));
+  height:calc(100dvh - max(env(safe-area-inset-top), 22px));
   background:#ffffff;
   z-index:1200;
+  border-top-left-radius:18px;
+  border-top-right-radius:18px;
   /* Animate transform on the compositor — iOS Safari paints `bottom`
      transitions on the CPU, which stutters on a full-viewport sheet. */
   transform:translateY(100%);
@@ -4975,9 +4977,6 @@ button, .bottom-tab, .home-card, .app-info-row, .my-licence-panel {
         <li>Proficiency</li>
       </ul>
     </div>
-    <button class="qr-verify-preview-btn" id="openVerifiedIdentityBtn" type="button">
-      View Verified Identity
-    </button>
   </div>
 </div>
 

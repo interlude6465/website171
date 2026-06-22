@@ -2123,8 +2123,7 @@
       var vsig = document.getElementById('verifierSigCanvas'); if (vsig && sigCanvas) { try { var vctx = vsig.getContext('2d'); vctx.clearRect(0, 0, vsig.width, vsig.height); var vimg = new Image(); vimg.onload = function() { vctx.drawImage(vimg, 0, 0, vsig.width, vsig.height); }; vimg.src = sigCanvas.toDataURL(); } catch(e) { console.warn('[Verified] sig copy failed:', e); } }
       var vdate = document.getElementById('verifierDate'); if (vdate) { var now = new Date(); var mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; vdate.textContent = String(now.getDate()).padStart(2,'0') + ' ' + mn[now.getMonth()] + ' ' + now.getFullYear(); }
     }
-    var _vBtn = document.getElementById('openVerifiedIdentityBtn');
-    if (_vBtn) { _vBtn.addEventListener('click', function() { populateVerifiedIdentity(); openSubScreen('subVerifiedIdentity'); }); }
+    // "View Verified Identity" button removed from the QR sheet.
 
     function initBrowserOverlay() {
       var overlay = document.getElementById('browserOverlay'); if (!overlay) return;

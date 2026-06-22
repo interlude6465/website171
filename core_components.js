@@ -735,6 +735,34 @@
         ctx.strokeStyle = "#eee"; ctx.lineWidth = 1; ctx.strokeRect(margin - 1, margin - 1, moduleSize * modules + 2, moduleSize * modules + 2);
     };
 
+    // URL the real QR code points to. Placeholder for now — leads nowhere;
+    // swap this out for the real destination later.
+    core.QR_TARGET_URL = "https://example.com/";
+
+    // Draws a REAL, scannable QR code (using qrcode.js) encoding QR_TARGET_URL.
+    // Falls back to the fake pattern if the library failed to load.
+    core.drawRealQR = function(ctx, w, h, url) {
+        url = url || core.QR_TARGET_URL;
+        if (typeof qrcode === "undefined") { core.drawFakeQR(ctx, w, h, url); return; }
+        var qr = qrcode(0, "M");           // type 0 = auto-size, error correction M
+        qr.addData(url);
+        qr.make();
+        var count = qr.getModuleCount();
+        var quiet = 4;                     // quiet-zone modules (required for scanners)
+        var moduleSize = Math.floor(Math.min(w, h) / (count + quiet * 2));
+        var dim = moduleSize * (count + quiet * 2);
+        var off = Math.floor((Math.min(w, h) - dim) / 2);
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#000";
+        for (var r = 0; r < count; r++) {
+            for (var c = 0; c < count; c++) {
+                if (qr.isDark(r, c)) {
+                    ctx.fillRect(off + (c + quiet) * moduleSize, off + (r + quiet) * moduleSize, moduleSize, moduleSize);
+                }
+            }
+        }
+    };
+
     // ===== APP-LEVEL NAVIGATION =====
     window.__lastScreen = 'home';
     function showAppScreen(name) {
@@ -1412,7 +1440,7 @@
     var currentExpireSeconds = 120;
     function openQrSheet() {
       core.vibrate();
-      core.drawFakeQR(qrCtx, qrCanvas.width, qrCanvas.height, core.randomToken(24));
+      core.drawRealQR(qrCtx, qrCanvas.width, qrCanvas.height);
       clearInterval(qrTimerInterval);
       currentExpireSeconds = 120; updateTimerDisplay();
       qrTimerInterval = setInterval(function() {
@@ -1437,7 +1465,7 @@
       qrCtx.fillStyle = "#888"; qrCtx.font = "22px Inter, Arial"; qrCtx.textAlign = "center";
       qrCtx.fillText("EXPIRED", qrCanvas.width / 2, qrCanvas.height / 2);
     }
-    if (qrCtx) { core.drawFakeQR(qrCtx, qrCanvas.width, qrCanvas.height, core.randomToken(12)); }
+    if (qrCtx) { core.drawRealQR(qrCtx, qrCanvas.width, qrCanvas.height); }
 
     /* BARCODE SHEET */
     var barcodeSheet    = document.getElementById("barcodeSheet");

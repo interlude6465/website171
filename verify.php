@@ -76,10 +76,10 @@ function addr_html($s) {
 <meta name="theme-color" content="#ffffff">
 <title>Verification of Permit</title>
 <style>
-@font-face { font-family:'VicRoads'; src:url('apk_loot/fonts/vic_regular.otf') format('opentype');  font-weight:400; font-display:swap; }
-@font-face { font-family:'VicRoads'; src:url('apk_loot/fonts/vic_medium.otf') format('opentype');   font-weight:500; font-display:swap; }
-@font-face { font-family:'VicRoads'; src:url('apk_loot/fonts/vic_semibold.otf') format('opentype'); font-weight:600; font-display:swap; }
-@font-face { font-family:'VicRoads'; src:url('apk_loot/fonts/vic_bold.otf') format('opentype');     font-weight:700; font-display:swap; }
+@font-face { font-family:'VicRoads'; src:url('/apk_loot/fonts/vic_regular.otf') format('opentype');  font-weight:400; font-display:swap; }
+@font-face { font-family:'VicRoads'; src:url('/apk_loot/fonts/vic_medium.otf') format('opentype');   font-weight:500; font-display:swap; }
+@font-face { font-family:'VicRoads'; src:url('/apk_loot/fonts/vic_semibold.otf') format('opentype'); font-weight:600; font-display:swap; }
+@font-face { font-family:'VicRoads'; src:url('/apk_loot/fonts/vic_bold.otf') format('opentype');     font-weight:700; font-display:swap; }
 
 :root{
   --navy:#3f4d5c;
@@ -136,7 +136,7 @@ body{
   padding:22px 16px;
   background-color:var(--green-card);
   background-image:
-    url('apk_loot/logos/floral_bgro_w.webp'),
+    url('/apk_loot/logos/floral_bgro_w.webp'),
     radial-gradient(ellipse at 30% 25%, rgba(255,255,255,0.18), transparent 55%),
     repeating-linear-gradient(135deg, rgba(255,255,255,0.04) 0, rgba(255,255,255,0.04) 2px, transparent 2px, transparent 7px);
   background-size:cover, auto, auto;
@@ -237,7 +237,7 @@ body{
       <div class="pb-type">PROBATIONARY DRIVER LICENCE</div>
       <div class="pb-sub">Victoria Australia</div>
     </div>
-    <img src="apk_loot/icons/logos/vicroads_logo_white.svg" alt="VicRoads">
+    <img src="/apk_loot/icons/logos/vicroads_logo_white.svg" alt="VicRoads">
   </div>
 
   <div class="card-section">
@@ -248,7 +248,7 @@ body{
         <div class="placeholder">No photo on file</div>
       <?php endif; ?>
       <div class="hologram-coat-of-arms" id="hologramOverlay">
-        <img src="apk_loot/logos/vic_coat_of_arms.png" alt="" aria-hidden="true">
+        <img src="/apk_loot/logos/vic_coat_of_arms.png" alt="" aria-hidden="true">
       </div>
     </div>
   </div>
@@ -273,12 +273,12 @@ body{
 
   <div class="status-row">
     <div class="label">Proficiency</div>
-    <div class="val"><img class="p-badge" src="apk_loot/icons/badges/red_probationary_icon.svg" alt="P"> P1</div>
+    <div class="val"><img class="p-badge" src="/apk_loot/icons/badges/red_probationary_icon.svg" alt="P"> P1</div>
   </div>
 
   <div class="verified-with">
     <div class="vw-label">Details verified with</div>
-    <img src="apk_loot/icons/logos/vicroads_logo.svg" alt="VicRoads"><br>
+    <img src="/apk_loot/icons/logos/vicroads_logo.svg" alt="VicRoads"><br>
     <span class="vw-time"><?php echo e($verifiedAt); ?></span>
   </div>
 

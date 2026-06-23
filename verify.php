@@ -152,11 +152,11 @@ body{
 }
 .photo{
   position:relative;
-  width:166px; height:262px;
+  width:199px; height:260px;          /* measured from reference: 199x260, aspect 0.766 */
   margin:0 auto;
   background:rgba(255,255,255,0.35);
   border-radius:12px;
-  contain:layout;            /* isolate layout but DON'T clip — crest overflows onto the card like the reference */
+  contain:layout;                     /* isolate layout but DON'T clip — crest overflows onto the card */
   box-shadow:0 1px 4px rgba(0,0,0,0.08);
 }
 .photo > img.face{ width:100%; height:100%; object-fit:cover; display:block; border-radius:12px; }
@@ -166,7 +166,7 @@ body{
 }
 .hologram-coat-of-arms{
   position:absolute; top:50%; left:50%;
-  width:140%; aspect-ratio:1/1;        /* expanded so the crest edges stick off the photo onto the green */
+  width:130%; aspect-ratio:1/1;      /* matches reference: crest overflows ~15% each side of photo */
   transform:translate(-50%,-50%);
   pointer-events:none; z-index:10;
   opacity:var(--holo-opacity);

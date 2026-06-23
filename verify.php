@@ -119,15 +119,16 @@ body{
 .verified .tick svg{ width:46px; height:46px; }
 .verified h1{ margin:0; font-size:30px; font-weight:700; color:var(--navy); }
 
-/* ---- yellow permit banner ---- */
+/* ---- red probationary licence banner (matches the licence card header) ---- */
 .permit-banner{
-  background:#f9c333;
+  background:#dc3327;
   padding:18px 20px;
   display:flex; align-items:center; justify-content:space-between;
+  box-shadow:0 3px 6px rgba(0,0,0,0.18), inset 0 -3px 4px rgba(255,255,255,0.12);
 }
-.permit-banner .pb-type{ font-size:21px; font-weight:700; color:#1f2630; line-height:1.15; }
-.permit-banner .pb-sub{ font-size:18px; font-weight:500; color:#1f2630; }
-.permit-banner img{ height:30px; width:auto; }
+.permit-banner .pb-type{ font-size:20px; font-weight:800; color:#fff; line-height:1.15; letter-spacing:.4px; }
+.permit-banner .pb-sub{ font-size:17px; font-weight:500; color:#fff; opacity:.96; margin-top:3px; }
+.permit-banner img{ height:26px; width:auto; flex:none; }
 
 /* ---- green photo card (matches licence card-section) ---- */
 .card-section{
@@ -149,7 +150,7 @@ body{
   margin:0 auto;
   background:rgba(255,255,255,0.35);
   border-radius:12px;
-  overflow:visible;
+  overflow:hidden;           /* clip the crest to the photo, like the licence card */
   contain:layout;
   box-shadow:0 1px 4px rgba(0,0,0,0.08);
 }
@@ -182,7 +183,7 @@ body{
 .status-row .val{ display:flex; align-items:center; gap:12px; font-size:22px; font-weight:700; color:var(--navy); }
 .mini-tick{ width:30px; height:30px; border-radius:50%; background:#1d8a38; display:inline-flex; align-items:center; justify-content:center; flex:none; }
 .mini-tick svg{ width:17px; height:17px; }
-.l-badge{ background:#f4d000; color:#1f2630; font-weight:700; font-size:18px; width:30px; height:30px; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.p-badge{ height:30px; width:auto; flex:none; display:block; }
 
 .verified-with{
   margin:22px 16px calc(env(safe-area-inset-bottom) + 26px);
@@ -233,10 +234,10 @@ body{
 
   <div class="permit-banner">
     <div>
-      <div class="pb-type">LEARNER PERMIT</div>
+      <div class="pb-type">PROBATIONARY DRIVER LICENCE</div>
       <div class="pb-sub">Victoria Australia</div>
     </div>
-    <img src="apk_loot/icons/logos/vicroads_logo_black.svg" alt="VicRoads">
+    <img src="apk_loot/icons/logos/vicroads_logo_white.svg" alt="VicRoads">
   </div>
 
   <div class="card-section">
@@ -260,10 +261,10 @@ body{
     <div class="value"><?php echo addr_html(strtoupper($address)); ?></div>
   </div>
 
-  <div class="section-bar">Car learner permit details</div>
+  <div class="section-bar">Car licence details</div>
 
   <div class="status-row">
-    <div class="label">Permit status</div>
+    <div class="label">Licence status</div>
     <div class="val">
       <span class="mini-tick"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4 10-10" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       Current
@@ -272,7 +273,7 @@ body{
 
   <div class="status-row">
     <div class="label">Proficiency</div>
-    <div class="val"><span class="l-badge">L</span> Learner</div>
+    <div class="val"><img class="p-badge" src="apk_loot/icons/badges/red_probationary_icon.svg" alt="P"> P1</div>
   </div>
 
   <div class="verified-with">

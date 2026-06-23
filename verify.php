@@ -166,7 +166,7 @@ body{
 }
 .hologram-coat-of-arms{
   position:absolute; top:50%; left:50%;
-  width:130%; aspect-ratio:1/1;      /* matches reference: crest overflows ~15% each side of photo */
+  width:160%; aspect-ratio:1/1;      /* crest overflows the photo edges onto the green card */
   transform:translate(-50%,-50%);
   pointer-events:none; z-index:10;
   opacity:var(--holo-opacity);

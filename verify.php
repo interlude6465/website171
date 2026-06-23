@@ -97,44 +97,47 @@ body{
   padding-bottom:env(safe-area-inset-bottom);
 }
 
+/* Sizes are matched 1:1 to the real myVicRoads verification page (measured
+   from reference screenshots at their native 375pt width → CSS px below). */
+
 /* ---- header ---- */
 .vhead{
   position:sticky; top:0; z-index:50;
   background:#ffffff;
-  padding:calc(env(safe-area-inset-top) + 10px) 18px 12px;
+  padding:calc(env(safe-area-inset-top) + 8px) 16px 9px;
   display:flex; align-items:center; justify-content:space-between;
   border-bottom:1px solid #eceff2;
 }
-.vhead .back{ font-size:26px; color:var(--navy); width:40px; }
-.vhead .title{ font-size:21px; font-weight:700; color:var(--navy); }
-.vhead .close{ font-size:20px; color:var(--navy); width:60px; text-align:right; font-weight:400; }
+.vhead .back{ font-size:22px; color:var(--navy); width:34px; }
+.vhead .title{ font-size:18px; font-weight:700; color:var(--navy); }
+.vhead .close{ font-size:17px; color:var(--navy); width:52px; text-align:right; font-weight:400; }
 .vhead .back, .vhead .close{ background:none; border:0; font-family:inherit; cursor:pointer; }
 
 /* ---- verified banner ---- */
-.verified{ text-align:center; padding:34px 20px 30px; }
+.verified{ text-align:center; padding:26px 20px 22px; }
 .verified .tick{
-  width:84px; height:84px; border-radius:50%;
-  background:#1d8a38; margin:0 auto 18px;
+  width:56px; height:56px; border-radius:50%;
+  background:#1d8a38; margin:0 auto 14px;
   display:flex; align-items:center; justify-content:center;
 }
-.verified .tick svg{ width:46px; height:46px; }
-.verified h1{ margin:0; font-size:30px; font-weight:700; color:var(--navy); }
+.verified .tick svg{ width:30px; height:30px; }
+.verified h1{ margin:0; font-size:22px; font-weight:700; color:var(--navy); }
 
 /* ---- red probationary licence banner (matches the licence card header) ---- */
 .permit-banner{
   background:#dc3327;
-  padding:18px 20px;
+  padding:13px 16px;
   display:flex; align-items:center; justify-content:space-between;
   box-shadow:0 3px 6px rgba(0,0,0,0.18), inset 0 -3px 4px rgba(255,255,255,0.12);
 }
-.permit-banner .pb-type{ font-size:20px; font-weight:800; color:#fff; line-height:1.15; letter-spacing:.4px; }
-.permit-banner .pb-sub{ font-size:17px; font-weight:500; color:#fff; opacity:.96; margin-top:3px; }
-.permit-banner img{ height:26px; width:auto; flex:none; }
+.permit-banner .pb-type{ font-size:16px; font-weight:800; color:#fff; line-height:1.12; letter-spacing:.3px; }
+.permit-banner .pb-sub{ font-size:13px; font-weight:500; color:#fff; opacity:.96; margin-top:2px; }
+.permit-banner img{ height:22px; width:auto; flex:none; }
 
 /* ---- green photo card (matches licence card-section) ---- */
 .card-section{
   position:relative;
-  padding:22px 16px;
+  padding:16px 14px;
   background-color:var(--green-card);
   background-image:
     url('/apk_loot/logos/floral_bgro_w.webp'),
@@ -147,7 +150,7 @@ body{
 }
 .photo{
   position:relative;
-  width:200px; height:252px;
+  width:168px; height:212px;
   margin:0 auto;
   background:rgba(255,255,255,0.35);
   border-radius:12px;
@@ -158,7 +161,7 @@ body{
 .photo > img.face{ width:100%; height:100%; object-fit:cover; display:block; border-radius:12px; }
 .photo .placeholder{
   width:100%; height:100%; display:flex; align-items:center; justify-content:center;
-  color:#9fb389; font-size:13px; text-align:center; padding:10px; border-radius:12px;
+  color:#9fb389; font-size:12px; text-align:center; padding:10px; border-radius:12px;
 }
 .hologram-coat-of-arms{
   position:absolute; top:50%; left:49%;
@@ -171,29 +174,29 @@ body{
 .hologram-coat-of-arms img{ width:100%; height:100%; object-fit:contain; object-position:center; display:block; }
 
 /* ---- details ---- */
-.vname{ font-size:27px; font-weight:700; color:var(--navy); padding:26px 20px 16px; letter-spacing:.3px; }
-.vrule{ border:0; border-top:1px solid #e4e8ec; margin:0 20px; }
-.vfield{ padding:18px 20px 4px; }
-.vfield .label{ font-size:18px; color:var(--grey); font-weight:400; margin-bottom:8px; }
-.vfield .value{ font-size:21px; font-weight:700; color:var(--navy); line-height:1.32; }
+.vname{ font-size:18px; font-weight:700; color:var(--navy); padding:22px 18px 12px; letter-spacing:.2px; }
+.vrule{ border:0; border-top:1px solid #e4e8ec; margin:0 18px; }
+.vfield{ padding:14px 18px 4px; }
+.vfield .label{ font-size:14px; color:var(--grey); font-weight:400; margin-bottom:6px; }
+.vfield .value{ font-size:16px; font-weight:700; color:var(--navy); line-height:1.3; }
 
-.section-bar{ background:#eceff2; padding:16px 20px; font-size:19px; font-weight:700; color:var(--navy); margin-top:18px; }
+.section-bar{ background:#eceff2; padding:13px 18px; font-size:15px; font-weight:700; color:var(--navy); margin-top:14px; }
 
-.status-row{ padding:18px 20px 4px; }
-.status-row .label{ font-size:18px; color:var(--grey); margin-bottom:10px; }
-.status-row .val{ display:flex; align-items:center; gap:12px; font-size:22px; font-weight:700; color:var(--navy); }
-.mini-tick{ width:30px; height:30px; border-radius:50%; background:#1d8a38; display:inline-flex; align-items:center; justify-content:center; flex:none; }
-.mini-tick svg{ width:17px; height:17px; }
-.p-badge{ height:30px; width:auto; flex:none; display:block; }
+.status-row{ padding:14px 18px 2px; }
+.status-row .label{ font-size:14px; color:var(--grey); margin-bottom:8px; }
+.status-row .val{ display:flex; align-items:center; gap:10px; font-size:17px; font-weight:700; color:var(--navy); }
+.mini-tick{ width:26px; height:26px; border-radius:50%; background:#1d8a38; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.mini-tick svg{ width:14px; height:14px; }
+.p-badge{ height:26px; width:auto; flex:none; display:block; }
 
 .verified-with{
-  margin:22px 16px calc(env(safe-area-inset-bottom) + 26px);
+  margin:18px 16px calc(env(safe-area-inset-bottom) + 22px);
   background:#eef1f4; border-radius:12px;
-  padding:18px 16px; text-align:center;
+  padding:16px 14px; text-align:center;
 }
-.verified-with .vw-label{ font-size:18px; color:var(--navy); font-weight:500; margin-bottom:8px; }
-.verified-with img{ height:30px; width:auto; margin-bottom:8px; }
-.verified-with .vw-time{ font-size:16px; color:var(--navy); }
+.verified-with .vw-label{ font-size:15px; color:var(--navy); font-weight:500; margin-bottom:6px; }
+.verified-with img{ height:24px; width:auto; margin-bottom:6px; }
+.verified-with .vw-time{ font-size:14px; color:var(--navy); }
 
 /* tap hint for enabling reflections on iOS (needs a gesture for motion perms) */
 .holo-hint{
@@ -279,7 +282,7 @@ body{
 
   <div class="verified-with">
     <div class="vw-label">Details verified with</div>
-    <img src="/apk_loot/icons/logos/vicroads_logo.svg" alt="VicRoads"><br>
+    <img src="/apk_loot/icons/logos/vicroads_logo_color.svg" alt="VicRoads"><br>
     <span class="vw-time"><?php echo e($verifiedAt); ?></span>
   </div>
 

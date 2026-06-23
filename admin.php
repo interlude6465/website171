@@ -1059,6 +1059,28 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
         .back-link { color: #7fa8ff; }
         a { color: #7fa8ff; }
         ::selection { background: rgba(10,132,255,0.4); }
+
+        /* Modal styles — global so they work on every view (dashboard + requests) */
+        .req-modal-overlay {
+            display: none; position: fixed; inset: 0; z-index: 1000;
+            background: rgba(0,0,0,0.62); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .req-modal-overlay.open { display: flex; }
+        .req-modal {
+            position: relative; width: min(520px, 94vw); max-height: 88vh; overflow-y: auto;
+            background: #11131f; border: 1px solid var(--border); border-radius: 16px;
+            padding: 24px 24px 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .req-modal-close {
+            position: absolute; top: 14px; right: 14px; background: transparent; border: none;
+            color: var(--text-secondary); font-size: 18px; cursor: pointer; line-height: 1;
+        }
+        .req-modal-close:hover { color: #fff; }
+        .req-modal-field { margin-bottom: 14px; }
+        .req-modal-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); margin-bottom: 4px; }
+        .req-modal-value { font-size: 15px; color: var(--text); word-break: break-word; }
+        .req-modal-actions { display: flex; gap: 10px; margin-top: 20px; }
     </style>
 </head>
 <body>

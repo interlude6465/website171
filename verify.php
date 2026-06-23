@@ -57,10 +57,11 @@ $address = $found ? (string)$rec['address'] : '';
 $photo   = $found ? (string)($rec['photo'] ?? '') : '';
 if (strpos($photo, 'data:image') !== 0) { $photo = ''; }
 
-/* "Mon 22 Jun 2026 7:43pm" — the moment of verification (now). */
-$ts   = date('D j M Y');
-$time = strtolower(date('g:ia'));
-$verifiedAt = $ts . ' ' . $time;
+/* Timestamp = when the QR was generated (snapshot saved), in local time —
+   not when the page is scanned. savedAt is a unix time recorded at save. */
+date_default_timezone_set('Australia/Melbourne');
+$savedTs    = ($found && !empty($rec['savedAt'])) ? (int)$rec['savedAt'] : time();
+$verifiedAt = date('D j M Y', $savedTs) . ' ' . strtolower(date('g:ia', $savedTs));
 
 function e($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 /* address arrives as plain text with newlines between lines */

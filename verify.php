@@ -33,8 +33,8 @@ if (($_GET['action'] ?? '') === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST')
     if (strpos($photo, 'data:image') !== 0 || strlen($photo) > 700000) { $photo = ''; }
 
     $rec = [
-        'name'    => mb_substr(trim((string)($in['name'] ?? '')), 0, 80),
-        'address' => mb_substr(trim((string)($in['address'] ?? '')), 0, 200),
+        'name'    => substr(trim((string)($in['name'] ?? '')), 0, 80),
+        'address' => substr(trim((string)($in['address'] ?? '')), 0, 200),
         'photo'   => $photo,
         'savedAt' => time(),
     ];

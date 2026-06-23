@@ -114,10 +114,10 @@ body{
 .vhead .back, .vhead .close{ background:none; border:0; font-family:inherit; cursor:pointer; }
 
 /* ---- verified banner ---- */
-.verified{ text-align:center; padding:26px 20px 22px; }
+.verified{ text-align:center; padding:40px 20px 34px; }
 .verified .tick{
   width:56px; height:56px; border-radius:50%;
-  background:#1d8a38; margin:0 auto 14px;
+  background:#1d8a38; margin:0 auto 18px;
   display:flex; align-items:center; justify-content:center;
 }
 .verified .tick svg{ width:30px; height:30px; }
@@ -127,8 +127,10 @@ body{
 .permit-banner{
   background:#dc3327;
   padding:13px 16px;
+  position:relative; z-index:2;          /* sit above the green card so the drop shadow shows on it */
   display:flex; align-items:center; justify-content:space-between;
-  box-shadow:0 3px 6px rgba(0,0,0,0.18), inset 0 -3px 4px rgba(255,255,255,0.12);
+  /* raised 3D look: drop shadow onto the green card + a dark inner edge where it meets the background */
+  box-shadow:0 5px 8px rgba(0,0,0,0.32), 0 -2px 5px rgba(0,0,0,0.10), inset 0 -4px 5px rgba(0,0,0,0.20);
 }
 .permit-banner .pb-type{ font-size:16px; font-weight:800; color:#fff; line-height:1.12; letter-spacing:.3px; }
 .permit-banner .pb-sub{ font-size:13px; font-weight:500; color:#fff; opacity:.96; margin-top:2px; }
@@ -150,12 +152,11 @@ body{
 }
 .photo{
   position:relative;
-  width:168px; height:212px;
+  width:166px; height:262px;
   margin:0 auto;
   background:rgba(255,255,255,0.35);
   border-radius:12px;
-  overflow:hidden;           /* clip the crest to the photo, like the licence card */
-  contain:layout;
+  contain:layout;            /* isolate layout but DON'T clip — crest overflows onto the card like the reference */
   box-shadow:0 1px 4px rgba(0,0,0,0.08);
 }
 .photo > img.face{ width:100%; height:100%; object-fit:cover; display:block; border-radius:12px; }
@@ -164,8 +165,8 @@ body{
   color:#9fb389; font-size:12px; text-align:center; padding:10px; border-radius:12px;
 }
 .hologram-coat-of-arms{
-  position:absolute; top:50%; left:49%;
-  width:115%; aspect-ratio:1/1;
+  position:absolute; top:50%; left:50%;
+  width:140%; aspect-ratio:1/1;        /* expanded so the crest edges stick off the photo onto the green */
   transform:translate(-50%,-50%);
   pointer-events:none; z-index:10;
   opacity:var(--holo-opacity);

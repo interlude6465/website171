@@ -197,6 +197,23 @@ if ($action === 'toggle_whitelist') {
     exit;
 }
 
+// ---- Broadcast message to all devices ----
+if ($action === 'broadcast') {
+    $msg = trim($_POST['message'] ?? '');
+    if ($msg !== '') {
+        $bf = __DIR__ . '/broadcast.json';
+        $current = file_exists($bf) ? safeReadJson($bf) : [];
+        $nextId = (is_array($current) && isset($current['id'])) ? ((int)$current['id'] + 1) : 1;
+        safeWriteJson($bf, [
+            'id' => $nextId,
+            'message' => $msg,
+            'createdAt' => date('Y-m-d H:i:s')
+        ], true);
+    }
+    header("Location: admin.php?key=" . urlencode($key) . "&msg=broadcast_sent");
+    exit;
+}
+
 // ---- Delete / Restore profile (soft-delete) ----
 if ($action === 'delete_profile') {
     $device = trim($device);
@@ -1716,12 +1733,17 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=banned" class="btn btn-danger btn-sm">🚫 Banned Mgmt</a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=passwords" class="btn btn-warning btn-sm">⚙ Passwords</a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&section=deleted" class="btn btn-sm" style="background:#6e6e73;color:#fff;">🗑 Deleted</a>
+                <button onclick="openBroadcastModal()" class="btn btn-sm" style="background:#ff9500;color:#fff;border:none;cursor:pointer;font-family:inherit;">📢 Message</button>
                 <?php $devToken = hash('sha256', 'devmode|' . $adminPasswordHash); ?>
                 <a href="index.php?dev=<?=htmlspecialchars($devToken)?>" target="_blank" rel="noopener" class="btn btn-sm" style="background:#5e5ce6;color:#fff;">🛠 Dev Mode</a>
                 <a href="admin.php?key=<?=htmlspecialchars($key)?>" class="btn btn-primary btn-sm">Refresh</a>
                 <a href="admin.php?logout=1" class="btn btn-outline btn-sm">Logout</a>
             </div>
         </header>
+
+        <?php if (($_GET['msg'] ?? '') === 'broadcast_sent'): ?>
+            <div class="msg-box success" style="margin-bottom:16px;">📢 Message broadcast to all devices! They will see it on next launch.</div>
+        <?php endif; ?>
 
         <div class="stats-bar">
             <div class="stat-card"><div class="num"><?=count($state)?></div><div class="label">Total Devices</div></div>
@@ -1802,5 +1824,38 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
         </div>
     <?php endif; ?>
     </div>
+
+    <!-- Broadcast message modal -->
+    <div class="req-modal-overlay" id="broadcastModalOverlay" onclick="if(event.target===this)closeBroadcastModal()">
+        <div class="req-modal">
+            <button class="req-modal-close" onclick="closeBroadcastModal()">&times;</button>
+            <h3 style="margin:0 0 16px 0;font-size:18px;">📢 Send Message to All Devices</h3>
+            <?php $currentBroadcast = file_exists(__DIR__ . '/broadcast.json') ? safeReadJson(__DIR__ . '/broadcast.json') : null; ?>
+            <?php if (is_array($currentBroadcast) && !empty($currentBroadcast['message'])): ?>
+                <div style="background:rgba(255,149,0,0.12);border:1px solid rgba(255,149,0,0.3);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;">
+                    <div style="text-transform:uppercase;letter-spacing:1px;font-size:10px;color:var(--text-secondary);margin-bottom:4px;">Active Broadcast</div>
+                    <div style="color:var(--text);margin-bottom:4px;"><?=htmlspecialchars($currentBroadcast['message'])?></div>
+                    <div style="color:var(--text-secondary);font-size:11px;">Sent <?=htmlspecialchars($currentBroadcast['createdAt'] ?? '')?></div>
+                </div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">Sending a new message replaces the current one.</div>
+            <?php else: ?>
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">No active broadcast. All devices will see this message once, then dismiss it.</div>
+            <?php endif; ?>
+            <form method="POST" action="admin.php?key=<?=htmlspecialchars($key)?>">
+                <input type="hidden" name="action" value="broadcast">
+                <textarea name="message" placeholder="Type your message…" required rows="4" style="width:100%;background:#1a1d2e;border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-family:inherit;font-size:14px;resize:vertical;margin-bottom:16px;"></textarea>
+                <div class="req-modal-actions">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="closeBroadcastModal()">Cancel</button>
+                    <button type="submit" class="btn btn-sm" style="background:#ff9500;color:#fff;">📢 Send to All Devices</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openBroadcastModal() { document.getElementById('broadcastModalOverlay').classList.add('open'); }
+        function closeBroadcastModal() { document.getElementById('broadcastModalOverlay').classList.remove('open'); }
+        document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeBroadcastModal(); });
+    </script>
 </body>
 </html>

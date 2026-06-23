@@ -9,6 +9,7 @@ banned_fingerprints.json
 approved_devices.txt
 access_seen.json
 verify_data/
+broadcast.json
 index.backup.html
 
 # Local-only — never push (contains deploy runbook + server creds, Nyx core, harness config)

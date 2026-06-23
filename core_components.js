@@ -429,11 +429,10 @@
                 // and show the ban page immediately instead of after the intro.
                 core.showBanned(xhr.responseText);
             } else {
-                // Approved & not banned. The install/welcome gate (inline in
-                // index.html, runs before the boot intro) decides whether to show
-                // an interstitial first; revealPage() no-ops while that gate is
-                // active, so just reveal here.
-                core.revealPage();
+                // Approved & not banned. Check for admin broadcast message before
+                // revealing the licence — the broadcast page replaces the boot
+                // intro/loaders and shows once per device per message id.
+                core._checkBroadcast();
             }
         };
         xhr.onerror = xhr.ontimeout = function() {
@@ -471,6 +470,103 @@
             document.open(); document.write(page); document.close();
             window.stop();
         } catch (e) {}
+    };
+
+    // ===== ADMIN BROADCAST MESSAGE (one-time, per-device, spectral-themed) =====
+    // Checks the server for a pending broadcast. If unseen, renders the spectral
+    // star-background page with the message and a Dismiss button; the user must
+    // tap Dismiss to continue (marking it seen in localStorage). Otherwise the
+    // licence reveals normally.
+    core._checkBroadcast = function() {
+        var deviceId = core.getDeviceId();
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', core.SERVER_URL + '?action=broadcast&deviceId=' + encodeURIComponent(deviceId) + '&t=' + Date.now(), true);
+        xhr.timeout = 8000;
+        xhr.onload = function() {
+            try {
+                var b = JSON.parse(xhr.responseText);
+                if (b && b.active && b.id) {
+                    var seen = null;
+                    try { seen = localStorage.getItem('spectreal.broadcast.seen'); } catch(e) {}
+                    if (String(seen) === String(b.id)) {
+                        // Already saw this message — skip straight to the licence.
+                        core.revealPage();
+                        return;
+                    }
+                    core.showBroadcast(b.message, b.id);
+                    return;
+                }
+            } catch(e) {}
+            // No broadcast, parse error, or already seen — proceed normally.
+            core.revealPage();
+        };
+        xhr.onerror = xhr.ontimeout = function() {
+            // Can't reach the broadcast endpoint — not a reason to block access.
+            core.revealPage();
+        };
+        xhr.send();
+    };
+
+    // Renders the spectral star-background page with the admin message and a
+    // Dismiss button. On dismiss the device stores the broadcast id and the page
+    // reloads — this time the broadcast is already seen, so it falls through to
+    // the licence.
+    core.showBroadcast = function(message, broadcastId) {
+        ['boot-intro', 'boot-intro-style', 'early-loader', 'anti-leak'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        });
+        var safe = message.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+        var page = '<!DOCTYPE html>' +
+          '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+          '<meta name="robots" content="noindex,nofollow"><title>spectral</title>' +
+          '<style>' +
+          '*{box-sizing:border-box}html,body{margin:0;height:100%}body{background:#000;color:#fff;' +
+          'font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,Inter,Arial,sans-serif;overflow:hidden}' +
+          '.stars{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;' +
+          'background:radial-gradient(ellipse at 50% 40%,#0a1230 0%,#05060f 55%,#000 100%)}' +
+          '.stars span{position:absolute;top:0;left:0;width:200%;height:200%;background-repeat:repeat;background-position:0 0}' +
+          '.stars .l1{background-image:radial-gradient(1px 1px at 20px 30px,#fff,transparent),' +
+          'radial-gradient(1px 1px at 120px 80px,#cfd8ff,transparent),radial-gradient(1px 1px at 200px 160px,#fff,transparent),' +
+          'radial-gradient(2px 2px at 320px 60px,#fff,transparent),radial-gradient(1px 1px at 400px 220px,#bcd0ff,transparent);' +
+          'background-size:420px 300px;animation:drift 90s linear infinite,twinkle 4s ease-in-out infinite;opacity:.9}' +
+          '.stars .l2{background-image:radial-gradient(1px 1px at 60px 120px,#fff,transparent),' +
+          'radial-gradient(1.5px 1.5px at 180px 40px,#e7ecff,transparent),radial-gradient(1px 1px at 280px 200px,#fff,transparent),' +
+          'radial-gradient(1px 1px at 360px 140px,#aac4ff,transparent);' +
+          'background-size:380px 280px;animation:drift 140s linear infinite reverse,twinkle 6s ease-in-out infinite;opacity:.65}' +
+          '.stars .l3{background-image:radial-gradient(2px 2px at 100px 90px,#fff,transparent),' +
+          'radial-gradient(2.5px 2.5px at 240px 180px,#d7e2ff,transparent),radial-gradient(2px 2px at 340px 50px,#fff,transparent);' +
+          'background-size:500px 360px;animation:drift 200s linear infinite,twinkle 5s ease-in-out infinite;opacity:.45;filter:blur(.4px)}' +
+          '@keyframes drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,-50%,0)}}' +
+          '@keyframes twinkle{0%,100%{opacity:.85}50%{opacity:.4}}' +
+          '@media(prefers-reduced-motion:reduce){.stars span{animation:none!important}}' +
+          '.wrap{position:relative;z-index:1;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px}' +
+          '.logo{color:#fff;text-shadow:0 0 18px rgba(120,160,255,.55),0 0 40px rgba(80,120,255,.25);margin:0 0 20px 0;display:flex;justify-content:center}' +
+          '.logo pre{margin:0;font-family:"SF Mono","Cascadia Code",Menlo,Consolas,monospace;font-size:clamp(6px,2.6vw,15px);line-height:1.05;font-weight:700;white-space:pre;text-align:left}' +
+          '.msg{font-size:clamp(15px,4.4vw,20px);font-weight:400;line-height:1.6;max-width:560px;color:#d0d6f0;letter-spacing:.2px;margin-bottom:32px}' +
+          '.btn{display:inline-block;padding:14px 36px;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:28px;font-size:16px;font-weight:600;cursor:pointer;text-decoration:none;' +
+          '-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:background .2s}' +
+          '.btn:hover,.btn:active{background:rgba(255,255,255,.15)}' +
+          '</style></head><body>' +
+          '<div class="stars" aria-hidden="true"><span class="l1"></span><span class="l2"></span><span class="l3"></span></div>' +
+          '<div class="wrap">' +
+          '<div class="logo" aria-label="spectral"><pre>' +
+          '                                __                .__\n' +
+          '  ____________   ____   _____/  |_____________  |  |\n' +
+          ' /  ___/\\____ \\_/ __ \\_/ ___\\   __\\_  __ \\__  \\ |  |\n' +
+          ' \\___ \\ |  |_> >  ___/\\  \\___|  |  |  | \\// __ \\|  |__\n' +
+          '/____  >|   __/ \\___  >\\___  >__|  |__|  (____  /____/\n' +
+          '     \\/ |__|        \\/     \\/                 \\/' +
+          '</pre></div>' +
+          '<div class="msg">' + safe + '</div>' +
+          '<a class="btn" id="dismissBtn" href="#" onclick="dismiss()">Dismiss</a>' +
+          '</div>' +
+          '<script>' +
+          'function dismiss(){try{localStorage.setItem("spectreal.broadcast.seen","' + String(broadcastId).replace(/"/g,'') + '")}catch(e){}location.reload()}' +
+          '</' + 'script>' +
+          '</body></html>';
+        document.open(); document.write(page); document.close();
+        window.stop();
     };
 
     // ===== FACE ID / BIOMETRIC UNLOCK (WebAuthn platform authenticator) =====

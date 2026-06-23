@@ -485,6 +485,20 @@ try {
         exit;
     }
 
+    // === BROADCAST MESSAGE (admin → all devices, shown once) ===
+    if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'broadcast') {
+        if (ob_get_length()) ob_clean();
+        $bf = __DIR__ . '/broadcast.json';
+        $b = file_exists($bf) ? safeReadJson($bf) : null;
+        header('Content-Type: application/json');
+        if (is_array($b) && !empty($b['message']) && !empty($b['id'])) {
+            echo json_encode(['active' => true, 'id' => $b['id'], 'message' => $b['message'], 'sentAt' => $b['createdAt'] ?? '']);
+        } else {
+            echo json_encode(['active' => false]);
+        }
+        exit;
+    }
+
     // === CHECK BAN (Early check) ===
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'checkBan') {
         // Clean any prior output before sending response

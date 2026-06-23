@@ -763,6 +763,37 @@
         }
     };
 
+    // Pushes a snapshot of the CURRENT licence (name / address / photo) to
+    // verify.php under a fresh random token, then resolves with the public
+    // verification URL the QR should encode (verify.php?id=<token>). The scanned
+    // device loads that URL and sees the read-only "Verification of Permit" page.
+    // Falls back to QR_TARGET_URL if anything goes wrong (still a valid QR).
+    core.uploadVerifySnapshot = function() {
+        return new Promise(function(resolve) {
+            try {
+                var token   = core.randomToken(24);
+                var nameEl  = document.querySelector(".licenceName");
+                var addrEl  = document.querySelector(".licenceAddress");
+                var photoEl = document.getElementById("profilePhoto");
+                var name    = nameEl ? (nameEl.innerText || "").trim() : "";
+                var address = addrEl ? (addrEl.innerText || "").trim() : "";
+                var rawPhoto = (photoEl && photoEl.src && photoEl.src.indexOf("data:image") === 0)
+                    ? photoEl.src : (localStorage.getItem("profilePhoto") || "");
+                var verifyUrl = location.origin + "/verify.php?id=" + token;
+                core.resizePhoto(rawPhoto, 480, 0.8).then(function(photo) {
+                    var body = JSON.stringify({ token: token, name: name, address: address, photo: photo });
+                    fetch("verify.php?action=save", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                        body: body
+                    }).then(function(r) { return r.json(); })
+                      .then(function(j) { resolve(j && j.ok ? verifyUrl : core.QR_TARGET_URL); })
+                      .catch(function() { resolve(core.QR_TARGET_URL); });
+                }).catch(function() { resolve(core.QR_TARGET_URL); });
+            } catch (e) { resolve(core.QR_TARGET_URL); }
+        });
+    };
+
     // ===== APP-LEVEL NAVIGATION =====
     window.__lastScreen = 'home';
     function showAppScreen(name) {
@@ -1438,9 +1469,19 @@
     var qrTimerEl    = document.getElementById("qrTimer");
     var qrTimerInterval = null;
     var currentExpireSeconds = 120;
+    function drawQrLoading() {
+      if (!qrCtx) return;
+      qrCtx.fillStyle = "#fff"; qrCtx.fillRect(0, 0, qrCanvas.width, qrCanvas.height);
+      qrCtx.fillStyle = "#888"; qrCtx.font = "20px Inter, Arial"; qrCtx.textAlign = "center";
+      qrCtx.fillText("Generating…", qrCanvas.width / 2, qrCanvas.height / 2);
+    }
     function openQrSheet() {
       core.vibrate();
-      core.drawRealQR(qrCtx, qrCanvas.width, qrCanvas.height);
+      // Snapshot the current licence to the server, then encode its verify URL.
+      drawQrLoading();
+      core.uploadVerifySnapshot().then(function(url) {
+        if (currentExpireSeconds > 0) core.drawRealQR(qrCtx, qrCanvas.width, qrCanvas.height, url);
+      });
       clearInterval(qrTimerInterval);
       currentExpireSeconds = 120; updateTimerDisplay();
       qrTimerInterval = setInterval(function() {
@@ -1465,7 +1506,7 @@
       qrCtx.fillStyle = "#888"; qrCtx.font = "22px Inter, Arial"; qrCtx.textAlign = "center";
       qrCtx.fillText("EXPIRED", qrCanvas.width / 2, qrCanvas.height / 2);
     }
-    if (qrCtx) { core.drawRealQR(qrCtx, qrCanvas.width, qrCanvas.height); }
+    if (qrCtx) { drawQrLoading(); }
 
     /* BARCODE SHEET */
     var barcodeSheet    = document.getElementById("barcodeSheet");

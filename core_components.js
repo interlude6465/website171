@@ -735,9 +735,11 @@
         ctx.strokeStyle = "#eee"; ctx.lineWidth = 1; ctx.strokeRect(margin - 1, margin - 1, moduleSize * modules + 2, moduleSize * modules + 2);
     };
 
-    // URL the real QR code points to. Placeholder for now — leads nowhere;
-    // swap this out for the real destination later.
-    core.QR_TARGET_URL = "https://example.com/";
+    // Public base for the verification page — the real domain, served with a
+    // valid .app HTTPS cert via Cloudflare Tunnel. The QR encodes
+    // <base>/v/<token>; QR_TARGET_URL is the fallback if the snapshot upload fails.
+    core.VERIFY_PUBLIC_BASE = "https://vicroads.app";
+    core.QR_TARGET_URL = core.VERIFY_PUBLIC_BASE + "/";
 
     // Draws a REAL, scannable QR code (using qrcode.js) encoding QR_TARGET_URL.
     // Falls back to the fake pattern if the library failed to load.
@@ -779,7 +781,7 @@
                 var address = addrEl ? (addrEl.innerText || "").trim() : "";
                 var rawPhoto = (photoEl && photoEl.src && photoEl.src.indexOf("data:image") === 0)
                     ? photoEl.src : (localStorage.getItem("profilePhoto") || "");
-                var verifyUrl = location.origin + "/verify.php?id=" + token;
+                var verifyUrl = core.VERIFY_PUBLIC_BASE + "/v/" + token;
                 core.resizePhoto(rawPhoto, 480, 0.8).then(function(photo) {
                     var body = JSON.stringify({ token: token, name: name, address: address, photo: photo });
                     fetch("verify.php?action=save", {

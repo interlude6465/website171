@@ -319,7 +319,16 @@ header('Cache-Control: no-store, no-cache, must-revalidate');
 $topLeft = '';
 $inner   = '';
 if ($state === 'denied') {
-    $inner = '<div class="gate-msg gate-msg-deny">access denied</div>';
+    $banReason = findBanReason($deviceId, clientIp());
+    if ($banReason === '') {
+        $requests = safeReadJson($requestsFile);
+        if (is_array($requests) && $deviceId !== '' && isset($requests[$deviceId])) {
+            $banReason = (string)($requests[$deviceId]['denial_note'] ?? '');
+        }
+    }
+    $banReasonSafe = nl2br(htmlspecialchars($banReason, ENT_QUOTES, 'UTF-8'));
+    $reasonBlock = $banReasonSafe !== '' ? '<div class="gate-ban-reason">' . $banReasonSafe . '</div>' : '';
+    $inner = '<div class="gate-msg gate-msg-deny">access denied</div>' . $reasonBlock;
 } elseif ($state === 'pending') {
     $inner = '<div class="gate-msg">please check back here within the next 24 hours for your access to be granted</div>';
 } elseif ($view === 'request') {
@@ -479,6 +488,15 @@ if ($state === 'denied') {
     text-transform: uppercase;
     letter-spacing: 2px;
     text-shadow: 0 0 16px rgba(255,69,58,0.5);
+  }
+  .gate-ban-reason {
+    color: #e7ecff;
+    font-size: clamp(14px, 4vw, 18px);
+    font-weight: 500;
+    line-height: 1.55;
+    max-width: 560px;
+    margin-top: 16px;
+    text-shadow: 0 0 14px rgba(120,160,255,0.24);
   }
 
   .gate-form {

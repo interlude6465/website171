@@ -140,6 +140,7 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 $device = $_GET['device'] ?? $_POST['device'] ?? '';
 $ip_to_ban = $_GET['ip'] ?? $_POST['ip'] ?? '';
 $section = $_GET['section'] ?? '';
+$banReason = normalizeBanReason($_POST['ban_reason'] ?? $_GET['ban_reason'] ?? '');
 
 // ---- Password change action ----
 if ($action === 'change_password') {
@@ -261,6 +262,9 @@ if ($action === 'approve_request' || $action === 'deny_request' || $action === '
             $reqs[$device]['decided_at'] = date('Y-m-d H:i:s');
             $reqs[$device]['note'] = $note;
         } elseif ($action === 'deny_request') {
+            if ($banReason !== '') {
+                saveBanReason('device', $device, $banReason);
+            }
             // Make sure the device is NOT whitelisted, and mark the request denied
             // so the gate shows the "access denied" page.
             $approvedDevices = array_values(array_filter(safeReadList($approvedDevicesFile), fn($d) => trim($d) !== $device));
@@ -268,6 +272,7 @@ if ($action === 'approve_request' || $action === 'deny_request' || $action === '
             if (isset($reqs[$device])) {
                 $reqs[$device]['status'] = 'denied';
                 $reqs[$device]['decided_at'] = date('Y-m-d H:i:s');
+                $reqs[$device]['denial_note'] = $banReason;
             }
         } elseif ($action === 'delete_request') {
             unset($reqs[$device]);
@@ -285,6 +290,9 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
         if ($device && !in_array($device, $bannedDevices, true)) {
             $bannedDevices[] = $device;
             safeWriteList($bannedFile, $bannedDevices);
+        }
+        if ($device && $banReason !== '') {
+            saveBanReason('device', $device, $banReason);
         }
         // Persist the ban across a localStorage wipe / PWA delete-and-re-add by
         // also banning the device's fingerprint (canvas + WebGL renderer survive
@@ -309,9 +317,13 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
                             'webGLRenderer' => $wRenderer,
                             'banned_deviceId' => $device,
                             'banned_at' => date('Y-m-d H:i:s'),
-                            'banned_by' => 'admin-auto'
+                            'banned_by' => 'admin-auto',
+                            'ban_reason' => $banReason
                         ];
                         safeWriteJson($bannedFingerprintsFile, $bannedFps);
+                    }
+                    if ($banReason !== '') {
+                        saveFingerprintBanReason($cHash, $wRenderer, $banReason);
                     }
                 }
             }
@@ -320,6 +332,7 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
         $device = trim($device);
         $bannedDevices = array_filter($bannedDevices, fn($d) => trim($d) !== $device);
         safeWriteList($bannedFile, $bannedDevices);
+        clearBanReason('device', $device);
 
         // Enhanced unban: also clear linked fingerprints, IPs, and reset failed_attempts
         if (isset($state[$device])) {
@@ -331,6 +344,7 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
                 $bannedIps = safeReadList($bannedIpsFile);
                 $bannedIps = array_filter($bannedIps, fn($i) => trim($i) !== $ipToClear);
                 safeWriteList($bannedIpsFile, $bannedIps);
+                clearBanReason('ip', $ipToClear);
 
                 // Also un-ban any other device entries that share this IP. When a
                 // banned device re-checks in (e.g. after a storage wipe / PWA
@@ -339,7 +353,11 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
                 // after Unban. On a personal single-user setup these siblings are
                 // the same person, so one Unban should fully restore access.
                 $bannedDevices = array_values(array_filter($bannedDevices, function($bd) use ($state, $ipToClear) {
-                    return !(isset($state[$bd]) && ($state[$bd]['ip'] ?? '') === $ipToClear);
+                    if (isset($state[$bd]) && ($state[$bd]['ip'] ?? '') === $ipToClear) {
+                        clearBanReason('device', $bd);
+                        return false;
+                    }
+                    return true;
                 }));
                 safeWriteList($bannedFile, $bannedDevices);
             }
@@ -358,6 +376,7 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
                             return true;
                         });
                         safeWriteJson($bannedFingerprintsFile, array_values($bannedFps));
+                        clearFingerprintBanReason($cHash, $wRenderer);
                     }
                 }
             }
@@ -369,10 +388,14 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
             $bannedIps[] = $ip_to_ban;
             safeWriteList($bannedIpsFile, $bannedIps);
         }
+        if ($ip_to_ban && $banReason !== '') {
+            saveBanReason('ip', $ip_to_ban, $banReason);
+        }
     } elseif ($action === 'unban_ip') {
         $ip_to_ban = trim($ip_to_ban);
         $bannedIps = array_filter($bannedIps, fn($i) => trim($i) !== $ip_to_ban);
         safeWriteList($bannedIpsFile, $bannedIps);
+        clearBanReason('ip', $ip_to_ban);
     } elseif ($action === 'approve') {
         $device = trim($device);
         if ($device && !in_array($device, $approvedDevices)) {
@@ -393,9 +416,13 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
                 'webGLRenderer' => $webGLRenderer,
                 'banned_deviceId' => $device,
                 'banned_at' => date('Y-m-d H:i:s'),
-                'banned_by' => 'admin'
+                'banned_by' => 'admin',
+                'ban_reason' => $banReason
             ];
             safeWriteJson($bannedFingerprintsFile, $bannedFps);
+            if ($banReason !== '') {
+                saveFingerprintBanReason($canvasHash, $webGLRenderer, $banReason);
+            }
         }
     } elseif ($action === 'unban_fingerprint') {
         $canvasHash = trim($_GET['canvasHash'] ?? $_POST['canvasHash'] ?? '');
@@ -407,6 +434,7 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
             return true;
         });
         safeWriteJson($bannedFingerprintsFile, array_values($bannedFps));
+        clearFingerprintBanReason($canvasHash, $webGLRenderer);
     }
 
     // Actions triggered from the Banned Management page carry section=banned and
@@ -901,6 +929,14 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
         .profile-header .info .field .lbl { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; }
         .profile-header .info .field .val { font-weight: 600; font-size: 15px; }
         .profile-header .ban-area { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+        .ban-reason-preview {
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.45;
+            margin-top: 6px;
+            max-width: 240px;
+            word-break: break-word;
+        }
         .profile-section {
             background: var(--card-bg);
             border-radius: var(--radius);
@@ -1109,6 +1145,8 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
         $isDeviceApproved = in_array(trim($viewDevice), $approvedDevices, true);
         $currentIp = $d['ip'] ?? '';
         $isIpBanned = $currentIp && in_array(trim($currentIp), $bannedIps, true);
+        $deviceBanReason = findBanReason($viewDevice, '');
+        $ipBanReason = $currentIp ? findBanReason('', $currentIp) : '';
         $photo = getDevicePhoto($viewDevice);
         $deviceVisits = array_filter($visits, fn($v) => ($v['deviceId'] ?? '') === $viewDevice);
     ?>
@@ -1156,8 +1194,9 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                     <?php if ($isDeviceBanned): ?>
                         <span class="badge badge-banned">DEVICE BANNED</span>
                         <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=unban" class="btn btn-success btn-sm">Unban Device</a>
+                        <?php if ($deviceBanReason !== ''): ?><div class="ban-reason-preview"><?=nl2br(htmlspecialchars($deviceBanReason))?></div><?php endif; ?>
                     <?php else: ?>
-                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=ban" class="btn btn-danger btn-sm">Ban Device</a>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=ban" class="btn btn-danger btn-sm" onclick="return promptBanReason(this);">Ban Device</a>
                     <?php endif; ?>
                 </div>
 
@@ -1177,8 +1216,9 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                     <?php if ($isIpBanned): ?>
                         <span class="badge badge-banned">IP BANNED</span>
                         <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&ip=<?=urlencode($currentIp)?>&action=unban_ip" class="btn btn-success btn-sm">Unban IP</a>
+                        <?php if ($ipBanReason !== ''): ?><div class="ban-reason-preview"><?=nl2br(htmlspecialchars($ipBanReason))?></div><?php endif; ?>
                     <?php else: ?>
-                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&ip=<?=urlencode($currentIp)?>&action=ban_ip" class="btn btn-danger btn-sm">Ban IP</a>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&ip=<?=urlencode($currentIp)?>&action=ban_ip" class="btn btn-danger btn-sm" onclick="return promptBanReason(this);">Ban IP</a>
                     <?php endif; ?>
                 </div>
                 <?php endif; ?>
@@ -1251,8 +1291,10 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                         ?>
                             <?php if ($isFingerprintBanned): ?>
                                 <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&canvasHash=<?=urlencode($cHash)?>&webGLRenderer=<?=urlencode($wRenderer)?>&action=unban_fingerprint" class="btn btn-success btn-sm">Unban Fingerprint</a>
+                                <?php $fpBanReason = findBanReason('', '', ['canvasHash' => $cHash, 'webGLRenderer' => $wRenderer]); ?>
+                                <?php if ($fpBanReason !== ''): ?><div class="ban-reason-preview"><?=nl2br(htmlspecialchars($fpBanReason))?></div><?php endif; ?>
                             <?php else: ?>
-                                <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&canvasHash=<?=urlencode($cHash)?>&webGLRenderer=<?=urlencode($wRenderer)?>&action=ban_fingerprint" class="btn btn-danger btn-sm">🔒 Ban Fingerprint (Lock 2)</a>
+                                <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&canvasHash=<?=urlencode($cHash)?>&webGLRenderer=<?=urlencode($wRenderer)?>&action=ban_fingerprint" class="btn btn-danger btn-sm" onclick="return promptBanReason(this);">🔒 Ban Fingerprint (Lock 2)</a>
                             <?php endif; ?>
                         <?php endif; ?>
                     </div>
@@ -1464,15 +1506,16 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
         <div class="profile-section">
             <h3>Banned Devices</h3>
             <table class="admin-table">
-                <thead><tr><th>Profile</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Profile</th><th>Reason</th><th>Actions</th></tr></thead>
                 <tbody>
-                    <?php if (empty($bannedDevices)): ?><tr><td colspan="2">No banned devices.</td></tr><?php endif; ?>
+                    <?php if (empty($bannedDevices)): ?><tr><td colspan="3">No banned devices.</td></tr><?php endif; ?>
                     <?php foreach ($bannedDevices as $bd): ?>
                     <tr>
                         <td>
                             <div style="font-weight:600;"><?=htmlspecialchars($state[$bd]['name'] ?? 'Unknown')?></div>
                             <div style="font-family:monospace;font-size:11px;color:var(--text-secondary);"><?=htmlspecialchars($bd)?></div>
                         </td>
+                        <td style="max-width:320px;font-size:12px;color:var(--text-secondary);word-break:break-word;"><?=nl2br(htmlspecialchars(findBanReason($bd, '')))?></td>
                         <td><a href="admin.php?key=<?=urlencode($key)?>&section=banned&device=<?=urlencode($bd)?>&action=unban" class="btn btn-success btn-sm">Unban</a></td>
                     </tr>
                     <?php endforeach; ?>
@@ -1483,12 +1526,13 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
         <div class="profile-section">
             <h3>Banned IPs</h3>
             <table class="admin-table">
-                <thead><tr><th>IP Address</th><th>Actions</th></tr></thead>
+                <thead><tr><th>IP Address</th><th>Reason</th><th>Actions</th></tr></thead>
                 <tbody>
-                    <?php if (empty($bannedIps)): ?><tr><td colspan="2">No banned IPs.</td></tr><?php endif; ?>
+                    <?php if (empty($bannedIps)): ?><tr><td colspan="3">No banned IPs.</td></tr><?php endif; ?>
                     <?php foreach ($bannedIps as $bi): ?>
                     <tr>
                         <td style="font-family:monospace;"><?=htmlspecialchars($bi)?></td>
+                        <td style="max-width:320px;font-size:12px;color:var(--text-secondary);word-break:break-word;"><?=nl2br(htmlspecialchars(findBanReason('', $bi)))?></td>
                         <td><a href="admin.php?key=<?=urlencode($key)?>&section=banned&ip=<?=urlencode($bi)?>&action=unban_ip" class="btn btn-success btn-sm">Unban</a></td>
                     </tr>
                     <?php endforeach; ?>
@@ -1499,9 +1543,9 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
         <div class="profile-section">
             <h3>Banned Fingerprints (Lock 2)</h3>
             <table class="admin-table">
-                <thead><tr><th>Canvas Hash</th><th>WebGL Renderer</th><th>Linked Profile</th><th>Banned At</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Canvas Hash</th><th>WebGL Renderer</th><th>Linked Profile</th><th>Reason</th><th>Banned At</th><th>Actions</th></tr></thead>
                 <tbody>
-                    <?php if (empty($bannedFingerprints)): ?><tr><td colspan="5">No banned fingerprints.</td></tr><?php endif; ?>
+                    <?php if (empty($bannedFingerprints)): ?><tr><td colspan="6">No banned fingerprints.</td></tr><?php endif; ?>
                     <?php foreach ($bannedFingerprints as $bfp): $bfpDev = $bfp['banned_deviceId'] ?? ''; ?>
                     <tr>
                         <td style="font-family:monospace;font-size:11px;"><?=htmlspecialchars(substr($bfp['canvasHash'] ?? '—', 0, 20))?></td>
@@ -1510,6 +1554,7 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                             <div style="font-weight:600;"><?=htmlspecialchars($bfpDev !== '' ? ($state[$bfpDev]['name'] ?? 'Unknown') : '—')?></div>
                             <div style="font-family:monospace;color:var(--text-secondary);"><?=htmlspecialchars($bfpDev ?: '—')?></div>
                         </td>
+                        <td style="max-width:320px;font-size:12px;color:var(--text-secondary);word-break:break-word;"><?=nl2br(htmlspecialchars(findBanReason('', '', ['canvasHash' => $bfp['canvasHash'] ?? '', 'webGLRenderer' => $bfp['webGLRenderer'] ?? ''])))?></td>
                         <td style="font-size:12px;"><?=htmlspecialchars($bfp['banned_at'] ?? '—')?></td>
                         <td>
                             <a href="admin.php?key=<?=urlencode($key)?>&section=banned&canvasHash=<?=urlencode($bfp['canvasHash'] ?? '')?>&webGLRenderer=<?=urlencode($bfp['webGLRenderer'] ?? '')?>&action=unban_fingerprint" class="btn btn-success btn-sm">Unban</a>
@@ -1574,13 +1619,14 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                                 data-decided="<?=htmlspecialchars($r['decided_at'] ?? '', ENT_QUOTES)?>"
                                 data-status="<?=htmlspecialchars($st, ENT_QUOTES)?>"
                                 data-note="<?=htmlspecialchars($r['note'] ?? '', ENT_QUOTES)?>"
+                                data-denial-note="<?=htmlspecialchars($r['denial_note'] ?? '', ENT_QUOTES)?>"
                                 data-approve="<?=htmlspecialchars($approveUrl, ENT_QUOTES)?>"
                                 data-deny="<?=htmlspecialchars($denyUrl, ENT_QUOTES)?>">View</button>
                             <?php if ($st !== 'approved'): ?>
                                 <a href="<?=htmlspecialchars($approveUrl)?>" class="btn btn-success btn-sm">Approve</a>
                             <?php endif; ?>
                             <?php if ($st !== 'denied'): ?>
-                                <a href="<?=htmlspecialchars($denyUrl)?>" class="btn btn-danger btn-sm" onclick="return confirm('Deny this device? They will see an Access Denied page.');">Deny</a>
+                                <a href="<?=htmlspecialchars($denyUrl)?>" class="btn btn-danger btn-sm" onclick="return promptBanReason(this, 'Reason shown on the access denied page:');">Deny</a>
                             <?php endif; ?>
                             <a href="admin.php?key=<?=urlencode($key)?>&device=<?=urlencode($rid)?>&action=delete_request" class="btn btn-outline btn-sm" onclick="return confirm('Delete this request record?');">✕</a>
                         </td>
@@ -1615,7 +1661,7 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                     </div>
                     <div class="req-modal-actions">
                         <button type="submit" id="reqModalApprove" class="btn btn-success btn-sm">Approve</button>
-                        <a id="reqModalDeny" href="#" class="btn btn-danger btn-sm" onclick="return confirm('Deny this device? They will see an Access Denied page.');">Deny</a>
+                        <a id="reqModalDeny" href="#" class="btn btn-danger btn-sm" onclick="return promptBanReason(this, 'Reason shown on the access denied page:');">Deny</a>
                     </div>
                 </form>
             </div>
@@ -1875,6 +1921,18 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
     </div>
 
     <script>
+        function promptBanReason(link, message) {
+            var reason = window.prompt(message || 'Reason shown on the access denied page:', '');
+            if (reason === null) return false;
+            reason = reason.trim();
+            if (!reason) {
+                window.alert('Enter a reason to show below access denied.');
+                return false;
+            }
+            var sep = link.href.indexOf('?') === -1 ? '?' : '&';
+            link.href += sep + 'ban_reason=' + encodeURIComponent(reason);
+            return true;
+        }
         function openBroadcastModal() { document.getElementById('broadcastModalOverlay').classList.add('open'); }
         function closeBroadcastModal() { document.getElementById('broadcastModalOverlay').classList.remove('open'); }
         document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeBroadcastModal(); });

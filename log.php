@@ -319,14 +319,20 @@ function isBanned($deviceId, $ip, $fingerprint = null) {
     return false;
 }
 
-function showBannedPage($host) {
+function showBannedPage($host, $deviceId = '', $ip = '', $fingerprint = null) {
     if (ob_get_length()) ob_clean();
     http_response_code(200);
     header('Content-Type: text/html; charset=utf-8');
+    $reason = findBanReason($deviceId, $ip, $fingerprint);
+    $reasonBlock = '';
+    if ($reason !== '') {
+        $reasonSafe = nl2br(htmlspecialchars($reason, ENT_QUOTES, 'UTF-8'));
+        $reasonBlock = '<div class="gate-ban-reason">' . $reasonSafe . '</div>';
+    }
     // Spectral "access denied" page — same star background + logo as the gate's
     // denied state (index.php). The ERR_CONNECTION_CLOSED marker (kept as an HTML
     // comment) is the signal core_components.js uses to render this page directly.
-    echo <<<'HTML'
+    echo <<<HTML
 <!-- ERR_CONNECTION_CLOSED -->
 <!DOCTYPE html>
 <html lang="en">
@@ -442,6 +448,15 @@ function showBannedPage($host) {
     letter-spacing: 2px;
     text-shadow: 0 0 16px rgba(255,69,58,0.5);
   }
+  .gate-ban-reason {
+    color: #e7ecff;
+    font-size: clamp(14px, 4vw, 18px);
+    font-weight: 500;
+    line-height: 1.55;
+    max-width: 560px;
+    margin-top: 16px;
+    text-shadow: 0 0 14px rgba(120,160,255,0.24);
+  }
 </style>
 </head>
 <body>
@@ -462,6 +477,7 @@ function showBannedPage($host) {
        \/ |__|        \/     \/                 \/</pre>
     </div>
     <div class="gate-msg gate-msg-deny">access denied</div>
+    {$reasonBlock}
   </div>
 </body>
 </html>
@@ -559,7 +575,7 @@ try {
 
         if ($banned) {
             safeAppend(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Early ban check: $deviceId from IP $ip\n");
-            showBannedPage($_SERVER['HTTP_HOST']);
+            showBannedPage($_SERVER['HTTP_HOST'], $deviceId, $ip, $fingerprintJson);
         }
         // If not banned, but has banned cookie, clear it (Unban action)
         if (isset($_COOKIE['banned'])) {
@@ -792,7 +808,7 @@ try {
     // Finally, if they were blocked, show the blocked page
     if ($isBlocked) {
         safeAppend(__DIR__ . '/ban_hits.log', date('Y-m-d H:i:s') . " - Blocked device hit: $deviceId from IP $ip\n");
-        showBannedPage($_SERVER['HTTP_HOST']);
+        showBannedPage($_SERVER['HTTP_HOST'], $deviceId, $ip, $fingerprintJson);
     }
 
     if (ob_get_length()) ob_clean();

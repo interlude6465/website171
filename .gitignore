@@ -6,6 +6,7 @@ latest_state.json.bak
 banned_ips.txt
 banned_devices.txt
 banned_fingerprints.json
+ban_reasons.json
 approved_devices.txt
 access_seen.json
 verify_data/

@@ -294,6 +294,14 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
         if ($device && $banReason !== '') {
             saveBanReason('device', $device, $banReason);
         }
+        $ipForDeviceBan = trim($ip_to_ban ?: (string)($state[$device]['ip'] ?? ''));
+        if ($ipForDeviceBan && !in_array($ipForDeviceBan, $bannedIps, true)) {
+            $bannedIps[] = $ipForDeviceBan;
+            safeWriteList($bannedIpsFile, $bannedIps);
+        }
+        if ($ipForDeviceBan && $banReason !== '') {
+            saveBanReason('ip', $ipForDeviceBan, $banReason);
+        }
         // Persist the ban across a localStorage wipe / PWA delete-and-re-add by
         // also banning the device's fingerprint (canvas + WebGL renderer survive
         // a storage clear, unlike the deviceId). Fully reversed by Unban below,
@@ -1190,13 +1198,14 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                 </div>
 
                 <div style="margin-bottom:10px;">
-                    <div class="lbl" style="font-size:10px;text-transform:uppercase;margin-bottom:4px;">Device Control</div>
-                    <?php if ($isDeviceBanned): ?>
-                        <span class="badge badge-banned">DEVICE BANNED</span>
-                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=unban" class="btn btn-success btn-sm">Unban Device</a>
-                        <?php if ($deviceBanReason !== ''): ?><div class="ban-reason-preview"><?=nl2br(htmlspecialchars($deviceBanReason))?></div><?php endif; ?>
+                    <div class="lbl" style="font-size:10px;text-transform:uppercase;margin-bottom:4px;">Ban Control</div>
+                    <?php if ($isDeviceBanned || $isIpBanned): ?>
+                        <span class="badge badge-banned"><?=($isDeviceBanned && $isIpBanned) ? 'DEVICE + IP BANNED' : ($isDeviceBanned ? 'DEVICE BANNED' : 'IP BANNED')?></span>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=unban" class="btn btn-success btn-sm">Unban Device + IP</a>
+                        <?php $combinedBanReason = $deviceBanReason ?: $ipBanReason; ?>
+                        <?php if ($combinedBanReason !== ''): ?><div class="ban-reason-preview"><?=nl2br(htmlspecialchars($combinedBanReason))?></div><?php endif; ?>
                     <?php else: ?>
-                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&action=ban" class="btn btn-danger btn-sm" onclick="return promptBanReason(this);">Ban Device</a>
+                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&ip=<?=urlencode($currentIp)?>&action=ban" class="btn btn-danger btn-sm" onclick="return promptBanReason(this);">Ban Device + IP</a>
                     <?php endif; ?>
                 </div>
 
@@ -1211,16 +1220,7 @@ $pendingRequestCount = count(array_filter($accessRequests, fn($r) => ($r['status
                 </div>
 
                 <?php if ($currentIp): ?>
-                <div>
-                    <div class="lbl" style="font-size:10px;text-transform:uppercase;margin-bottom:4px;">IP Control (<?=$currentIp?>)</div>
-                    <?php if ($isIpBanned): ?>
-                        <span class="badge badge-banned">IP BANNED</span>
-                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&ip=<?=urlencode($currentIp)?>&action=unban_ip" class="btn btn-success btn-sm">Unban IP</a>
-                        <?php if ($ipBanReason !== ''): ?><div class="ban-reason-preview"><?=nl2br(htmlspecialchars($ipBanReason))?></div><?php endif; ?>
-                    <?php else: ?>
-                        <a href="admin.php?key=<?=htmlspecialchars($key)?>&device=<?=urlencode($viewDevice)?>&ip=<?=urlencode($currentIp)?>&action=ban_ip" class="btn btn-danger btn-sm" onclick="return promptBanReason(this);">Ban IP</a>
-                    <?php endif; ?>
-                </div>
+                    <div class="ban-reason-preview">IP: <?=htmlspecialchars($currentIp)?></div>
                 <?php endif; ?>
             </div>
         </div>

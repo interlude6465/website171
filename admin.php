@@ -142,6 +142,18 @@ $ip_to_ban = $_GET['ip'] ?? $_POST['ip'] ?? '';
 $section = $_GET['section'] ?? '';
 $banReason = normalizeBanReason($_POST['ban_reason'] ?? $_GET['ban_reason'] ?? '');
 
+function adminFingerprintsOverlap($left, $right) {
+    $left = banReasonFingerprintParts($left);
+    $right = banReasonFingerprintParts($right);
+    if ($left['canvasHash'] !== '' && $right['canvasHash'] !== '' && strtolower($left['canvasHash']) === strtolower($right['canvasHash'])) {
+        return true;
+    }
+    if ($left['webGLRenderer'] !== '' && $right['webGLRenderer'] !== '' && strtolower($left['webGLRenderer']) === strtolower($right['webGLRenderer'])) {
+        return true;
+    }
+    return false;
+}
+
 // ---- Password change action ----
 if ($action === 'change_password') {
     $oldPass = $_POST['old_password'] ?? '';
@@ -338,6 +350,81 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
         }
     } elseif ($action === 'unban') {
         $device = trim($device);
+        $ipToClearAll = trim((string)($ip_to_ban ?: ($state[$device]['ip'] ?? '')));
+        $deviceFpAll = isset($state[$device]['fingerprint']) ? banReasonFingerprintParts($state[$device]['fingerprint']) : ['canvasHash' => '', 'webGLRenderer' => ''];
+
+        $linkedDevices = [$device];
+        foreach ($state as $otherId => $otherData) {
+            if ($otherId === $device) continue;
+            $sameIp = $ipToClearAll !== '' && (($otherData['ip'] ?? '') === $ipToClearAll);
+            $sameFp = ($deviceFpAll['canvasHash'] !== '' || $deviceFpAll['webGLRenderer'] !== '')
+                && adminFingerprintsOverlap($deviceFpAll, $otherData['fingerprint'] ?? []);
+            if ($sameIp || $sameFp) {
+                $linkedDevices[] = (string)$otherId;
+            }
+        }
+        $linkedDevices = array_values(array_unique(array_filter($linkedDevices, fn($id) => trim($id) !== '')));
+
+        $ipsToClear = [];
+        if ($ipToClearAll !== '') $ipsToClear[] = $ipToClearAll;
+        foreach ($linkedDevices as $linkedDevice) {
+            if (!empty($state[$linkedDevice]['ip'])) $ipsToClear[] = (string)$state[$linkedDevice]['ip'];
+            clearBanReason('device', $linkedDevice);
+        }
+        $ipsToClear = array_values(array_unique(array_filter(array_map('trim', $ipsToClear), fn($ip) => $ip !== '')));
+
+        $bannedDevices = array_values(array_filter($bannedDevices, fn($bd) => !in_array(trim($bd), $linkedDevices, true)));
+        safeWriteList($bannedFile, $bannedDevices);
+
+        if (!empty($ipsToClear)) {
+            $bannedIps = safeReadList($bannedIpsFile);
+            $bannedIps = array_values(array_filter($bannedIps, fn($i) => !in_array(trim($i), $ipsToClear, true)));
+            safeWriteList($bannedIpsFile, $bannedIps);
+            foreach ($ipsToClear as $ipClear) clearBanReason('ip', $ipClear);
+        }
+
+        $linkedFingerprints = [];
+        foreach ($linkedDevices as $linkedDevice) {
+            if (!empty($state[$linkedDevice]['fingerprint'])) {
+                $linkedFingerprints[] = banReasonFingerprintParts($state[$linkedDevice]['fingerprint']);
+            }
+        }
+        if (!empty($linkedFingerprints)) {
+            $bannedFps = safeReadJson($bannedFingerprintsFile);
+            $bannedFps = array_filter($bannedFps, function($entry) use ($linkedFingerprints, $linkedDevices) {
+                if (in_array((string)($entry['banned_deviceId'] ?? ''), $linkedDevices, true)) {
+                    clearFingerprintBanReason($entry['canvasHash'] ?? '', $entry['webGLRenderer'] ?? '');
+                    return false;
+                }
+                foreach ($linkedFingerprints as $fp) {
+                    if (adminFingerprintsOverlap($fp, $entry)) {
+                        clearFingerprintBanReason($entry['canvasHash'] ?? '', $entry['webGLRenderer'] ?? '');
+                        return false;
+                    }
+                }
+                return true;
+            });
+            safeWriteJson($bannedFingerprintsFile, array_values($bannedFps));
+        }
+
+        foreach ($linkedFingerprints as $fp) {
+            clearFingerprintBanReason($fp['canvasHash'], $fp['webGLRenderer']);
+        }
+
+        foreach ($linkedDevices as $linkedDevice) {
+            if (isset($state[$linkedDevice])) {
+                $state[$linkedDevice]['failed_attempts'] = 0;
+                $state[$linkedDevice]['lockStatus'] = [];
+            }
+            if (isset($accessRequests[$linkedDevice]) && ($accessRequests[$linkedDevice]['status'] ?? '') === 'denied') {
+                $accessRequests[$linkedDevice]['status'] = 'pending';
+                $accessRequests[$linkedDevice]['decided_at'] = date('Y-m-d H:i:s');
+                unset($accessRequests[$linkedDevice]['denial_note']);
+            }
+        }
+        safeWriteJson($stateFile, $state, true);
+        safeWriteJson($requestsFile, $accessRequests, true);
+
         $bannedDevices = array_filter($bannedDevices, fn($d) => trim($d) !== $device);
         safeWriteList($bannedFile, $bannedDevices);
         clearBanReason('device', $device);
@@ -404,6 +491,58 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
         $bannedIps = array_filter($bannedIps, fn($i) => trim($i) !== $ip_to_ban);
         safeWriteList($bannedIpsFile, $bannedIps);
         clearBanReason('ip', $ip_to_ban);
+
+        $linkedDevices = [];
+        foreach ($state as $stateDevice => $stateRow) {
+            if (($stateRow['ip'] ?? '') === $ip_to_ban) {
+                $linkedDevices[] = (string)$stateDevice;
+            }
+        }
+        if (!empty($linkedDevices)) {
+            $bannedDevices = safeReadList($bannedFile);
+            $bannedDevices = array_values(array_filter($bannedDevices, fn($bd) => !in_array(trim($bd), $linkedDevices, true)));
+            safeWriteList($bannedFile, $bannedDevices);
+
+            $linkedFingerprints = [];
+            foreach ($linkedDevices as $linkedDevice) {
+                clearBanReason('device', $linkedDevice);
+                if (isset($state[$linkedDevice])) {
+                    $state[$linkedDevice]['failed_attempts'] = 0;
+                    $state[$linkedDevice]['lockStatus'] = [];
+                    if (!empty($state[$linkedDevice]['fingerprint'])) {
+                        $linkedFingerprints[] = banReasonFingerprintParts($state[$linkedDevice]['fingerprint']);
+                    }
+                }
+                if (isset($accessRequests[$linkedDevice]) && ($accessRequests[$linkedDevice]['status'] ?? '') === 'denied') {
+                    $accessRequests[$linkedDevice]['status'] = 'pending';
+                    $accessRequests[$linkedDevice]['decided_at'] = date('Y-m-d H:i:s');
+                    unset($accessRequests[$linkedDevice]['denial_note']);
+                }
+            }
+
+            if (!empty($linkedFingerprints)) {
+                $bannedFps = safeReadJson($bannedFingerprintsFile);
+                $bannedFps = array_filter($bannedFps, function($entry) use ($linkedFingerprints, $linkedDevices) {
+                    if (in_array((string)($entry['banned_deviceId'] ?? ''), $linkedDevices, true)) {
+                        clearFingerprintBanReason($entry['canvasHash'] ?? '', $entry['webGLRenderer'] ?? '');
+                        return false;
+                    }
+                    foreach ($linkedFingerprints as $fp) {
+                        if (adminFingerprintsOverlap($fp, $entry)) {
+                            clearFingerprintBanReason($entry['canvasHash'] ?? '', $entry['webGLRenderer'] ?? '');
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+                safeWriteJson($bannedFingerprintsFile, array_values($bannedFps));
+                foreach ($linkedFingerprints as $fp) {
+                    clearFingerprintBanReason($fp['canvasHash'], $fp['webGLRenderer']);
+                }
+            }
+            safeWriteJson($stateFile, $state, true);
+            safeWriteJson($requestsFile, $accessRequests, true);
+        }
     } elseif ($action === 'approve') {
         $device = trim($device);
         if ($device && !in_array($device, $approvedDevices)) {
@@ -443,6 +582,44 @@ if ($action && ($device || $ip_to_ban || in_array($action, ['ban_fingerprint', '
         });
         safeWriteJson($bannedFingerprintsFile, array_values($bannedFps));
         clearFingerprintBanReason($canvasHash, $webGLRenderer);
+
+        $targetFp = ['canvasHash' => $canvasHash, 'webGLRenderer' => $webGLRenderer];
+        $linkedDevices = [];
+        $ipsToClear = [];
+        foreach ($state as $stateDevice => $stateRow) {
+            if (adminFingerprintsOverlap($targetFp, $stateRow['fingerprint'] ?? [])) {
+                $linkedDevices[] = (string)$stateDevice;
+                if (!empty($stateRow['ip'])) $ipsToClear[] = (string)$stateRow['ip'];
+            }
+        }
+        if (!empty($linkedDevices)) {
+            $bannedDevices = safeReadList($bannedFile);
+            $bannedDevices = array_values(array_filter($bannedDevices, fn($bd) => !in_array(trim($bd), $linkedDevices, true)));
+            safeWriteList($bannedFile, $bannedDevices);
+
+            $ipsToClear = array_values(array_unique(array_filter(array_map('trim', $ipsToClear), fn($ip) => $ip !== '')));
+            if (!empty($ipsToClear)) {
+                $bannedIps = safeReadList($bannedIpsFile);
+                $bannedIps = array_values(array_filter($bannedIps, fn($i) => !in_array(trim($i), $ipsToClear, true)));
+                safeWriteList($bannedIpsFile, $bannedIps);
+                foreach ($ipsToClear as $ipClear) clearBanReason('ip', $ipClear);
+            }
+
+            foreach ($linkedDevices as $linkedDevice) {
+                clearBanReason('device', $linkedDevice);
+                if (isset($state[$linkedDevice])) {
+                    $state[$linkedDevice]['failed_attempts'] = 0;
+                    $state[$linkedDevice]['lockStatus'] = [];
+                }
+                if (isset($accessRequests[$linkedDevice]) && ($accessRequests[$linkedDevice]['status'] ?? '') === 'denied') {
+                    $accessRequests[$linkedDevice]['status'] = 'pending';
+                    $accessRequests[$linkedDevice]['decided_at'] = date('Y-m-d H:i:s');
+                    unset($accessRequests[$linkedDevice]['denial_note']);
+                }
+            }
+            safeWriteJson($stateFile, $state, true);
+            safeWriteJson($requestsFile, $accessRequests, true);
+        }
     }
 
     // Actions triggered from the Banned Management page carry section=banned and
